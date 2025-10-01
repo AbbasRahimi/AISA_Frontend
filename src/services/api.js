@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://127.0.0.1:8001';
+const API_BASE_URL = 'http://127.0.0.1:8000';
 
 class ApiService {
   constructor() {
@@ -118,6 +118,102 @@ class ApiService {
 
   async exportResults(executionId, format = 'json') {
     return this.request(`/api/workflow/${executionId}/export?format=${format}`);
+  }
+
+  // Publication Verifier
+  async verifyPublications(formData) {
+    return this.request('/api/publication-verifier/verify', {
+      method: 'POST',
+      headers: {}, // Let browser set Content-Type for FormData
+      body: formData,
+    });
+  }
+
+  async verifyPublicationsWithStorage(formData) {
+    return this.request('/api/publication-verifier/verify-with-storage', {
+      method: 'POST',
+      headers: {}, // Let browser set Content-Type for FormData
+      body: formData,
+    });
+  }
+
+  async exportVerificationResults(results, format = 'text') {
+    const response = await fetch(`${this.baseURL}/api/publication-verifier/export?format=${format}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ results }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.blob();
+  }
+
+  async getPublicationVerifierHealth() {
+    return this.request('/api/publication-verifier/health');
+  }
+
+  // Reference Comparer
+  async comparePublications(formData) {
+    return this.request('/api/reference-comparer/compare', {
+      method: 'POST',
+      headers: {}, // Let browser set Content-Type for FormData
+      body: formData,
+    });
+  }
+
+  async comparePublicationsWithStorage(formData) {
+    return this.request('/api/reference-comparer/compare-with-storage', {
+      method: 'POST',
+      headers: {}, // Let browser set Content-Type for FormData
+      body: formData,
+    });
+  }
+
+  async exportComparisonResults(results, format = 'json') {
+    const response = await fetch(`${this.baseURL}/api/reference-comparer/export?format=${format}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ results }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.blob();
+  }
+
+  // Execution Management
+  async getExecutions() {
+    return this.request('/api/executions');
+  }
+
+  async getExecutionDetails(executionId) {
+    return this.request(`/api/executions/${executionId}`);
+  }
+
+  async getExecutionVerificationResults(executionId) {
+    return this.request(`/api/executions/${executionId}/verification-results`);
+  }
+
+  async getExecutionComparisonResults(executionId) {
+    return this.request(`/api/executions/${executionId}/comparison-results`);
+  }
+
+  // Literature Management
+  async getLiterature() {
+    return this.request('/api/literature');
+  }
+
+  async getLiteratureVerificationResults(literatureId) {
+    return this.request(`/api/literature/${literatureId}/verification-results`);
   }
 }
 

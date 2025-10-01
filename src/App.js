@@ -1,12 +1,63 @@
 import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import './App.css';
 import ConfigurationPanel from './components/ConfigurationPanel';
 import ProgressPanel from './components/ProgressPanel';
 import ResultsPanel from './components/ResultsPanel';
 import FileUploadModal from './components/FileUploadModal';
+import PublicationVerifier from './components/PublicationVerifier';
+import ReferenceComparer from './components/ReferenceComparer';
 import apiService from './services/api';
+import { 
+  createSeedPaper, 
+  createPrompt, 
+  createLLMModel, 
+  createGroundTruth, 
+  createWorkflowRequest, 
+  createWorkflowResponse, 
+  createExecutionStatus 
+} from './models';
 
-function App() {
+// Navigation Component
+function Navigation() {
+  const location = useLocation();
+  
+  return (
+    <nav className="navbar navbar-expand-lg navbar-dark bg-primary">
+      <div className="container-fluid">
+        <Link className="navbar-brand" to="/">
+          <i className="fas fa-search"></i> Literature Search Auto Validation
+        </Link>
+        <div className="navbar-nav ms-auto">
+          <Link 
+            className={`nav-link ${location.pathname === '/' ? 'active' : ''}`} 
+            to="/"
+          >
+            Main Dashboard
+          </Link>
+          <Link 
+            className={`nav-link ${location.pathname === '/reference-comparer' ? 'active' : ''}`} 
+            to="/reference-comparer"
+          >
+            Reference Comparer
+          </Link>
+          <Link 
+            className={`nav-link ${location.pathname === '/publication-verifier' ? 'active' : ''}`} 
+            to="/publication-verifier"
+          >
+            Publication Verifier
+          </Link>
+          <a className="nav-link" href="http://127.0.0.1:8000/api/docs" target="_blank" rel="noopener noreferrer">
+            <i className="fas fa-book"></i> API Docs
+          </a>
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+// Main Dashboard Component (original App logic)
+function MainDashboard() {
   const [seedPapers, setSeedPapers] = useState([]);
   const [prompts, setPrompts] = useState([]);
   const [llmModels, setLlmModels] = useState({ chatgpt_models: [], gemini_models: [] });
@@ -120,13 +171,13 @@ function App() {
       setLoading(true);
       setError(null);
       
-      const workflowRequest = {
+      const workflowRequest = createWorkflowRequest({
         email,
         prompt_id: selectedPrompt.id,
         seed_paper_id: selectedSeedPaper.id,
         llm_provider: selectedLlmProvider,
         model_name: selectedLlmModel
-      };
+      });
 
       const response = await apiService.executeWorkflow(workflowRequest);
       setExecutionId(response.execution_id);
@@ -188,67 +239,52 @@ function App() {
   };
 
   return (
-    <div className="App">
-      <nav className="navbar navbar-expand-lg navbar-dark bg-primary">
-        <div className="container">
-          <a className="navbar-brand" href="/">
-            <i className="fas fa-search"></i> Literature Search Auto Validation
-          </a>
-          <div className="navbar-nav ms-auto">
-            <a className="nav-link" href="http://127.0.0.1:8001/api/docs" target="_blank" rel="noopener noreferrer">
-              <i className="fas fa-book"></i> API Docs
-            </a>
-          </div>
+    <div className="container-fluid mt-4">
+      {error && (
+        <div className="alert alert-danger alert-dismissible fade show" role="alert">
+          {error}
+          <button type="button" className="btn-close" onClick={() => setError(null)}></button>
         </div>
-      </nav>
+      )}
 
-      <div className="container-fluid mt-4">
-        {error && (
-          <div className="alert alert-danger alert-dismissible fade show" role="alert">
-            {error}
-            <button type="button" className="btn-close" onClick={() => setError(null)}></button>
-          </div>
-        )}
+      <div className="row">
+        <div className="col-md-4">
+          <ConfigurationPanel
+            email={email}
+            setEmail={setEmail}
+            seedPapers={seedPapers}
+            selectedSeedPaper={selectedSeedPaper}
+            setSelectedSeedPaper={setSelectedSeedPaper}
+            groundTruthReferences={groundTruthReferences}
+            prompts={prompts}
+            selectedPrompt={selectedPrompt}
+            setSelectedPrompt={setSelectedPrompt}
+            llmModels={llmModels}
+            selectedLlmProvider={selectedLlmProvider}
+            setSelectedLlmProvider={setSelectedLlmProvider}
+            selectedLlmModel={selectedLlmModel}
+            setSelectedLlmModel={setSelectedLlmModel}
+            onExecuteWorkflow={handleExecuteWorkflow}
+            isExecuteButtonEnabled={isExecuteButtonEnabled()}
+            onOpenModal={(type) => setShowModal({ type, isOpen: true })}
+            loading={loading}
+          />
+        </div>
 
-        <div className="row">
-          <div className="col-md-4">
-            <ConfigurationPanel
-              email={email}
-              setEmail={setEmail}
-              seedPapers={seedPapers}
-              selectedSeedPaper={selectedSeedPaper}
-              setSelectedSeedPaper={setSelectedSeedPaper}
-              groundTruthReferences={groundTruthReferences}
-              prompts={prompts}
-              selectedPrompt={selectedPrompt}
-              setSelectedPrompt={setSelectedPrompt}
-              llmModels={llmModels}
-              selectedLlmProvider={selectedLlmProvider}
-              setSelectedLlmProvider={setSelectedLlmProvider}
-              selectedLlmModel={selectedLlmModel}
-              setSelectedLlmModel={setSelectedLlmModel}
-              onExecuteWorkflow={handleExecuteWorkflow}
-              isExecuteButtonEnabled={isExecuteButtonEnabled()}
-              onOpenModal={(type) => setShowModal({ type, isOpen: true })}
-              loading={loading}
+        <div className="col-md-8">
+          {executionStatus && (
+            <ProgressPanel
+              executionStatus={executionStatus}
+              executionId={executionId}
             />
-          </div>
+          )}
 
-          <div className="col-md-8">
-            {executionStatus && (
-              <ProgressPanel
-                executionStatus={executionStatus}
-                executionId={executionId}
-              />
-            )}
-
-            {results && (
-              <ResultsPanel
-                results={results}
-                onExportResults={handleExportResults}
-              />
-            )}
-          </div>
+          {results && (
+            <ResultsPanel
+              results={results}
+              onExportResults={handleExportResults}
+            />
+          )}
         </div>
       </div>
 
@@ -275,6 +311,21 @@ function App() {
         </div>
       )}
     </div>
+  );
+}
+
+function App() {
+  return (
+    <Router>
+      <div className="App">
+        <Navigation />
+        <Routes>
+          <Route path="/" element={<MainDashboard />} />
+          <Route path="/publication-verifier" element={<PublicationVerifier />} />
+          <Route path="/reference-comparer" element={<ReferenceComparer />} />
+        </Routes>
+      </div>
+    </Router>
   );
 }
 
