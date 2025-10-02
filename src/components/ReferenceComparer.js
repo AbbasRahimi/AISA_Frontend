@@ -1,6 +1,5 @@
 import React, { useState, useRef } from 'react';
 import apiService from '../services/api';
-import { createComparisonResult } from '../models';
 
 const ReferenceComparer = () => {
   const [sourceFile, setSourceFile] = useState(null);

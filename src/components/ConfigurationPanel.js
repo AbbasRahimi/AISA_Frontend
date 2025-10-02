@@ -1,4 +1,5 @@
 import React from 'react';
+import { LLMProvider } from '../models';
 
 const ConfigurationPanel = ({
   email,
@@ -20,7 +21,7 @@ const ConfigurationPanel = ({
   onOpenModal,
   loading
 }) => {
-  const availableModels = selectedLlmProvider === 'chatgpt' 
+  const availableModels = selectedLlmProvider === LLMProvider.CHATGPT 
     ? llmModels.chatgpt_models 
     : llmModels.gemini_models;
 
@@ -164,8 +165,8 @@ const ConfigurationPanel = ({
                 onChange={(e) => setSelectedLlmProvider(e.target.value)}
                 required
               >
-                <option value="chatgpt">ChatGPT</option>
-                <option value="gemini">Gemini</option>
+                <option value={LLMProvider.CHATGPT}>ChatGPT</option>
+                <option value={LLMProvider.GEMINI}>Gemini</option>
               </select>
             </div>
             <div className="col-6">

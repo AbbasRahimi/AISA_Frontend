@@ -1,5 +1,19 @@
 // Data models matching the OpenAPI schemas
 
+// Execution Status Enum
+export const ExecutionStatus = {
+  PENDING: 'pending',
+  RUNNING: 'running', 
+  COMPLETED: 'completed',
+  FAILED: 'failed'
+};
+
+// LLM Provider Enum
+export const LLMProvider = {
+  CHATGPT: 'chatgpt',
+  GEMINI: 'gemini'
+};
+
 // Seed Paper Response Model
 export const SeedPaperResponse = {
   id: null,
@@ -41,24 +55,29 @@ export const WorkflowRequest = {
   email: '',
   prompt_id: null,
   seed_paper_id: null,
-  llm_provider: 'chatgpt', // 'chatgpt' or 'gemini'
+  llm_provider: LLMProvider.CHATGPT,
   model_name: ''
 };
 
 // Workflow Response Model
 export const WorkflowResponse = {
   execution_id: '',
-  status: 'pending', // 'pending', 'running', 'completed', 'failed'
+  status: ExecutionStatus.PENDING,
   message: ''
 };
 
 // Execution Status Response Model
 export const ExecutionStatusResponse = {
-  status: 'pending', // 'pending', 'running', 'completed', 'failed'
+  execution_id: '',
+  status: ExecutionStatus.PENDING,
   progress: 0, // 0-100
   message: '',
+  current_stage: null,
   results: null,
-  error: null
+  error: null,
+  llm_response: null,
+  verification_progress: null,
+  comparison_progress: null
 };
 
 // Verification Detail Model
@@ -176,4 +195,8 @@ export const createComparisonSummary = (data = {}) => ({ ...ComparisonSummary, .
 export const createComparisonResult = (data = {}) => ({ ...ComparisonResult, ...data });
 export const createValidationError = (data = {}) => ({ ...ValidationError, ...data });
 export const createHTTPValidationError = (data = {}) => ({ ...HTTPValidationError, ...data });
+
+// Helper functions for enums
+export const getExecutionStatus = (status) => ExecutionStatus[status?.toUpperCase()] || ExecutionStatus.PENDING;
+export const getLLMProvider = (provider) => LLMProvider[provider?.toUpperCase()] || LLMProvider.CHATGPT;
 

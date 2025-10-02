@@ -9,13 +9,9 @@ import PublicationVerifier from './components/PublicationVerifier';
 import ReferenceComparer from './components/ReferenceComparer';
 import apiService from './services/api';
 import { 
-  createSeedPaper, 
-  createPrompt, 
-  createLLMModel, 
-  createGroundTruth, 
-  createWorkflowRequest, 
-  createWorkflowResponse, 
-  createExecutionStatus 
+  createWorkflowRequest,
+  LLMProvider,
+  ExecutionStatus
 } from './models';
 
 // Navigation Component
@@ -64,7 +60,7 @@ function MainDashboard() {
   const [groundTruthReferences, setGroundTruthReferences] = useState([]);
   const [selectedSeedPaper, setSelectedSeedPaper] = useState(null);
   const [selectedPrompt, setSelectedPrompt] = useState(null);
-  const [selectedLlmProvider, setSelectedLlmProvider] = useState('chatgpt');
+  const [selectedLlmProvider, setSelectedLlmProvider] = useState(LLMProvider.CHATGPT);
   const [selectedLlmModel, setSelectedLlmModel] = useState('');
   const [email, setEmail] = useState('');
   const [executionId, setExecutionId] = useState(null);
@@ -73,6 +69,17 @@ function MainDashboard() {
   const [showModal, setShowModal] = useState({ type: null, isOpen: false });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  
+  // NEW: Progressive workflow state
+  const [workflowProgress, setWorkflowProgress] = useState({
+    stage: null,  // 'pending', 'llm', 'verification', 'comparison', 'completed'
+    llmPublications: null,
+    verificationResults: [],  // Progressive results
+    verificationProgress: { completed: 0, total: 0 },
+    comparisonResults: [],
+    comparisonProgress: { completed: 0, total: 0 },
+    lastUpdate: null
+  });
 
   // Load initial data
   useEffect(() => {
@@ -91,14 +98,14 @@ function MainDashboard() {
   // Update available models when provider changes
   useEffect(() => {
     if (llmModels) {
-      const models = selectedLlmProvider === 'chatgpt' 
+      const models = selectedLlmProvider === LLMProvider.CHATGPT 
         ? llmModels.chatgpt_models 
         : llmModels.gemini_models;
       if (models.length > 0 && !models.includes(selectedLlmModel)) {
         setSelectedLlmModel(models[0]);
       }
     }
-  }, [selectedLlmProvider, llmModels]);
+  }, [selectedLlmProvider, llmModels, selectedLlmModel]);
 
   const loadInitialData = async () => {
     try {
@@ -198,11 +205,55 @@ function MainDashboard() {
         const status = await apiService.getExecutionStatus(execId);
         setExecutionStatus(status);
         
-        if (status.status === 'completed') {
+        // NEW: Update progressive results
+        setWorkflowProgress(prev => {
+          const newProgress = {
+            ...prev,
+            stage: status.current_stage || prev.stage,
+            lastUpdate: new Date().toISOString()
+          };
+          
+          // Update LLM publications if available
+          if (status.llm_response?.publications) {
+            newProgress.llmPublications = status.llm_response.publications;
+          }
+          
+          // Update verification progress
+          if (status.verification_progress) {
+            newProgress.verificationProgress = {
+              completed: status.verification_progress.completed || 0,
+              total: status.verification_progress.total || 0
+            };
+            
+            // Add new verification results
+            if (status.verification_progress.results) {
+              newProgress.verificationResults = status.verification_progress.results;
+            }
+          }
+          
+          // Update comparison progress
+          if (status.comparison_progress) {
+            newProgress.comparisonProgress = {
+              completed: status.comparison_progress.completed || 0,
+              total: status.comparison_progress.total || 0
+            };
+            
+            // Add new comparison results
+            if (status.comparison_progress.results) {
+              newProgress.comparisonResults = status.comparison_progress.results;
+            }
+          }
+          
+          return newProgress;
+        });
+        
+        if (status.status === ExecutionStatus.COMPLETED) {
           clearInterval(pollInterval);
           const results = await apiService.getExecutionResults(execId);
           setResults(results);
-        } else if (status.status === 'failed') {
+          // Mark workflow as completed
+          setWorkflowProgress(prev => ({ ...prev, stage: 'completed' }));
+        } else if (status.status === ExecutionStatus.FAILED) {
           clearInterval(pollInterval);
           setError('Workflow execution failed: ' + (status.error || 'Unknown error'));
         }
@@ -276,12 +327,14 @@ function MainDashboard() {
             <ProgressPanel
               executionStatus={executionStatus}
               executionId={executionId}
+              workflowProgress={workflowProgress}
             />
           )}
 
           {results && (
             <ResultsPanel
               results={results}
+              workflowProgress={workflowProgress}
               onExportResults={handleExportResults}
             />
           )}

@@ -215,6 +215,63 @@ class ApiService {
   async getLiteratureVerificationResults(literatureId) {
     return this.request(`/api/literature/${literatureId}/verification-results`);
   }
+
+  // Server-Sent Events Support for Workflow Events
+  // Based on OpenAPI spec: GET /api/workflow/{execution_id}/events
+  connectWorkflowEvents(executionId, onMessage, onError) {
+    const eventSource = new EventSource(`${this.baseURL}/api/workflow/${executionId}/events`);
+    
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        onMessage(data);
+      } catch (error) {
+        console.error('Failed to parse SSE message:', error);
+        if (onError) onError(error);
+      }
+    };
+    
+    eventSource.onerror = (error) => {
+      console.error('SSE error:', error);
+      if (onError) onError(error);
+    };
+    
+    return eventSource;
+  }
+
+  // WebSocket Support for Real-time Updates (Alternative to SSE)
+  connectWorkflowStream(executionId, onMessage, onError, onClose) {
+    const wsUrl = `ws://127.0.0.1:8000/api/workflow/${executionId}/events`;
+    const ws = new WebSocket(wsUrl);
+    
+    ws.onopen = () => {
+      console.log('WebSocket connected for execution:', executionId);
+    };
+    
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        onMessage(data);
+      } catch (error) {
+        console.error('Failed to parse WebSocket message:', error);
+        if (onError) onError(error);
+      }
+    };
+    
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      if (onError) onError(error);
+    };
+    
+    ws.onclose = (event) => {
+      console.log('WebSocket closed:', event.code, event.reason);
+      if (onClose) onClose(event);
+    };
+    
+    return ws;
+  }
 }
 
-export default new ApiService();
+const apiService = new ApiService();
+
+export default apiService;

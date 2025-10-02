@@ -1,6 +1,5 @@
 import React, { useState, useRef } from 'react';
 import apiService from '../services/api';
-import { createVerificationResult } from '../models';
 
 const PublicationVerifier = () => {
   const [selectedFile, setSelectedFile] = useState(null);
