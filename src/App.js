@@ -43,7 +43,7 @@ function Navigation() {
           >
             Publication Verifier
           </Link>
-          <a className="nav-link" href="http://127.0.0.1:8000/api/docs" target="_blank" rel="noopener noreferrer">
+          <a className="nav-link" href={`${window.location.protocol}//${window.location.hostname}:8000/api/docs`} target="_blank" rel="noopener noreferrer">
             <i className="fas fa-book"></i> API Docs
           </a>
         </div>

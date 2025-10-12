@@ -1,4 +1,11 @@
-const API_BASE_URL = 'http://127.0.0.1:8000';
+// Use environment variable or default to relative URL
+// In production with nginx proxy, use relative URLs
+// The proxy will be set at build time or use the current origin
+const API_BASE_URL = process.env.REACT_APP_API_URL || (
+  process.env.NODE_ENV === 'production'
+    ? '' // Use relative URLs in production (nginx will proxy)
+    : `${window.location.protocol}//${window.location.hostname}:8000` // Use server IP/hostname in development
+);
 
 class ApiService {
   constructor() {
@@ -241,7 +248,12 @@ class ApiService {
 
   // WebSocket Support for Real-time Updates (Alternative to SSE)
   connectWorkflowStream(executionId, onMessage, onError, onClose) {
-    const wsUrl = `ws://127.0.0.1:8000/api/workflow/${executionId}/events`;
+    // Use wss:// for https, ws:// for http
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsBaseUrl = process.env.REACT_APP_API_URL 
+      ? process.env.REACT_APP_API_URL.replace(/^http/, 'ws')
+      : `${protocol}//${window.location.hostname}:8000`;
+    const wsUrl = `${wsBaseUrl}/api/workflow/${executionId}/events`;
     const ws = new WebSocket(wsUrl);
     
     ws.onopen = () => {
