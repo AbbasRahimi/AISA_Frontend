@@ -1,319 +1,212 @@
 # Docker Deployment Guide
 
-This guide explains how to dockerize and deploy the Literature Search Auto Validation React frontend.
+## Overview
 
-## 🐳 Docker Files Overview
+This project has multiple Docker Compose configurations for different deployment scenarios.
 
-### Core Files
-- `Dockerfile` - Multi-stage build configuration
-- `docker-compose.yml` - Production deployment
-- `docker-compose.dev.yml` - Development deployment
-- `nginx.conf` - Nginx web server configuration
-- `.dockerignore` - Docker build optimization
+---
 
-### Configuration Files
-- `docker.env.example` - Environment variables template
-- `health-check.sh` - Health check script
+## 🚀 Deployment Scenarios
 
-## 🚀 Quick Start
+### **Scenario 1: Full Stack Deployment (RECOMMENDED for Production)**
 
-### 1. Build and Run with Docker Compose (Recommended)
+**Location:** `AISA_Backend/docker-compose.yml`
 
+**What it runs:**
+- PostgreSQL database
+- Backend API (FastAPI)
+- Frontend (React + Nginx)
+
+**Usage:**
 ```bash
-# Production deployment
-npm run docker:prod
-
-# Development deployment
-npm run docker:dev
-
-# Stop containers
-npm run docker:stop
-
-# View logs
-npm run docker:logs
+cd AISA_Backend
+docker-compose up -d
 ```
 
-### 2. Manual Docker Commands
+**Access:**
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8000
+- Database: localhost:5431
 
+**When to use:**
+- Production deployment
+- Full system testing
+- Running complete application stack
+
+---
+
+### **Scenario 2: Frontend-Only Development**
+
+**Location:** `AISA_Frontend/docker-compose.dev.yml`
+
+**What it runs:**
+- Frontend only (in Docker)
+
+**Prerequisites:**
+- Backend must be running on host machine (not in Docker)
+
+**Usage:**
 ```bash
-# Build the image
-docker build -t aisa-frontend .
+# Terminal 1: Start backend on host
+cd AISA_Backend
+python -m uvicorn main:app --reload --port 8000
 
-# Run the container
-docker run -p 3000:80 aisa-frontend
-
-# Or use npm scripts
-npm run docker:build
-npm run docker:run
+# Terminal 2: Start frontend in Docker
+cd AISA_Frontend
+docker-compose -f docker-compose.dev.yml up
 ```
 
-## 📋 Detailed Instructions
+**Access:**
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8000 (on host)
 
-### Prerequisites
-- Docker Engine 20.10+
-- Docker Compose 2.0+
-- Node.js 18+ (for local development)
+**When to use:**
+- Developing frontend features
+- UI/UX work
+- Frontend debugging
 
-### Production Deployment
+---
 
-1. **Clone and navigate to the project:**
-   ```bash
-   git clone <repository-url>
-   cd AISA_Frontend
-   ```
+### **Scenario 3: Frontend-Only Production (Separate Backend)**
 
-2. **Build and start the application:**
-   ```bash
-   docker-compose up -d --build
-   ```
+**Location:** `AISA_Frontend/docker-compose.yml`
 
-3. **Access the application:**
-   - Frontend: http://localhost:3000
-   - Health check: http://localhost:3000/health
+**What it runs:**
+- Frontend only (in Docker)
 
-4. **Stop the application:**
-   ```bash
-   docker-compose down
-   ```
+**Prerequisites:**
+- Backend deployed separately (different server/service)
 
-### Development Deployment
-
-For development with hot reloading:
-
-```bash
-# Use development compose file
-docker-compose -f docker-compose.dev.yml up --build
-```
-
-### Environment Configuration
-
-1. **Copy environment template:**
-   ```bash
-   cp docker.env.example .env
-   ```
-
-2. **Modify environment variables:**
-   ```bash
-   # Edit .env file
-   REACT_APP_API_URL=http://your-backend-url:8001
-   FRONTEND_PORT=3000
-   ```
-
-## 🔧 Docker Configuration Details
-
-### Multi-Stage Build
-
-The Dockerfile uses a multi-stage build process:
-
-1. **Build Stage**: Uses Node.js to build the React application
-2. **Production Stage**: Uses Nginx to serve the built application
-
-### Nginx Configuration
-
-The `nginx.conf` includes:
-- Gzip compression for better performance
-- Security headers
-- SPA routing support
-- Static asset caching
-- API proxy configuration
-- Health check endpoint
-
-### Health Checks
-
-The container includes health checks that verify:
-- Application is responding
-- Nginx is serving content
-- Health endpoint is accessible
-
-## 🌐 Network Configuration
-
-### Default Setup
-- Frontend: Port 3000 → Container Port 80
-- Backend API: Expected at localhost:8001
-- Internal network: `aisa-network`
-
-### Custom Network Configuration
-
-Modify `docker-compose.yml`:
-
+**Configuration:**
+Update `REACT_APP_API_URL` in docker-compose.yml to point to your backend:
 ```yaml
-services:
-  aisa-frontend:
-    ports:
-      - "8080:80"  # Change external port
-    environment:
-      - REACT_APP_API_URL=http://your-backend:8001
+environment:
+  - REACT_APP_API_URL=https://api.yourdomain.com
 ```
 
-## 📊 Monitoring and Logs
-
-### View Logs
+**Usage:**
 ```bash
-# All services
-docker-compose logs
-
-# Specific service
-docker-compose logs aisa-frontend
-
-# Follow logs
-docker-compose logs -f aisa-frontend
+cd AISA_Frontend
+docker-compose up -d
 ```
 
-### Health Monitoring
-```bash
-# Check container health
-docker ps
+**When to use:**
+- Deploying frontend and backend on different servers
+- Microservices architecture
+- Separate frontend container deployment
 
-# Manual health check
-curl http://localhost:3000/health
-```
+---
 
-## 🔒 Security Considerations
+## 📝 Important Notes
 
-### Production Security
-- Security headers configured in nginx
-- Non-root user in container
-- Minimal attack surface with Alpine Linux
-- No unnecessary packages installed
+### Container Networking
+
+1. **Inside Docker Network:** Containers communicate using service names
+   ```
+   http://literature-search-web:8000  ← Backend service name
+   ```
+
+2. **From Container to Host:** Use `host.docker.internal`
+   ```
+   http://host.docker.internal:8000  ← Reaches host machine
+   ```
+
+3. **From Host to Container:** Use `localhost` with exposed port
+   ```
+   http://localhost:3000  ← Reaches container from browser
+   ```
 
 ### Environment Variables
-- Never commit `.env` files
-- Use Docker secrets for sensitive data
-- Rotate API keys regularly
 
-## 🚀 Deployment Options
+Frontend environment variables must be set at **build time** (not runtime) because React builds static files.
 
-### 1. Local Development
+To change API URL:
+1. Update `REACT_APP_API_URL` in docker-compose.yml
+2. Rebuild: `docker-compose build --no-cache aisa-frontend`
+3. Restart: `docker-compose up -d`
+
+---
+
+## 🛠️ Common Commands
+
+### Full Stack (from Backend directory)
 ```bash
-docker-compose -f docker-compose.dev.yml up --build
-```
+# Start all services
+docker-compose up -d
 
-### 2. Production Server
-```bash
+# View logs
+docker-compose logs -f
+
+# Stop all services
+docker-compose down
+
+# Rebuild and restart
 docker-compose up -d --build
+
+# View running containers
+docker-compose ps
 ```
 
-### 3. Cloud Deployment
-
-#### AWS ECS
+### Frontend Only (from Frontend directory)
 ```bash
-# Build and push to ECR
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <account>.dkr.ecr.us-east-1.amazonaws.com
-docker tag aisa-frontend:latest <account>.dkr.ecr.us-east-1.amazonaws.com/aisa-frontend:latest
-docker push <account>.dkr.ecr.us-east-1.amazonaws.com/aisa-frontend:latest
+# Development mode
+docker-compose -f docker-compose.dev.yml up
+
+# Production mode
+docker-compose up -d
+
+# Rebuild frontend
+docker-compose build --no-cache
 ```
 
-#### Google Cloud Run
+### Cleanup
 ```bash
-# Build and deploy
-gcloud builds submit --tag gcr.io/PROJECT-ID/aisa-frontend
-gcloud run deploy --image gcr.io/PROJECT-ID/aisa-frontend --platform managed
+# Remove containers and networks
+docker-compose down
+
+# Remove containers, networks, and volumes
+docker-compose down -v
+
+# Remove all unused Docker resources
+docker system prune -a
 ```
 
-#### Azure Container Instances
-```bash
-# Build and push to ACR
-az acr build --registry <registry-name> --image aisa-frontend .
-az container create --resource-group <resource-group> --name aisa-frontend --image <registry-name>.azurecr.io/aisa-frontend:latest --ports 80
-```
+---
 
-## 🐛 Troubleshooting
+## 🔧 Troubleshooting
 
-### Common Issues
+### Frontend can't connect to Backend
 
-1. **Port Already in Use**
-   ```bash
-   # Check what's using the port
-   lsof -i :3000
-   
-   # Kill the process or change port
-   docker-compose down
-   ```
+**Problem:** API calls failing with network errors
 
-2. **Build Failures**
-   ```bash
-   # Clean Docker cache
-   docker system prune -a
-   
-   # Rebuild without cache
-   docker-compose build --no-cache
-   ```
+**Solutions:**
+1. Check backend is running: `curl http://localhost:8000/api/health`
+2. Verify `REACT_APP_API_URL` is correct
+3. Check containers are on same network: `docker network inspect aisa-network`
+4. Rebuild frontend if URL changed: `docker-compose build --no-cache aisa-frontend`
 
-3. **API Connection Issues**
-   - Verify backend is running on port 8001
-   - Check `REACT_APP_API_URL` environment variable
-   - Ensure network connectivity
+### Port already in use
 
-4. **Permission Issues**
-   ```bash
-   # Fix file permissions
-   sudo chown -R $USER:$USER .
-   ```
+**Problem:** `Error: port is already allocated`
 
-### Debug Commands
+**Solutions:**
+1. Check what's using the port: `netstat -ano | findstr :3000`
+2. Stop conflicting service or change port in docker-compose.yml
+3. Stop all containers: `docker-compose down`
 
-```bash
-# Enter container shell
-docker exec -it aisa-frontend sh
+### Database connection failed
 
-# Check nginx configuration
-docker exec aisa-frontend nginx -t
+**Problem:** Backend can't connect to PostgreSQL
 
-# View nginx logs
-docker exec aisa-frontend tail -f /var/log/nginx/error.log
-```
+**Solutions:**
+1. Wait for database to be healthy: `docker-compose ps`
+2. Check database logs: `docker-compose logs postgres`
+3. Verify credentials in environment variables match
 
-## 📈 Performance Optimization
-
-### Build Optimization
-- Multi-stage build reduces image size
-- `.dockerignore` excludes unnecessary files
-- Alpine Linux base image for minimal size
-
-### Runtime Optimization
-- Nginx gzip compression
-- Static asset caching
-- Health checks for reliability
-
-### Monitoring
-- Container health checks
-- Log aggregation
-- Resource usage monitoring
-
-## 🔄 CI/CD Integration
-
-### GitHub Actions Example
-```yaml
-name: Docker Build and Deploy
-
-on:
-  push:
-    branches: [main]
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Build Docker image
-        run: docker build -t aisa-frontend .
-      - name: Run tests
-        run: docker run --rm aisa-frontend npm test
-```
+---
 
 ## 📚 Additional Resources
 
-- [Docker Documentation](https://docs.docker.com/)
 - [Docker Compose Documentation](https://docs.docker.com/compose/)
-- [Nginx Configuration Guide](https://nginx.org/en/docs/)
-- [React Production Build Guide](https://create-react-app.dev/docs/production-build/)
-
-## 🆘 Support
-
-For issues related to Docker deployment:
-1. Check the logs: `docker-compose logs`
-2. Verify configuration files
-3. Test with minimal setup
-4. Check Docker and Docker Compose versions
-
-For application-specific issues, refer to the main README.md file.
+- [React Environment Variables](https://create-react-app.dev/docs/adding-custom-environment-variables/)
+- [Nginx Configuration](https://nginx.org/en/docs/)
