@@ -1,5 +1,3 @@
-version: '3.8'
-
 # Frontend-only development mode
 # Use this when backend is running on your host machine (not in Docker)
 # Start backend separately, then run: docker-compose -f docker-compose.dev.yml up
