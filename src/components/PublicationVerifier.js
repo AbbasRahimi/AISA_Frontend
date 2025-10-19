@@ -172,9 +172,10 @@ const PublicationVerifier = () => {
       { name: 'Not Found', count: verificationResults.not_found }
     ];
 
+    // Sum all found_in_* counts (VerificationResult OpenAPI spec)
     const totalFound = verificationResults.found_in_openalex + verificationResults.found_in_crossref + 
-                      verificationResults.found_in_doi + verificationResults.found_in_arxiv + 
-                      verificationResults.found_in_semantic_scholar;
+        verificationResults.found_in_doi + verificationResults.found_in_arxiv + 
+        verificationResults.found_in_semantic_scholar;
 
     return (
       <div className="row">
@@ -342,6 +343,7 @@ const PublicationVerifier = () => {
     );
   };
 
+  // Sum all found_in_* counts (VerificationResult OpenAPI spec)
   const totalFound = verificationResults ? 
     verificationResults.found_in_openalex + verificationResults.found_in_crossref + 
     verificationResults.found_in_doi + verificationResults.found_in_arxiv + 

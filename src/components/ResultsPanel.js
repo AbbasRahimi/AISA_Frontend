@@ -73,16 +73,22 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
 
   const renderVerificationResults = () => {
     // Use progressive data if available, otherwise fall back to final results
-    const verificationData = workflowProgress?.verificationResults || results?.verification_results;
+    const verificationData = workflowProgress?.verificationResults || results?.verification_results?.detailed_results;
+    // Summary data is in results.verification_results (contains the counts)
+    const summaryData = results?.verification_results;
     
     if (!verificationData || verificationData.length === 0) {
       return <div className="text-muted">No verification results available</div>;
     }
 
-    // Calculate summary from progressive data
-    const totalReferences = verificationData.length;
-    const validReferences = verificationData.filter(ref => ref.status === 'valid').length;
-    const invalidReferences = totalReferences - validReferences;
+    // Use explicit valid_publications and invalid_publications if available (backend now sends these!)
+    const totalReferences = summaryData?.total_publications || verificationData.length;
+    const validReferences = summaryData?.valid_publications !== undefined
+      ? summaryData.valid_publications
+      : verificationData.filter(ref => ref.found_in_database !== null && ref.found_in_database !== undefined).length;
+    const invalidReferences = summaryData?.invalid_publications !== undefined
+      ? summaryData.invalid_publications
+      : (totalReferences - validReferences);
 
     return (
       <div className="mt-3">
@@ -132,13 +138,13 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
                       </a>
                     ) : '-'}
                   </td>
-                  <td>{ref.database || '-'}</td>
+                  <td>{ref.database || ref.found_in_database || '-'}</td>
                   <td>
-                    <span className={`badge bg-${ref.status === 'valid' ? 'success' : 'danger'}`}>
-                      {ref.status || 'unknown'}
+                    <span className={`badge bg-${(ref.found_in_database !== null && ref.found_in_database !== undefined) ? 'success' : 'danger'}`}>
+                      {(ref.found_in_database !== null && ref.found_in_database !== undefined) ? 'valid' : 'invalid'}
                     </span>
                   </td>
-                  <td>{ref.similarity ? `${(ref.similarity * 100).toFixed(1)}%` : '-'}</td>
+                  <td>{ref.similarity ? `${(ref.similarity * 100).toFixed(1)}%` : (ref.best_match_similarity ? `${(ref.best_match_similarity * 100).toFixed(1)}%` : '-')}</td>
                 </tr>
               ))}
             </tbody>
