@@ -7,6 +7,7 @@ import ResultsPanel from './components/ResultsPanel';
 import FileUploadModal from './components/FileUploadModal';
 import PublicationVerifier from './components/PublicationVerifier';
 import ReferenceComparer from './components/ReferenceComparer';
+import EvaluationMetricsGuide from './components/EvaluationMetrics';
 import apiService from './services/api';
 import { 
   createWorkflowRequest,
@@ -42,6 +43,12 @@ function Navigation() {
             to="/publication-verifier"
           >
             Publication Verifier
+          </Link>
+          <Link 
+            className={`nav-link ${location.pathname === '/evaluation-metrics' ? 'active' : ''}`} 
+            to="/evaluation-metrics"
+          >
+            <i className="fas fa-chart-line"></i> Metrics Guide
           </Link>
           <a className="nav-link" href={`${window.location.protocol}//${window.location.hostname}:8000/api/docs`} target="_blank" rel="noopener noreferrer">
             <i className="fas fa-book"></i> API Docs
@@ -376,6 +383,7 @@ function App() {
           <Route path="/" element={<MainDashboard />} />
           <Route path="/publication-verifier" element={<PublicationVerifier />} />
           <Route path="/reference-comparer" element={<ReferenceComparer />} />
+          <Route path="/evaluation-metrics" element={<EvaluationMetricsGuide />} />
         </Routes>
       </div>
     </Router>

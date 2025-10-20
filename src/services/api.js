@@ -26,8 +26,25 @@ class ApiService {
       const response = await fetch(url, config);
       
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+        let errorMessage = `HTTP error! status: ${response.status}`;
+        try {
+          const errorData = await response.json();
+          // Handle FastAPI validation errors
+          if (errorData.detail) {
+            if (Array.isArray(errorData.detail)) {
+              // FastAPI validation errors are arrays
+              errorMessage = errorData.detail.map(err => `${err.loc.join('.')}: ${err.msg}`).join(', ');
+            } else if (typeof errorData.detail === 'string') {
+              errorMessage = errorData.detail;
+            } else {
+              errorMessage = JSON.stringify(errorData.detail);
+            }
+          }
+        } catch (e) {
+          // If JSON parsing fails, use status text
+          errorMessage = `HTTP error! status: ${response.status}`;
+        }
+        throw new Error(errorMessage);
       }
 
       // Handle empty responses
@@ -221,6 +238,25 @@ class ApiService {
 
   async getLiteratureVerificationResults(literatureId) {
     return this.request(`/api/literature/${literatureId}/verification-results`);
+  }
+
+  // Evaluation Metrics
+  async evaluateExecution(verificationResults, comparisonResults) {
+    return this.request('/api/evaluation/evaluate', {
+      method: 'POST',
+      body: JSON.stringify({
+        verification_results: verificationResults,
+        comparison_results: comparisonResults,
+      }),
+    });
+  }
+
+  async getMetricsExplanation() {
+    return this.request('/api/evaluation/metrics-explanation');
+  }
+
+  async getEvaluationHealth() {
+    return this.request('/api/evaluation/health');
   }
 
   // Server-Sent Events Support for Workflow Events
