@@ -17,17 +17,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        - NODE_ENV=production
+        - REACT_APP_API_URL=https://aisa.se.jku.at/api
     container_name: aisa-frontend
     ports:
       - "3000:80"
     environment:
       - NODE_ENV=production
-      # ⚠️  UPDATE THIS: Point to your actual backend URL
-      # Examples:
-      #   - http://your-backend-server.com:8000
-      #   - https://api.yourdomain.com
-      #   - http://host.docker.internal:8000 (if backend on same host)
-      - REACT_APP_API_URL=http://host.docker.internal:8000
+      - REACT_APP_API_URL=https://aisa.se.jku.at/api  # ← Public URL, not internal
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     restart: unless-stopped
@@ -37,5 +35,9 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    networks:
+      - aisa-network
+
+networks:
+  aisa-network:
+    external: true
