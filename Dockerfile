@@ -15,7 +15,7 @@ COPY . .
 
 # Accept build arguments
 ARG NODE_ENV=production
-ARG REACT_APP_API_URL=https://aisa.se.jku.at/api
+ARG REACT_APP_API_URL=https://aisa.se.jku.at
 
 # Set environment variables for build
 ENV NODE_ENV=$NODE_ENV
