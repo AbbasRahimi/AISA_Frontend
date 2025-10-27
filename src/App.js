@@ -19,40 +19,66 @@ import {
 function Navigation() {
   const location = useLocation();
   
+  const handleNavClick = () => {
+    // Close the mobile menu when a link is clicked
+    const navCollapse = document.getElementById('navbarNav');
+    if (navCollapse && navCollapse.classList.contains('show')) {
+      const bsCollapse = new window.bootstrap.Collapse(navCollapse, { toggle: false });
+      bsCollapse.hide();
+    }
+  };
+  
   return (
     <nav className="navbar navbar-expand-lg navbar-dark bg-primary">
       <div className="container-fluid">
         <Link className="navbar-brand" to="/">
           <i className="fas fa-search"></i> Literature Search Auto Validation
         </Link>
-        <div className="navbar-nav ms-auto">
-          <Link 
-            className={`nav-link ${location.pathname === '/' ? 'active' : ''}`} 
-            to="/"
-          >
-            Main Dashboard
-          </Link>
-          <Link 
-            className={`nav-link ${location.pathname === '/reference-comparer' ? 'active' : ''}`} 
-            to="/reference-comparer"
-          >
-            Reference Comparer
-          </Link>
-          <Link 
-            className={`nav-link ${location.pathname === '/publication-verifier' ? 'active' : ''}`} 
-            to="/publication-verifier"
-          >
-            Publication Verifier
-          </Link>
-          <Link 
-            className={`nav-link ${location.pathname === '/evaluation-metrics' ? 'active' : ''}`} 
-            to="/evaluation-metrics"
-          >
-            <i className="fas fa-chart-line"></i> Metrics Guide
-          </Link>
-          <a className="nav-link" href={`${window.location.protocol}//${window.location.hostname}:8000/api/docs`} target="_blank" rel="noopener noreferrer">
-            <i className="fas fa-book"></i> API Docs
-          </a>
+        <button 
+          className="navbar-toggler" 
+          type="button" 
+          data-bs-toggle="collapse" 
+          data-bs-target="#navbarNav" 
+          aria-controls="navbarNav" 
+          aria-expanded="false" 
+          aria-label="Toggle navigation"
+        >
+          <span className="navbar-toggler-icon"></span>
+        </button>
+        <div className="collapse navbar-collapse" id="navbarNav">
+          <div className="navbar-nav ms-auto">
+            <Link 
+              className={`nav-link ${location.pathname === '/' ? 'active' : ''}`} 
+              to="/"
+              onClick={handleNavClick}
+            >
+              Main Dashboard
+            </Link>
+            <Link 
+              className={`nav-link ${location.pathname === '/reference-comparer' ? 'active' : ''}`} 
+              to="/reference-comparer"
+              onClick={handleNavClick}
+            >
+              Reference Comparer
+            </Link>
+            <Link 
+              className={`nav-link ${location.pathname === '/publication-verifier' ? 'active' : ''}`} 
+              to="/publication-verifier"
+              onClick={handleNavClick}
+            >
+              Publication Verifier
+            </Link>
+            <Link 
+              className={`nav-link ${location.pathname === '/evaluation-metrics' ? 'active' : ''}`} 
+              to="/evaluation-metrics"
+              onClick={handleNavClick}
+            >
+              <i className="fas fa-chart-line"></i> Metrics
+            </Link>
+            <a className="nav-link" href={`${window.location.protocol}//${window.location.hostname}:8000/api/docs`} target="_blank" rel="noopener noreferrer" onClick={handleNavClick}>
+              <i className="fas fa-book"></i> API Docs
+            </a>
+          </div>
         </div>
       </div>
     </nav>
