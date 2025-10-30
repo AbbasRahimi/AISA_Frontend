@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { LLMProvider } from '../models';
 
 const ConfigurationPanel = ({
   email,
   setEmail,
+  comment,
+  setComment,
   seedPapers,
   selectedSeedPaper,
   setSelectedSeedPaper,
@@ -21,9 +23,34 @@ const ConfigurationPanel = ({
   onOpenModal,
   loading
 }) => {
+  const [isPromptExpanded, setIsPromptExpanded] = useState(false);
+
   const availableModels = selectedLlmProvider === LLMProvider.CHATGPT 
     ? llmModels.chatgpt_models 
     : llmModels.gemini_models;
+
+  // Filter prompts based on selected seed paper
+  const filteredPrompts = selectedSeedPaper
+    ? prompts.filter(p => p.seed_paper_id === selectedSeedPaper.id)
+    : [];
+
+  // Reset expanded state when prompt changes
+  useEffect(() => {
+    setIsPromptExpanded(false);
+  }, [selectedPrompt?.id]);
+
+  // Helper function to get text with toggle link inside
+  const getTextPreview = (text, isExpanded) => {
+    if (!text) return '';
+    const words = text.trim().split(/\s+/);
+    const first20Words = words.slice(0, 20).join(' ');
+    
+    if (!isExpanded) {
+      return first20Words + (words.length > 20 ? ' ...more' : '');
+    } else {
+      return text.trim() + ' ...show less';
+    }
+  };
 
   return (
     <div className="card">
@@ -117,6 +144,9 @@ const ConfigurationPanel = ({
               <small className="text-muted">No ground truth references selected</small>
             )}
           </div>
+          <div className="mt-2 text-muted">
+            <small><strong>Ground Truth Count: {groundTruthReferences.length}</strong></small>
+          </div>
         </div>
 
         {/* Prompt Selection */}
@@ -129,13 +159,20 @@ const ConfigurationPanel = ({
             id="prompt"
             value={selectedPrompt?.id || ''}
             onChange={(e) => {
-              const prompt = prompts.find(p => p.id === parseInt(e.target.value));
+              const prompt = filteredPrompts.find(p => p.id === parseInt(e.target.value));
               setSelectedPrompt(prompt || null);
             }}
             required
+            disabled={!selectedSeedPaper}
           >
-            <option value="">Select a prompt...</option>
-            {prompts.map(prompt => (
+            <option value="">
+              {!selectedSeedPaper 
+                ? 'Select a seed paper first...' 
+                : filteredPrompts.length === 0 
+                  ? 'No prompts available for this seed paper'
+                  : 'Select a prompt...'}
+            </option>
+            {filteredPrompts.map(prompt => (
               <option key={prompt.id} value={prompt.id}>
                 {prompt.file_path}
               </option>
@@ -145,11 +182,25 @@ const ConfigurationPanel = ({
             <button
               className="btn btn-outline-primary btn-sm"
               onClick={() => onOpenModal('prompt')}
-              disabled={loading}
+              disabled={!selectedSeedPaper || loading}
             >
               <i className="fas fa-plus"></i> Add New Prompt
             </button>
           </div>
+          
+          {/* Prompt Content Display */}
+          {selectedPrompt?.content && (
+            <div className="mt-2">
+              <textarea
+                className="form-control"
+                readOnly
+                rows={isPromptExpanded ? 8 : 2}
+                value={getTextPreview(selectedPrompt.content, isPromptExpanded)}
+                onClick={() => setIsPromptExpanded(!isPromptExpanded)}
+                style={{ resize: 'none', fontSize: '0.9em', cursor: 'pointer' }}
+              />
+            </div>
+          )}
         </div>
 
         {/* LLM Configuration */}
@@ -185,6 +236,21 @@ const ConfigurationPanel = ({
               </select>
             </div>
           </div>
+        </div>
+
+        {/* Optional Comment */}
+        <div className="mb-3">
+          <label htmlFor="comment" className="form-label">
+            <i className="fas fa-comment"></i> Comment (optional)
+          </label>
+          <textarea
+            id="comment"
+            className="form-control"
+            rows={3}
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            placeholder="Add a note about this execution..."
+          />
         </div>
 
         {/* Execute Button */}

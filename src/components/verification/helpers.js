@@ -41,3 +41,5 @@ export const getSimilarityBadgeClass = (similarity) => {
   if (similarity >= 0.7) return 'bg-warning';
   return 'bg-danger';
 };
+
+

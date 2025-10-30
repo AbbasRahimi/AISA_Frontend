@@ -165,3 +165,5 @@ const ResultsDisplay = ({ comparisonResults }) => {
 };
 
 export default ResultsDisplay;
+
+

@@ -55,3 +55,5 @@ const ValidityMetrics = ({ totalPublications, foundInDatabase, validityMetrics }
 };
 
 export default ValidityMetrics;
+
+

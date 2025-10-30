@@ -108,9 +108,12 @@ class ApiService {
     return this.request('/api/prompts');
   }
 
-  async addPrompt(file) {
+  async addPrompt(file, seedPaperId = null) {
     const formData = new FormData();
     formData.append('file', file);
+    if (seedPaperId) {
+      formData.append('seed_paper_id', seedPaperId);
+    }
     
     return this.request('/api/prompts', {
       method: 'POST',

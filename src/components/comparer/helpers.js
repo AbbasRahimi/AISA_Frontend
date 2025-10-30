@@ -27,3 +27,5 @@ export const getRowClass = (result) => {
     return 'match-none';
   }
 };
+
+

@@ -8,6 +8,7 @@ import FileUploadModal from './components/FileUploadModal';
 import PublicationVerifier from './components/PublicationVerifier';
 import ReferenceComparer from './components/ReferenceComparer';
 import EvaluationMetricsGuide from './components/EvaluationMetrics';
+import Footer from './components/Footer';
 import apiService from './services/api';
 import { 
   createWorkflowRequest,
@@ -75,7 +76,7 @@ function Navigation() {
             >
               <i className="fas fa-chart-line"></i> Metrics
             </Link>
-            <a className="nav-link" href={`${window.location.protocol}//${window.location.hostname}:8000/api/docs`} target="_blank" rel="noopener noreferrer" onClick={handleNavClick}>
+            <a className="nav-link" href="/api/docs" target="_blank" rel="noopener noreferrer" onClick={handleNavClick}>
               <i className="fas fa-book"></i> API Docs
             </a>
           </div>
@@ -96,6 +97,7 @@ function MainDashboard() {
   const [selectedLlmProvider, setSelectedLlmProvider] = useState(LLMProvider.CHATGPT);
   const [selectedLlmModel, setSelectedLlmModel] = useState('');
   const [email, setEmail] = useState('');
+  const [comment, setComment] = useState('');
   const [executionId, setExecutionId] = useState(null);
   const [executionStatus, setExecutionStatus] = useState(null);
   const [results, setResults] = useState(null);
@@ -119,12 +121,15 @@ function MainDashboard() {
     loadInitialData();
   }, []);
 
-  // Load ground truth references when seed paper changes
+  // Load ground truth references and reset prompt selection when seed paper changes
   useEffect(() => {
     if (selectedSeedPaper) {
       loadGroundTruthReferences(selectedSeedPaper.id);
+      // Reset selected prompt when seed paper changes
+      setSelectedPrompt(null);
     } else {
       setGroundTruthReferences([]);
+      setSelectedPrompt(null);
     }
   }, [selectedSeedPaper]);
 
@@ -186,7 +191,10 @@ function MainDashboard() {
           await loadGroundTruthReferences(selectedSeedPaper.id);
           break;
         case 'prompt':
-          await apiService.addPrompt(file);
+          if (!selectedSeedPaper) {
+            throw new Error('Please select a seed paper first');
+          }
+          await apiService.addPrompt(file, selectedSeedPaper.id);
           await loadInitialData();
           break;
         default:
@@ -216,7 +224,8 @@ function MainDashboard() {
         prompt_id: selectedPrompt.id,
         seed_paper_id: selectedSeedPaper.id,
         llm_provider: selectedLlmProvider,
-        model_name: selectedLlmModel
+        model_name: selectedLlmModel,
+        comment: comment ? comment : null
       });
 
       const response = await apiService.executeWorkflow(workflowRequest);
@@ -336,6 +345,8 @@ function MainDashboard() {
           <ConfigurationPanel
             email={email}
             setEmail={setEmail}
+          comment={comment}
+          setComment={setComment}
             seedPapers={seedPapers}
             selectedSeedPaper={selectedSeedPaper}
             setSelectedSeedPaper={setSelectedSeedPaper}
@@ -405,12 +416,15 @@ function App() {
     <Router>
       <div className="App">
         <Navigation />
-        <Routes>
-          <Route path="/" element={<MainDashboard />} />
-          <Route path="/publication-verifier" element={<PublicationVerifier />} />
-          <Route path="/reference-comparer" element={<ReferenceComparer />} />
-          <Route path="/evaluation-metrics" element={<EvaluationMetricsGuide />} />
-        </Routes>
+        <main>
+          <Routes>
+            <Route path="/" element={<MainDashboard />} />
+            <Route path="/publication-verifier" element={<PublicationVerifier />} />
+            <Route path="/reference-comparer" element={<ReferenceComparer />} />
+            <Route path="/evaluation-metrics" element={<EvaluationMetricsGuide />} />
+          </Routes>
+        </main>
+        <Footer />
       </div>
     </Router>
   );

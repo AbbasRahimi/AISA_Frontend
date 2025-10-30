@@ -310,3 +310,5 @@ const ResultsDisplay = ({ verificationResults }) => {
 };
 
 export default ResultsDisplay;
+
+

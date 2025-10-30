@@ -41,6 +41,7 @@ export const PromptResponse = {
   id: null,
   content: '',
   file_path: '',
+  seed_paper_id: null,
   created_at: null
 };
 
@@ -56,7 +57,8 @@ export const WorkflowRequest = {
   prompt_id: null,
   seed_paper_id: null,
   llm_provider: LLMProvider.CHATGPT,
-  model_name: ''
+  model_name: '',
+  comment: null
 };
 
 // Workflow Response Model

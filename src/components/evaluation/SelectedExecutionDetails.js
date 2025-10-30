@@ -80,3 +80,5 @@ const SelectedExecutionDetails = ({ selectedExecution, calculatingMetrics, onCal
 };
 
 export default SelectedExecutionDetails;
+
+
