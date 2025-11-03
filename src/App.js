@@ -229,11 +229,18 @@ function MainDashboard() {
       });
 
       const response = await apiService.executeWorkflow(workflowRequest);
+
+      if (!response || !response.execution_id) {
+        throw new Error('Backend did not return execution_id');
+      }
+
       setExecutionId(response.execution_id);
       setExecutionStatus(response);
       
-      // Start polling for status updates
-      pollExecutionStatus(response.execution_id);
+      // Start polling for status updates with a small initial delay to avoid race conditions
+      setTimeout(() => {
+        pollExecutionStatus(response.execution_id);
+      }, 800);
     } catch (error) {
       setError('Failed to execute workflow: ' + error.message);
     } finally {
@@ -242,6 +249,8 @@ function MainDashboard() {
   };
 
   const pollExecutionStatus = async (execId) => {
+    const gracePeriodMs = 30000; // tolerate transient 404s for up to 30s
+    const startTime = Date.now();
     const pollInterval = setInterval(async () => {
       try {
         const status = await apiService.getExecutionStatus(execId);
@@ -300,6 +309,15 @@ function MainDashboard() {
           setError('Workflow execution failed: ' + (status.error || 'Unknown error'));
         }
       } catch (error) {
+        const msg = (error && error.message) ? error.message.toLowerCase() : '';
+        const looksLikeNotFound = msg.includes('execution not found') || msg.includes('status: 404');
+        const withinGrace = Date.now() - startTime < gracePeriodMs;
+        
+        if (looksLikeNotFound && withinGrace) {
+          // Backend may not have registered the execution yet; ignore and keep polling
+          return;
+        }
+
         console.error('Failed to poll execution status:', error);
         clearInterval(pollInterval);
       }
