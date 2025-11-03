@@ -17,5 +17,5 @@ jobs:
         username: ${{ secrets.SERVER_USER }}
         key: ${{ secrets.SERVER_SSH_KEY }}
         script: |
-          /home/aisa_project/${{ secrets.SERVER_USER }}/deploy_aisa.sh
+          /home/${{ secrets.SERVER_USER }}/deploy_aisa.sh
 
