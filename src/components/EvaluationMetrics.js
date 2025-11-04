@@ -4,6 +4,7 @@ import ExecutionsTable from './evaluation/ExecutionsTable';
 import SelectedExecutionDetails from './evaluation/SelectedExecutionDetails';
 import MetricsResults from './evaluation/MetricsResults';
 import MetricsGuide from './evaluation/MetricsGuide';
+import BatchEvaluation from './evaluation/BatchEvaluation';
 import {
   transformVerificationResults,
   transformComparisonResults,
@@ -33,7 +34,14 @@ const EvaluationMetricsGuide = () => {
       setLoading(true);
       setError(null);
       const data = await apiService.getExecutions();
-      setExecutions(data);
+      
+      // Handle both old and new response formats
+      // New format: { total: X, filters: {...}, executions: [...] }
+      // Old format: [...]
+      const executionsArray = Array.isArray(data) ? data : (data.executions || data);
+      
+      console.log('[EvaluationMetrics] Loaded executions:', executionsArray.length);
+      setExecutions(executionsArray);
       setCurrentPage(1); // Reset to first page when reloading
     } catch (err) {
       setError('Failed to load executions: ' + err.message);
@@ -239,6 +247,16 @@ const EvaluationMetricsGuide = () => {
             </li>
             <li className="nav-item" role="presentation">
               <button
+                className={`nav-link ${activeTab === 'batch' ? 'active' : ''}`}
+                onClick={() => setActiveTab('batch')}
+                type="button"
+                role="tab"
+              >
+                <i className="fas fa-layer-group"></i> Batch Evaluation
+              </button>
+            </li>
+            <li className="nav-item" role="presentation">
+              <button
                 className={`nav-link ${activeTab === 'guide' ? 'active' : ''}`}
                 onClick={() => setActiveTab('guide')}
                 type="button"
@@ -295,6 +313,13 @@ const EvaluationMetricsGuide = () => {
                   evaluationMetrics={evaluationMetrics}
                   selectedExecution={selectedExecution}
                 />
+              </div>
+            )}
+
+            {/* Batch Evaluation Tab */}
+            {activeTab === 'batch' && (
+              <div>
+                <BatchEvaluation />
               </div>
             )}
 

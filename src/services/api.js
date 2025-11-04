@@ -218,8 +218,28 @@ class ApiService {
   }
 
   // Execution Management
-  async getExecutions() {
-    return this.request('/api/executions');
+  async getExecutions(llmSystemId = null, seedPaperId = null, promptId = null, status = null, limit = null) {
+    let url = '/api/executions';
+    const params = [];
+    if (llmSystemId) {
+      params.push(`llm_system_id=${llmSystemId}`);
+    }
+    if (seedPaperId) {
+      params.push(`seed_paper_id=${seedPaperId}`);
+    }
+    if (promptId) {
+      params.push(`prompt_id=${promptId}`);
+    }
+    if (status) {
+      params.push(`status=${encodeURIComponent(status)}`);
+    }
+    if (limit) {
+      params.push(`limit=${limit}`);
+    }
+    if (params.length > 0) {
+      url += '?' + params.join('&');
+    }
+    return this.request(url);
   }
 
   async getExecutionDetails(executionId) {
@@ -260,6 +280,56 @@ class ApiService {
 
   async getEvaluationHealth() {
     return this.request('/api/evaluation/health');
+  }
+
+  // LLM Systems
+  async getLLMSystems(name = null, version = null) {
+    let url = '/api/llm-systems';
+    const params = [];
+    if (name) {
+      params.push(`name=${encodeURIComponent(name)}`);
+    }
+    if (version) {
+      params.push(`version=${encodeURIComponent(version)}`);
+    }
+    if (params.length > 0) {
+      url += '?' + params.join('&');
+    }
+    return this.request(url);
+  }
+
+  async getLLMSystemById(llmSystemId) {
+    return this.request(`/api/llm-systems/${llmSystemId}`);
+  }
+
+  // Batch Evaluation
+  async evaluateBatchExecutions(seedPaperId, promptId = null, llmSystemId = null) {
+    const params = new URLSearchParams();
+    
+    if (promptId !== null && promptId !== undefined) {
+      params.append('prompt_id', promptId);
+    }
+    if (llmSystemId !== null && llmSystemId !== undefined) {
+      params.append('llm_system_id', llmSystemId);
+    }
+    
+    const url = `/api/evaluation/batch/${seedPaperId}?${params.toString()}`;
+    
+    console.log('[API] Batch evaluation URL:', url);
+    return this.request(url);
+  }
+
+  async compareLLMSystems(seedPaperId, promptId = null) {
+    const params = new URLSearchParams();
+    
+    if (promptId !== null && promptId !== undefined) {
+      params.append('prompt_id', promptId);
+    }
+    
+    const url = `/api/evaluation/compare-llms/${seedPaperId}?${params.toString()}`;
+    
+    console.log('[API] Compare LLMs URL:', url);
+    return this.request(url);
   }
 
   // Server-Sent Events Support for Workflow Events
