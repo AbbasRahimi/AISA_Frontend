@@ -242,7 +242,23 @@ function MainDashboard() {
         pollExecutionStatus(response.execution_id);
       }, 800);
     } catch (error) {
-      setError('Failed to execute workflow: ' + error.message);
+      // Handle gateway timeout specifically
+      if (error.message && error.message.includes('Gateway timeout')) {
+        setError(
+          'Gateway Timeout: The workflow execution is taking longer than expected. ' +
+          'This is a backend/infrastructure issue. Please check: ' +
+          '1) Increase nginx proxy_read_timeout for /api/workflow/execute, ' +
+          '2) Make the backend execute workflow asynchronously (return execution_id immediately)'
+        );
+      } else if (error.message && error.message.includes('timed out')) {
+        setError(
+          'Request Timeout: The workflow is taking too long. ' +
+          'The backend should return execution_id immediately and process asynchronously. ' +
+          'Error: ' + error.message
+        );
+      } else {
+        setError('Failed to execute workflow: ' + error.message);
+      }
     } finally {
       setLoading(false);
     }

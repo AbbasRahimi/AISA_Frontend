@@ -22,8 +22,14 @@ class ApiService {
       ...options,
     };
 
+    // Add custom timeout for long-running operations
+    const timeout = options.timeout || 300000; // Default 5 minutes
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    
     try {
-      const response = await fetch(url, config);
+      const response = await fetch(url, { ...config, signal: controller.signal });
+      clearTimeout(timeoutId);
       
       if (!response.ok) {
         let errorMessage = `HTTP error! status: ${response.status}`;
@@ -55,6 +61,20 @@ class ApiService {
       
       return await response.text();
     } catch (error) {
+      clearTimeout(timeoutId);
+      
+      // Handle abort/timeout
+      if (error.name === 'AbortError') {
+        console.error('API request timed out:', endpoint);
+        throw new Error(`Request timed out after ${timeout / 1000} seconds`);
+      }
+      
+      // Handle 504 Gateway Timeout specifically
+      if (error.message && error.message.includes('504')) {
+        console.error('Gateway timeout - workflow may still be processing');
+        throw new Error('Gateway timeout: The workflow is taking longer than expected. It may still be processing in the background.');
+      }
+      
       console.error('API request failed:', error);
       throw error;
     }
@@ -132,6 +152,7 @@ class ApiService {
     return this.request('/api/workflow/execute', {
       method: 'POST',
       body: JSON.stringify(workflowRequest),
+      timeout: 600000, // 10 minutes timeout for workflow execution
     });
   }
 
