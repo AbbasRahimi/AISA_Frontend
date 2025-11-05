@@ -5,7 +5,9 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
 
   const renderLLMResponse = () => {
     // Use progressive data if available, otherwise fall back to final results
-    const llmData = workflowProgress?.llmPublications || results?.llm_response;
+    const llmData = workflowProgress?.llmPublications || 
+                    results?.llm_response || 
+                    results?.generated_publications;  // Backend uses this field!
     
     // Debug logging
     console.log('[ResultsPanel] LLM Data:', llmData);
@@ -101,8 +103,8 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
 
   const renderVerificationResults = () => {
     // Use progressive data if available, otherwise fall back to final results
+    // Backend returns verification_results as an array directly
     let verificationData = workflowProgress?.verificationResults || 
-                            results?.verification_results?.detailed_results ||
                             results?.verification_results;
     
     // If verificationData is an object (VerificationResult), extract detailed_results
@@ -110,8 +112,8 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
       verificationData = verificationData.detailed_results;
     }
     
-    // Summary data is in results.verification_results (contains the counts)
-    const summaryData = results?.verification_results;
+    // Summary data - try both locations
+    const summaryData = results?.verification_summary || results;
     
     // Debug logging
     console.log('[ResultsPanel] Verification Data:', verificationData);
@@ -121,14 +123,14 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
       return <div className="text-muted">No verification results available</div>;
     }
 
-    // Use explicit valid_publications and invalid_publications if available (backend now sends these!)
-    const totalReferences = summaryData?.total_publications || verificationData.length;
-    const validReferences = summaryData?.valid_publications !== undefined
-      ? summaryData.valid_publications
-      : verificationData.filter(ref => ref.found_in_database !== null && ref.found_in_database !== undefined).length;
-    const invalidReferences = summaryData?.invalid_publications !== undefined
-      ? summaryData.invalid_publications
-      : (totalReferences - validReferences);
+    // Calculate summary from the data
+    const totalReferences = summaryData?.total_publications || results?.total_publications || verificationData.length;
+    const validReferences = summaryData?.verified_publications !== undefined
+      ? summaryData.verified_publications
+      : results?.verified_publications !== undefined
+      ? results.verified_publications
+      : verificationData.filter(ref => ref.found === true).length;
+    const invalidReferences = totalReferences - validReferences;
 
     return (
       <div className="mt-3">
@@ -149,42 +151,38 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
         </div>
         
         <div className="table-responsive">
-          <table className="table table-striped">
+          <table className="table table-striped table-sm">
             <thead>
               <tr>
                 <th>#</th>
-                <th>Title</th>
-                <th>Authors</th>
-                <th>Year</th>
-                <th>DOI</th>
                 <th>Database</th>
                 <th>Status</th>
                 <th>Similarity</th>
+                <th>Method</th>
               </tr>
             </thead>
             <tbody>
               {verificationData.map((ref, index) => (
-                <tr key={index}>
+                <tr key={ref.id || index}>
                   <td>{index + 1}</td>
-                  <td className="text-truncate" style={{ maxWidth: '200px' }} title={ref.title}>
-                    {ref.title}
-                  </td>
-                  <td>{ref.authors || '-'}</td>
-                  <td>{ref.year || '-'}</td>
                   <td>
-                    {ref.doi ? (
-                      <a href={`https://doi.org/${ref.doi}`} target="_blank" rel="noopener noreferrer">
-                        {ref.doi}
-                      </a>
-                    ) : '-'}
+                    <span className="badge bg-secondary">{ref.database_name || ref.database || '-'}</span>
                   </td>
-                  <td>{ref.database || ref.found_in_database || '-'}</td>
                   <td>
-                    <span className={`badge bg-${(ref.found_in_database !== null && ref.found_in_database !== undefined) ? 'success' : 'danger'}`}>
-                      {(ref.found_in_database !== null && ref.found_in_database !== undefined) ? 'valid' : 'invalid'}
+                    <span className={`badge bg-${ref.found ? 'success' : 'danger'}`}>
+                      {ref.found ? 'Found' : 'Not Found'}
                     </span>
                   </td>
-                  <td>{ref.similarity ? `${(ref.similarity * 100).toFixed(1)}%` : (ref.best_match_similarity ? `${(ref.best_match_similarity * 100).toFixed(1)}%` : '-')}</td>
+                  <td>
+                    {ref.similarity_score !== undefined && ref.similarity_score !== null
+                      ? `${(ref.similarity_score * 100).toFixed(0)}%`
+                      : ref.best_match_similarity !== undefined
+                      ? `${(ref.best_match_similarity * 100).toFixed(0)}%`
+                      : '-'}
+                  </td>
+                  <td>
+                    <small className="text-muted">{ref.verification_method || '-'}</small>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -196,8 +194,8 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
 
   const renderComparisonResults = () => {
     // Use progressive data if available, otherwise fall back to final results
+    // Backend returns comparison_results as an array directly
     const comparisonData = workflowProgress?.comparisonResults || 
-                          results?.comparison_results?.detailed_results ||
                           results?.comparison_results;
     
     // Debug logging
