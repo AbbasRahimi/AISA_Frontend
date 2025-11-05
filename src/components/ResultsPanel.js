@@ -7,17 +7,41 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
     // Use progressive data if available, otherwise fall back to final results
     const llmData = workflowProgress?.llmPublications || results?.llm_response;
     
+    // Debug logging
+    console.log('[ResultsPanel] LLM Data:', llmData);
+    console.log('[ResultsPanel] workflowProgress:', workflowProgress);
+    console.log('[ResultsPanel] results:', results);
+    
     if (!llmData) {
       return <div className="text-muted">No LLM response available</div>;
     }
 
-    // If we have progressive data (array of publications), show them nicely
+    // Extract publications array from various possible structures
+    let publicationsArray = null;
+    
     if (Array.isArray(llmData)) {
+      // llmData is directly an array
+      publicationsArray = llmData;
+    } else if (typeof llmData === 'object') {
+      // llmData is an object, try to find publications array
+      if (llmData.publications && Array.isArray(llmData.publications)) {
+        publicationsArray = llmData.publications;
+      } else if (llmData.results && Array.isArray(llmData.results)) {
+        publicationsArray = llmData.results;
+      } else if (llmData.data && Array.isArray(llmData.data)) {
+        publicationsArray = llmData.data;
+      } else if (llmData.references && Array.isArray(llmData.references)) {
+        publicationsArray = llmData.references;
+      }
+    }
+
+    // If we have a publications array, display it nicely
+    if (publicationsArray && publicationsArray.length > 0) {
       return (
         <div className="mt-3">
           <div className="alert alert-info mb-3">
             <h6><i className="fas fa-robot"></i> Generated Publications</h6>
-            <p className="mb-0">The LLM generated {llmData.length} publications:</p>
+            <p className="mb-0">The LLM generated {publicationsArray.length} publications:</p>
           </div>
           
           <div className="table-responsive">
@@ -33,14 +57,14 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
                 </tr>
               </thead>
               <tbody>
-                {llmData.map((pub, index) => (
+                {publicationsArray.map((pub, index) => (
                   <tr key={index}>
                     <td>{index + 1}</td>
                     <td className="text-truncate" style={{ maxWidth: '300px' }} title={pub.title}>
                       {pub.title || '-'}
                     </td>
-                    <td>{pub.authors || '-'}</td>
-                    <td>{pub.year || '-'}</td>
+                    <td>{pub.authors || pub.author || '-'}</td>
+                    <td>{pub.year || pub.publication_year || '-'}</td>
                     <td>
                       {pub.doi ? (
                         <a href={`https://doi.org/${pub.doi}`} target="_blank" rel="noopener noreferrer">
@@ -48,7 +72,7 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
                         </a>
                       ) : '-'}
                     </td>
-                    <td>{pub.journal || '-'}</td>
+                    <td>{pub.journal || pub.venue || '-'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -58,9 +82,13 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
       );
     }
 
-    // Fallback to original raw response display
+    // Fallback to raw response display
     return (
       <div className="mt-3">
+        <div className="alert alert-warning mb-3">
+          <h6><i className="fas fa-info-circle"></i> Raw LLM Response</h6>
+          <p className="mb-0">Displaying raw response (publications array not found in expected format)</p>
+        </div>
         <pre className="bg-light p-3 rounded" style={{ maxHeight: '400px', overflowY: 'auto' }}>
           {typeof llmData === 'string' 
             ? llmData 
@@ -73,11 +101,23 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
 
   const renderVerificationResults = () => {
     // Use progressive data if available, otherwise fall back to final results
-    const verificationData = workflowProgress?.verificationResults || results?.verification_results?.detailed_results;
+    let verificationData = workflowProgress?.verificationResults || 
+                            results?.verification_results?.detailed_results ||
+                            results?.verification_results;
+    
+    // If verificationData is an object (VerificationResult), extract detailed_results
+    if (verificationData && !Array.isArray(verificationData) && verificationData.detailed_results) {
+      verificationData = verificationData.detailed_results;
+    }
+    
     // Summary data is in results.verification_results (contains the counts)
     const summaryData = results?.verification_results;
     
-    if (!verificationData || verificationData.length === 0) {
+    // Debug logging
+    console.log('[ResultsPanel] Verification Data:', verificationData);
+    console.log('[ResultsPanel] Verification Summary:', summaryData);
+    
+    if (!verificationData || !Array.isArray(verificationData) || verificationData.length === 0) {
       return <div className="text-muted">No verification results available</div>;
     }
 
@@ -156,16 +196,31 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
 
   const renderComparisonResults = () => {
     // Use progressive data if available, otherwise fall back to final results
-    const comparisonData = workflowProgress?.comparisonResults || results?.comparison_results;
+    const comparisonData = workflowProgress?.comparisonResults || 
+                          results?.comparison_results?.detailed_results ||
+                          results?.comparison_results;
     
-    if (!comparisonData || comparisonData.length === 0) {
+    // Debug logging
+    console.log('[ResultsPanel] Comparison Data:', comparisonData);
+    
+    if (!comparisonData || (Array.isArray(comparisonData) && comparisonData.length === 0)) {
+      return <div className="text-muted">No comparison results available</div>;
+    }
+    
+    // Handle if comparisonData is the full comparison result object
+    let comparisonArray = comparisonData;
+    if (!Array.isArray(comparisonData) && comparisonData.detailed_results) {
+      comparisonArray = comparisonData.detailed_results;
+    }
+    
+    if (!Array.isArray(comparisonArray) || comparisonArray.length === 0) {
       return <div className="text-muted">No comparison results available</div>;
     }
 
     // Calculate summary from progressive data
-    const totalMatches = comparisonData.length;
-    const exactMatches = comparisonData.filter(match => match.match_status === 'exact').length;
-    const partialMatches = comparisonData.filter(match => match.match_status === 'partial').length;
+    const totalMatches = comparisonArray.length;
+    const exactMatches = comparisonArray.filter(match => match.match_status === 'exact' || match.match_type === 'exact' || match.is_exact_match).length;
+    const partialMatches = comparisonArray.filter(match => match.match_status === 'partial' || match.match_type === 'partial' || match.is_partial_match).length;
     const noMatches = totalMatches - exactMatches - partialMatches;
 
     return (
@@ -199,33 +254,42 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
               </tr>
             </thead>
             <tbody>
-              {comparisonData.map((match, index) => (
-                <tr key={index}>
-                  <td className="text-truncate" style={{ maxWidth: '200px' }} title={match.generated_title}>
-                    {match.generated_title}
-                  </td>
-                  <td className="text-truncate" style={{ maxWidth: '200px' }} title={match.ground_truth_title}>
-                    {match.ground_truth_title}
-                  </td>
-                  <td>
-                    <span className={`badge bg-${
-                      match.match_status === 'exact' ? 'success' : 
-                      match.match_status === 'partial' ? 'warning' : 'danger'
-                    }`}>
-                      {match.match_status || 'no match'}
-                    </span>
-                  </td>
-                  <td>{match.similarity ? `${(match.similarity * 100).toFixed(1)}%` : '-'}</td>
-                  <td>
-                    <span className={`badge bg-${
-                      match.quality === 'high' ? 'success' : 
-                      match.quality === 'medium' ? 'warning' : 'danger'
-                    }`}>
-                      {match.quality || 'unknown'}
-                    </span>
-                  </td>
-                </tr>
-              ))}
+              {comparisonArray.map((match, index) => {
+                // Handle different field names from backend
+                const generatedTitle = match.generated_title || match.llm_title || match.title || '-';
+                const groundTruthTitle = match.ground_truth_title || match.gt_title || match.reference_title || '-';
+                const matchStatus = match.match_status || match.match_type || 
+                                  (match.is_exact_match ? 'exact' : match.is_partial_match ? 'partial' : 'no match');
+                const similarity = match.similarity || match.similarity_percentage;
+                
+                return (
+                  <tr key={index}>
+                    <td className="text-truncate" style={{ maxWidth: '200px' }} title={generatedTitle}>
+                      {generatedTitle}
+                    </td>
+                    <td className="text-truncate" style={{ maxWidth: '200px' }} title={groundTruthTitle}>
+                      {groundTruthTitle}
+                    </td>
+                    <td>
+                      <span className={`badge bg-${
+                        matchStatus === 'exact' ? 'success' : 
+                        matchStatus === 'partial' ? 'warning' : 'danger'
+                      }`}>
+                        {matchStatus}
+                      </span>
+                    </td>
+                    <td>{similarity ? `${typeof similarity === 'number' && similarity <= 1 ? (similarity * 100).toFixed(1) : similarity}%` : '-'}</td>
+                    <td>
+                      <span className={`badge bg-${
+                        match.quality === 'high' ? 'success' : 
+                        match.quality === 'medium' ? 'warning' : 'danger'
+                      }`}>
+                        {match.quality || 'unknown'}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

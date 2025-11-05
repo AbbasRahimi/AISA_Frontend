@@ -254,6 +254,8 @@ function MainDashboard() {
     const pollInterval = setInterval(async () => {
       try {
         const status = await apiService.getExecutionStatus(execId);
+        console.log('[App] Execution status received:', status);
+        console.log('[App] LLM response in status:', status.llm_response);
         setExecutionStatus(status);
         
         // NEW: Update progressive results
@@ -265,8 +267,20 @@ function MainDashboard() {
           };
           
           // Update LLM publications if available
-          if (status.llm_response?.publications) {
-            newProgress.llmPublications = status.llm_response.publications;
+          // Backend can return llm_response in multiple formats
+          if (status.llm_response) {
+            // If llm_response has publications array
+            if (status.llm_response.publications) {
+              newProgress.llmPublications = status.llm_response.publications;
+            } 
+            // If llm_response IS the publications array
+            else if (Array.isArray(status.llm_response)) {
+              newProgress.llmPublications = status.llm_response;
+            }
+            // If llm_response is an object with other structure, store the whole thing
+            else {
+              newProgress.llmPublications = status.llm_response;
+            }
           }
           
           // Update verification progress
@@ -301,6 +315,7 @@ function MainDashboard() {
         if (status.status === ExecutionStatus.COMPLETED) {
           clearInterval(pollInterval);
           const results = await apiService.getExecutionResults(execId);
+          console.log('[App] Execution results received:', results);
           setResults(results);
           // Mark workflow as completed
           setWorkflowProgress(prev => ({ ...prev, stage: 'completed' }));
