@@ -285,13 +285,27 @@ class ApiService {
   }
 
   // Evaluation Metrics
-  async evaluateExecution(verificationResults, comparisonResults) {
+  async evaluateExecution(verificationResults, comparisonResults, options = {}) {
+    const requestBody = {
+      verification_results: verificationResults,
+      comparison_results: comparisonResults,
+      include_partial: options.include_partial !== undefined ? options.include_partial : true,
+    };
+    
+    // Add optional parameters if provided
+    if (options.validity_weight !== undefined) {
+      requestBody.validity_weight = options.validity_weight;
+    }
+    if (options.relevance_weight !== undefined) {
+      requestBody.relevance_weight = options.relevance_weight;
+    }
+    if (options.save_to_file !== undefined) {
+      requestBody.save_to_file = options.save_to_file;
+    }
+    
     return this.request('/api/evaluation/evaluate', {
       method: 'POST',
-      body: JSON.stringify({
-        verification_results: verificationResults,
-        comparison_results: comparisonResults,
-      }),
+      body: JSON.stringify(requestBody),
     });
   }
 
@@ -324,7 +338,7 @@ class ApiService {
   }
 
   // Batch Evaluation
-  async evaluateBatchExecutions(seedPaperId, promptId = null, llmSystemId = null) {
+  async evaluateBatchExecutions(seedPaperId, promptId = null, llmSystemId = null, includePartial = true) {
     const params = new URLSearchParams();
     
     if (promptId !== null && promptId !== undefined) {
@@ -333,6 +347,7 @@ class ApiService {
     if (llmSystemId !== null && llmSystemId !== undefined) {
       params.append('llm_system_id', llmSystemId);
     }
+    params.append('include_partial', includePartial);
     
     const url = `/api/evaluation/batch/${seedPaperId}?${params.toString()}`;
     
@@ -340,17 +355,48 @@ class ApiService {
     return this.request(url);
   }
 
-  async compareLLMSystems(seedPaperId, promptId = null) {
+  async compareLLMSystems(seedPaperId, promptId = null, includePartial = true) {
     const params = new URLSearchParams();
     
     if (promptId !== null && promptId !== undefined) {
       params.append('prompt_id', promptId);
     }
+    params.append('include_partial', includePartial);
     
     const url = `/api/evaluation/compare-llms/${seedPaperId}?${params.toString()}`;
     
     console.log('[API] Compare LLMs URL:', url);
     return this.request(url);
+  }
+
+  // Evaluation - Relevance Only
+  async evaluateRelevanceOnly(comparisonResults, includePartial = true) {
+    return this.request(`/api/evaluation/relevance-only?include_partial=${includePartial}`, {
+      method: 'POST',
+      body: JSON.stringify(comparisonResults),
+    });
+  }
+
+  // Evaluation - Validity Only
+  async evaluateValidityOnly(verificationResults) {
+    return this.request('/api/evaluation/validity-only', {
+      method: 'POST',
+      body: JSON.stringify(verificationResults),
+    });
+  }
+
+  // Evaluation - Compare
+  async compareEvaluations(evaluations, labels = null) {
+    const requestBody = {
+      evaluations: evaluations,
+    };
+    if (labels) {
+      requestBody.labels = labels;
+    }
+    return this.request('/api/evaluation/compare', {
+      method: 'POST',
+      body: JSON.stringify(requestBody),
+    });
   }
 
   // Server-Sent Events Support for Workflow Events

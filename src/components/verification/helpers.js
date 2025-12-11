@@ -46,3 +46,7 @@ export const getSimilarityBadgeClass = (similarity) => {
 
 
 
+
+
+
+

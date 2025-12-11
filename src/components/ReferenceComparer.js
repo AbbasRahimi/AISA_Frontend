@@ -120,6 +120,86 @@ const ReferenceComparer = () => {
         ? await apiService.comparePublicationsWithStorage(formData)
         : await apiService.comparePublications(formData);
       
+      // Comprehensive logging of server response
+      console.log('========================================');
+      console.log('[ReferenceComparer] ===== SERVER RESPONSE =====');
+      console.log('========================================');
+      console.log('[ReferenceComparer] Full API response:', results);
+      console.log('[ReferenceComparer] Response type:', typeof results);
+      console.log('[ReferenceComparer] Response keys:', results ? Object.keys(results) : 'null');
+      console.log('[ReferenceComparer] Response isArray:', Array.isArray(results));
+      
+      if (results) {
+        console.log('[ReferenceComparer] results.summary:', results.summary);
+        console.log('[ReferenceComparer] results.detailed_results:', results.detailed_results);
+        console.log('[ReferenceComparer] results.exact_matches:', results.exact_matches);
+        console.log('[ReferenceComparer] results.partial_matches:', results.partial_matches);
+        console.log('[ReferenceComparer] results.no_matches:', results.no_matches);
+        
+        if (results.summary) {
+          console.log('[ReferenceComparer] Summary keys:', Object.keys(results.summary));
+          console.log('[ReferenceComparer] Summary values:', {
+            total_llm_papers: results.summary.total_llm_papers,
+            total_gt_papers: results.summary.total_gt_papers,
+            exact_count: results.summary.exact_count,
+            partial_count: results.summary.partial_count,
+            no_match_count: results.summary.no_match_count,
+            title_exact: results.summary.title_exact,
+            title_partial: results.summary.title_partial,
+            author_exact: results.summary.author_exact,
+            author_partial: results.summary.author_partial
+          });
+        }
+        
+        if (results.detailed_results && Array.isArray(results.detailed_results)) {
+          console.log('[ReferenceComparer] detailed_results array length:', results.detailed_results.length);
+          if (results.detailed_results.length > 0) {
+            console.log('[ReferenceComparer] First detailed_result:', results.detailed_results[0]);
+            console.log('[ReferenceComparer] First detailed_result keys:', Object.keys(results.detailed_results[0]));
+            console.log('[ReferenceComparer] First detailed_result full structure:', JSON.stringify(results.detailed_results[0], null, 2));
+            
+            // Log all detailed results
+            results.detailed_results.forEach((result, index) => {
+              console.log(`[ReferenceComparer] Detailed result ${index}:`, {
+                row_number: result.row_number,
+                llm_title: result.llm_title,
+                gt_title: result.gt_title,
+                similarity_percentage: result.similarity_percentage,
+                confidence_score: result.confidence_score,
+                match_type: result.match_type,
+                is_exact_match: result.is_exact_match,
+                is_partial_match: result.is_partial_match,
+                is_no_match: result.is_no_match,
+                rule_number: result.rule_number,
+                interpretation: result.interpretation,
+                full_object: result
+              });
+            });
+          }
+        }
+        
+        if (results.exact_matches && Array.isArray(results.exact_matches)) {
+          console.log('[ReferenceComparer] exact_matches array length:', results.exact_matches.length);
+          if (results.exact_matches.length > 0) {
+            console.log('[ReferenceComparer] First exact_match:', results.exact_matches[0]);
+            console.log('[ReferenceComparer] First exact_match structure:', JSON.stringify(results.exact_matches[0], null, 2));
+          }
+        }
+        
+        if (results.partial_matches && Array.isArray(results.partial_matches)) {
+          console.log('[ReferenceComparer] partial_matches array length:', results.partial_matches.length);
+          if (results.partial_matches.length > 0) {
+            console.log('[ReferenceComparer] First partial_match:', results.partial_matches[0]);
+            console.log('[ReferenceComparer] First partial_match structure:', JSON.stringify(results.partial_matches[0], null, 2));
+          }
+        }
+        
+        if (results.no_matches && Array.isArray(results.no_matches)) {
+          console.log('[ReferenceComparer] no_matches array length:', results.no_matches.length);
+        }
+      }
+      console.log('========================================');
+      
       setComparisonResults(results);
       
       // Calculate metrics from comparison results

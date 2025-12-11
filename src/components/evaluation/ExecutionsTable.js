@@ -1,5 +1,5 @@
 import React from 'react';
-import { formatDate, getStatusBadgeClass } from './helpers';
+import { formatDate } from './helpers';
 
 const ExecutionsTable = ({ executions, loading, currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, selectedExecution, onSelectExecution }) => {
   // Calculate pagination

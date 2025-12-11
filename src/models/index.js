@@ -140,10 +140,13 @@ export const ComparisonDetailResult = {
   llm_title: '',
   gt_title: '',
   similarity_percentage: 0.0,
+  confidence_score: 0.0,    // NEW: Confidence score used for matching algorithm (0.0-1.0)
   match_type: '',
   is_exact_match: false,
   is_partial_match: false,
-  is_no_match: false
+  is_no_match: false,
+  rule_number: null,        // NEW: Cascade rule number (1-40, or 0 for no match)
+  interpretation: null     // NEW: Human-readable match reason
 };
 
 // Comparison Summary Model
