@@ -9,6 +9,7 @@ import PublicationVerifier from './components/PublicationVerifier';
 import ReferenceComparer from './components/ReferenceComparer';
 import EvaluationMetricsGuide from './components/EvaluationMetrics';
 import ImportExecution from './components/import/ImportExecution';
+import DatabaseView from './components/database/DatabaseView';
 import Footer from './components/Footer';
 import apiService from './services/api';
 import { 
@@ -83,6 +84,13 @@ function Navigation() {
               onClick={handleNavClick}
             >
               <i className="fas fa-file-import"></i> Import Execution
+            </Link>
+            <Link 
+              className={`nav-link ${location.pathname === '/database' ? 'active' : ''}`} 
+              to="/database"
+              onClick={handleNavClick}
+            >
+              <i className="fas fa-database"></i> Database
             </Link>
             <a className="nav-link" href="/api/docs" target="_blank" rel="noopener noreferrer" onClick={handleNavClick}>
               <i className="fas fa-book"></i> API Docs
@@ -480,6 +488,7 @@ function App() {
             <Route path="/reference-comparer" element={<ReferenceComparer />} />
             <Route path="/evaluation-metrics" element={<EvaluationMetricsGuide />} />
             <Route path="/import-execution" element={<ImportExecution />} />
+            <Route path="/database" element={<DatabaseView />} />
           </Routes>
         </main>
         <Footer />

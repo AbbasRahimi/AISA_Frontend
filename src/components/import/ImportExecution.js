@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import apiService from '../../services/api';
 
 const ACCEPT_EXTENSIONS = '.json,.bib';
@@ -116,7 +116,8 @@ function ErrorReport({ message, fileName, createdAt }) {
 
 /**
  * Shown when server returns missing_data: user can supply seed paper and/or prompt
- * (choose existing or paste content) and retry the import in one request.
+ * (choose existing or paste content / upload .txt) and retry the import in one request.
+ * When creating a new prompt: seed paper (required), version (required), then content (text or .txt file).
  */
 function MissingDataCard({
   missingData,
@@ -125,10 +126,19 @@ function MissingDataCard({
   setSelectedSeedPaperId,
   seedPaperContent,
   setSeedPaperContent,
+  seedPaperFile,
+  setSeedPaperFile,
+  seedPaperFileInputRef,
   selectedPromptId,
   setSelectedPromptId,
   promptContent,
   setPromptContent,
+  promptVersion,
+  setPromptVersion,
+  promptFile,
+  setPromptFile,
+  promptFileInputRef,
+  availableSeedPapers,
   onContinue,
   onCancel,
   loading,
@@ -144,9 +154,17 @@ function MissingDataCard({
     seed_paper_title: contextSeedPaperTitle,
   } = missingData || {};
 
+  const seedPapersList = existing_seed_papers.length > 0 ? existing_seed_papers : availableSeedPapers;
+  const isAddingNewSeedPaper = requires_seed_paper && !selectedSeedPaperId && (seedPaperFile || seedPaperContent?.trim());
+  const isCreatingNewPrompt = requires_prompt && !selectedPromptId && (promptContent?.trim() || promptFile);
+  const hasPromptContent = (promptContent != null && promptContent.trim() !== '') || promptFile;
+
+  const hasSeedPaperInput = selectedSeedPaperId !== '' || (seedPaperContent != null && seedPaperContent.trim() !== '') || seedPaperFile;
   const canContinue =
-    (!requires_seed_paper || selectedSeedPaperId !== '' || (seedPaperContent != null && seedPaperContent.trim() !== '')) &&
-    (!requires_prompt || selectedPromptId !== '' || (promptContent != null && promptContent.trim() !== ''));
+    (!requires_seed_paper || hasSeedPaperInput) &&
+    (!requires_prompt ||
+      selectedPromptId !== '' ||
+      (hasPromptContent && promptVersion != null && promptVersion.trim() !== '' && (selectedSeedPaperId !== '' || (requires_seed_paper && seedPaperContent?.trim()))));
 
   return (
     <div className="card mb-3 border-warning">
@@ -174,7 +192,11 @@ function MissingDataCard({
                   value={selectedSeedPaperId}
                   onChange={(e) => {
                     setSelectedSeedPaperId(e.target.value);
-                    if (e.target.value) setSeedPaperContent('');
+                    if (e.target.value) {
+                      setSeedPaperContent('');
+                      setSeedPaperFile(null);
+                      if (seedPaperFileInputRef?.current) seedPaperFileInputRef.current.value = '';
+                    }
                   }}
                 >
                   <option value="">— Select or add new below —</option>
@@ -188,8 +210,40 @@ function MissingDataCard({
               </>
             )}
             <label className="form-label small text-muted">
-              {existing_seed_papers.length > 0 ? 'Or paste BibTeX to create a new seed paper' : 'Paste BibTeX to create the seed paper'}
+              {existing_seed_papers.length > 0 ? 'Or add a new seed paper (like on Main Dashboard)' : 'Add a new seed paper (like on Main Dashboard)'}
             </label>
+            <div className="mb-2">
+              <button
+                type="button"
+                className="btn btn-outline-primary btn-sm me-2"
+                onClick={() => seedPaperFileInputRef?.current?.click()}
+                disabled={loading}
+              >
+                <i className="fas fa-plus me-1"></i>
+                Add new seed paper (BibTeX file)
+              </button>
+              <input
+                ref={seedPaperFileInputRef}
+                type="file"
+                className="d-none"
+                accept=".bib"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  setSeedPaperFile(f || null);
+                  if (f) {
+                    setSelectedSeedPaperId('');
+                    setSeedPaperContent('');
+                  }
+                }}
+              />
+              {seedPaperFile && (
+                <small className="text-muted d-block mt-1">
+                  <i className="fas fa-file me-1"></i>
+                  {seedPaperFile.name} ({(seedPaperFile.size / 1024).toFixed(1)} KB)
+                </small>
+              )}
+            </div>
+            <label className="form-label small text-muted">Or paste BibTeX to create a new seed paper</label>
             <textarea
               className="form-control font-monospace small"
               rows={4}
@@ -197,8 +251,13 @@ function MissingDataCard({
               value={seedPaperContent}
               onChange={(e) => {
                 setSeedPaperContent(e.target.value);
-                if (e.target.value.trim()) setSelectedSeedPaperId('');
+                if (e.target.value.trim()) {
+                  setSelectedSeedPaperId('');
+                  setSeedPaperFile(null);
+                  if (seedPaperFileInputRef?.current) seedPaperFileInputRef.current.value = '';
+                }
               }}
+              disabled={loading}
             />
             {seed_paper_identifier && (
               <small className="text-muted">Expected identifier from filename: {seed_paper_identifier}</small>
@@ -217,10 +276,15 @@ function MissingDataCard({
                   value={selectedPromptId}
                   onChange={(e) => {
                     setSelectedPromptId(e.target.value);
-                    if (e.target.value) setPromptContent('');
+                    if (e.target.value) {
+                      setPromptContent('');
+                      setPromptVersion('');
+                      setPromptFile(null);
+                      if (promptFileInputRef?.current) promptFileInputRef.current.value = '';
+                    }
                   }}
                 >
-                  <option value="">— Select or add new below —</option>
+                  <option value="">— Select or create new below —</option>
                   {existing_prompts.map((p) => (
                     <option key={p.id} value={p.id}>
                       ID {p.id}: {(p.content_preview || '—').substring(0, 60)}
@@ -230,19 +294,78 @@ function MissingDataCard({
                 </select>
               </>
             )}
-            <label className="form-label small text-muted">
-              {existing_prompts.length > 0 ? 'Or enter full prompt text to create a new prompt' : 'Enter prompt text to create the prompt'}
+            <label className="form-label small text-muted mt-2">
+              {existing_prompts.length > 0 ? 'Or create a new prompt (like on Main Dashboard): select seed paper, set version, then provide content' : 'Create a new prompt: select seed paper, set version, then provide content'}
             </label>
+            {!requires_seed_paper && seedPapersList.length > 0 && (
+              <>
+                <label className="form-label small text-muted">Seed paper for new prompt</label>
+                <select
+                  className="form-select mb-2"
+                  value={selectedSeedPaperId}
+                  onChange={(e) => setSelectedSeedPaperId(e.target.value)}
+                  disabled={loading}
+                >
+                  <option value="">— Select seed paper —</option>
+                  {seedPapersList.map((sp) => (
+                    <option key={sp.id} value={sp.id}>
+                      ID {sp.id}: {(sp.title || sp.bibtex_key || '—').substring(0, 50)}
+                      {sp.bibtex_key ? ` (${sp.bibtex_key})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
+            {requires_seed_paper && (
+              <p className="small text-muted mb-2">Use the seed paper selected above for the new prompt.</p>
+            )}
+            <label className="form-label small text-muted">Prompt version (required for new prompt)</label>
+            <input
+              type="text"
+              className="form-control mb-2"
+              placeholder="e.g. v1"
+              maxLength={50}
+              value={promptVersion}
+              onChange={(e) => setPromptVersion(e.target.value)}
+              disabled={loading}
+            />
+            <label className="form-label small text-muted">Prompt content: paste text or upload a .txt file</label>
             <textarea
-              className="form-control"
+              className="form-control mb-2"
               rows={4}
-              placeholder="Enter the full prompt text..."
+              placeholder="Paste the full prompt text..."
               value={promptContent}
               onChange={(e) => {
                 setPromptContent(e.target.value);
-                if (e.target.value.trim()) setSelectedPromptId('');
+                if (e.target.value.trim()) {
+                  setSelectedPromptId('');
+                  setPromptFile(null);
+                  if (promptFileInputRef?.current) promptFileInputRef.current.value = '';
+                }
               }}
+              disabled={loading}
             />
+            <input
+              ref={promptFileInputRef}
+              type="file"
+              className="form-control form-control-sm mb-2"
+              accept=".txt"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                setPromptFile(f || null);
+                if (f) {
+                  setSelectedPromptId('');
+                  setPromptContent('');
+                }
+              }}
+              disabled={loading}
+            />
+            {promptFile && (
+              <small className="text-muted d-block mb-2">
+                <i className="fas fa-file me-1"></i>
+                {promptFile.name} ({(promptFile.size / 1024).toFixed(1)} KB) — will be used as prompt content
+              </small>
+            )}
           </div>
         )}
 
@@ -256,12 +379,12 @@ function MissingDataCard({
             {loading ? (
               <>
                 <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                Importing…
+                {isAddingNewSeedPaper ? 'Adding seed paper…' : isCreatingNewPrompt ? 'Creating prompt…' : 'Importing…'}
               </>
             ) : (
               <>
                 <i className="fas fa-check me-2"></i>
-                Continue import
+                {isAddingNewSeedPaper ? 'Add to DB' : isCreatingNewPrompt ? 'Add to DB' : 'Continue import'}
               </>
             )}
           </button>
@@ -287,16 +410,45 @@ export default function ImportExecution() {
   const [seedPaperContent, setSeedPaperContent] = useState('');
   const [selectedPromptId, setSelectedPromptId] = useState('');
   const [promptContent, setPromptContent] = useState('');
+  const [promptVersion, setPromptVersion] = useState('');
+  const [promptFile, setPromptFile] = useState(null);
+  const [seedPaperFile, setSeedPaperFile] = useState(null);
+  const [availableSeedPapers, setAvailableSeedPapers] = useState([]);
   const fileInputRef = useRef(null);
+  const promptFileInputRef = useRef(null);
+  const seedPaperFileInputRef = useRef(null);
 
   const acceptExtensions = ACCEPT_EXTENSIONS;
+
+  // Load seed papers when we need to show prompt form (so user can select seed paper for new prompt)
+  useEffect(() => {
+    if (!missingDataResponse?.requires_prompt) return;
+    const existing = missingDataResponse.existing_seed_papers || [];
+    if (existing.length > 0) {
+      setAvailableSeedPapers(existing);
+      return;
+    }
+    let cancelled = false;
+    apiService.getSeedPapers().then((list) => {
+      if (!cancelled) setAvailableSeedPapers(Array.isArray(list) ? list : []);
+    }).catch(() => {
+      if (!cancelled) setAvailableSeedPapers([]);
+    });
+    return () => { cancelled = true; };
+  }, [missingDataResponse?.requires_prompt, missingDataResponse?.existing_seed_papers]);
 
   const clearMissingDataForm = () => {
     setMissingDataResponse(null);
     setSelectedSeedPaperId('');
     setSeedPaperContent('');
+    setSeedPaperFile(null);
     setSelectedPromptId('');
     setPromptContent('');
+    setPromptVersion('');
+    setPromptFile(null);
+    setAvailableSeedPapers([]);
+    if (promptFileInputRef.current) promptFileInputRef.current.value = '';
+    if (seedPaperFileInputRef.current) seedPaperFileInputRef.current.value = '';
   };
 
   const handleFileChange = (e) => {
@@ -316,10 +468,16 @@ export default function ImportExecution() {
     if (missingDataResponse?.requires_seed_paper) {
       if (selectedSeedPaperId) opts.seed_paper_id = Number(selectedSeedPaperId);
       else if (seedPaperContent?.trim()) opts.seed_paper_content = seedPaperContent.trim();
+      // If only seedPaperFile, handleContinueImport will create seed paper first then set seed_paper_id
     }
     if (missingDataResponse?.requires_prompt) {
-      if (selectedPromptId) opts.prompt_id = Number(selectedPromptId);
-      else if (promptContent?.trim()) opts.prompt_content = promptContent.trim();
+      if (selectedPromptId) {
+        opts.prompt_id = Number(selectedPromptId);
+      } else if (promptContent?.trim() || promptFile) {
+        if (promptVersion?.trim()) opts.prompt_version = promptVersion.trim();
+        // Only send prompt_content here when we have pasted text; if only promptFile, handleContinueImport will read file and set it
+        if (promptContent?.trim()) opts.prompt_content = promptContent.trim();
+      }
     }
     return opts;
   };
@@ -364,6 +522,36 @@ export default function ImportExecution() {
       setError('Unexpected response from server.');
     } catch (err) {
       const message = err?.message || 'Import failed';
+      // When backend returns 400 "Prompt with id X not found", show the same form so user can create the prompt
+      const promptNotFoundMatch = message.match(/Prompt with id (\d+) not found/i);
+      if (promptNotFoundMatch) {
+        setMissingDataResponse({
+          status: 'missing_data',
+          requires_prompt: true,
+          requires_seed_paper: false,
+          message: `The file name refers to prompt ID ${promptNotFoundMatch[1]} which is not in the database. Select a seed paper and create the prompt below (version and content), then continue import.`,
+          existing_prompts: [],
+          existing_seed_papers: [],
+        });
+        setError(null);
+        return;
+      }
+      // When backend returns 400 "Seed paper with id X not found", show form so user can add new seed paper (BibTeX file or paste)
+      const seedPaperNotFoundMatch = message.match(/Seed paper (?:with id )?(\d+ )?not found/i) || message.match(/Seed paper .* not found/i);
+      if (seedPaperNotFoundMatch) {
+        const idPart = message.match(/Seed paper with id (\d+) not found/i);
+        const hint = idPart ? ` (ID ${idPart[1]} from file name)` : '';
+        setMissingDataResponse({
+          status: 'missing_data',
+          requires_seed_paper: true,
+          requires_prompt: false,
+          message: `The file name refers to a seed paper that is not in the database${hint}. Add a new seed paper below (upload BibTeX file or paste), then continue import.`,
+          existing_seed_papers: [],
+          existing_prompts: [],
+        });
+        setError(null);
+        return;
+      }
       setImportHistory((prev) => [
         {
           type: 'error',
@@ -379,6 +567,14 @@ export default function ImportExecution() {
     }
   };
 
+  const readFileAsText = (file) =>
+    new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result ?? '');
+      r.onerror = () => reject(new Error('Failed to read file'));
+      r.readAsText(file);
+    });
+
   const handleContinueImport = async () => {
     if (!file || !missingDataResponse) return;
 
@@ -387,9 +583,53 @@ export default function ImportExecution() {
 
     const fileName = file.name;
     const createdAt = new Date().toISOString();
-    const options = buildImportOptions();
+    let options = buildImportOptions();
 
     try {
+      // If user is adding a new seed paper via BibTeX file, create it first then import with new seed_paper_id
+      if (
+        missingDataResponse.requires_seed_paper &&
+        !options.seed_paper_id &&
+        !options.seed_paper_content &&
+        seedPaperFile
+      ) {
+        const created = await apiService.addSeedPaper(seedPaperFile);
+        const newSeedPaperId = created?.id ?? created?.seed_paper_id;
+        if (newSeedPaperId != null) {
+          options = { ...options, seed_paper_id: newSeedPaperId };
+        }
+      }
+      // If user is creating a new prompt and selected a seed paper, create the prompt first then import with new prompt_id
+      if (
+        missingDataResponse.requires_prompt &&
+        !options.prompt_id &&
+        (promptContent?.trim() || promptFile) &&
+        promptVersion?.trim() &&
+        selectedSeedPaperId !== ''
+      ) {
+        let promptFileForApi = promptFile;
+        if (!promptFileForApi && promptContent?.trim()) {
+          promptFileForApi = new File([promptContent.trim()], 'prompt.txt', { type: 'text/plain' });
+        }
+        if (promptFileForApi) {
+          const created = await apiService.addPrompt(promptFileForApi, Number(selectedSeedPaperId), promptVersion.trim());
+          const newPromptId = created?.id ?? created?.prompt_id;
+          if (newPromptId != null) {
+            options = { ...options, prompt_id: newPromptId };
+          }
+        }
+      }
+      // If creating new prompt with new seed paper (seedPaperContent), ensure prompt_content is string (read file if needed)
+      if (options.prompt_version && (promptFile && !options.prompt_content)) {
+        try {
+          options.prompt_content = await readFileAsText(promptFile);
+        } catch (e) {
+          setError('Failed to read prompt file as text.');
+          setLoading(false);
+          return;
+        }
+      }
+
       const response = await apiService.importExecutionFromFile(file, options);
       if (response.status === 'missing_data') {
         setMissingDataResponse(response);
@@ -512,10 +752,19 @@ export default function ImportExecution() {
               setSelectedSeedPaperId={setSelectedSeedPaperId}
               seedPaperContent={seedPaperContent}
               setSeedPaperContent={setSeedPaperContent}
+              seedPaperFile={seedPaperFile}
+              setSeedPaperFile={setSeedPaperFile}
+              seedPaperFileInputRef={seedPaperFileInputRef}
               selectedPromptId={selectedPromptId}
               setSelectedPromptId={setSelectedPromptId}
               promptContent={promptContent}
               setPromptContent={setPromptContent}
+              promptVersion={promptVersion}
+              setPromptVersion={setPromptVersion}
+              promptFile={promptFile}
+              setPromptFile={setPromptFile}
+              promptFileInputRef={promptFileInputRef}
+              availableSeedPapers={availableSeedPapers}
               onContinue={handleContinueImport}
               onCancel={handleCancelMissingData}
               loading={loading}

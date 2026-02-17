@@ -74,8 +74,12 @@ class ApiService {
         console.error('Gateway timeout - workflow may still be processing');
         throw new Error('Gateway timeout: The workflow is taking longer than expected. It may still be processing in the background.');
       }
-      
-      console.error('API request failed:', error);
+      // Skip logging for expected "missing data" 400 — import flow handles it and shows the form
+      const isPromptNotFound = error.message && /Prompt with id \d+ not found/i.test(error.message);
+      const isSeedPaperNotFound = error.message && (/Seed paper (?:with id )?\d* ?not found/i.test(error.message) || /Seed paper .* not found/i.test(error.message));
+      if (!isPromptNotFound && !isSeedPaperNotFound) {
+        console.error('API request failed:', error);
+      }
       throw error;
     }
   }
@@ -299,6 +303,9 @@ class ApiService {
     }
     if (options.prompt_content != null && options.prompt_content.trim() !== '') {
       formData.append('prompt_content', options.prompt_content.trim());
+    }
+    if (options.prompt_version != null && String(options.prompt_version).trim() !== '') {
+      formData.append('prompt_version', String(options.prompt_version).trim());
     }
     return this.request('/api/executions/import', {
       method: 'POST',
