@@ -175,6 +175,7 @@ const ConfigurationPanel = ({
             {filteredPrompts.map(prompt => (
               <option key={prompt.id} value={prompt.id}>
                 {prompt.file_path}
+                {prompt.version ? ` (${prompt.version})` : ''}
               </option>
             ))}
           </select>
@@ -188,6 +189,11 @@ const ConfigurationPanel = ({
             </button>
           </div>
           
+          {selectedPrompt?.version && (
+            <div className="mt-2">
+              <span className="badge bg-secondary">Version: {selectedPrompt.version}</span>
+            </div>
+          )}
           {/* Prompt Content Display */}
           {selectedPrompt?.content && (
             <div className="mt-2">

@@ -128,11 +128,14 @@ class ApiService {
     return this.request('/api/prompts');
   }
 
-  async addPrompt(file, seedPaperId = null) {
+  async addPrompt(file, seedPaperId = null, version = null) {
     const formData = new FormData();
     formData.append('file', file);
     if (seedPaperId) {
       formData.append('seed_paper_id', seedPaperId);
+    }
+    if (version != null && String(version).trim() !== '') {
+      formData.append('version', String(version).trim());
     }
     
     return this.request('/api/prompts', {
@@ -273,6 +276,35 @@ class ApiService {
 
   async getExecutionComparisonResults(executionId) {
     return this.request(`/api/executions/${executionId}/comparison-results`);
+  }
+
+  /**
+   * Import execution from uploaded file (JSON or BibTeX).
+   * Filename must follow: systemName_seedpaperID_promptID_promptversion_YYMMDD_HHMMSS_comment.json|.bib
+   * Options (when server returns missing_data): seed_paper_id, seed_paper_content (BibTeX),
+   *   prompt_id, prompt_content so the server can create missing records and continue.
+   * Returns { status: 'success', insertion_report, ... } or { status: 'missing_data', requires_seed_paper?, requires_prompt?, message, existing_seed_papers?, existing_prompts?, ... }.
+   */
+  async importExecutionFromFile(file, options = {}) {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (options.seed_paper_id != null) {
+      formData.append('seed_paper_id', String(options.seed_paper_id));
+    }
+    if (options.seed_paper_content != null && options.seed_paper_content.trim() !== '') {
+      formData.append('seed_paper_content', options.seed_paper_content.trim());
+    }
+    if (options.prompt_id != null) {
+      formData.append('prompt_id', String(options.prompt_id));
+    }
+    if (options.prompt_content != null && options.prompt_content.trim() !== '') {
+      formData.append('prompt_content', options.prompt_content.trim());
+    }
+    return this.request('/api/executions/import', {
+      method: 'POST',
+      headers: {}, // Let browser set Content-Type for FormData (multipart/form-data)
+      body: formData,
+    });
   }
 
   // Literature Management

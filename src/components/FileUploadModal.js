@@ -1,8 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 const FileUploadModal = ({ show, type, onClose, onUpload, loading }) => {
   const [file, setFile] = useState(null);
+  const [version, setVersion] = useState('');
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!show) {
+      setFile(null);
+      setVersion('');
+      setError('');
+    }
+  }, [show, type]);
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -40,7 +49,8 @@ const FileUploadModal = ({ show, type, onClose, onUpload, loading }) => {
       return;
     }
 
-    onUpload(type, file);
+    const options = type === 'prompt' ? { version: version.trim() || null } : {};
+    onUpload(type, file, options);
   };
 
   const getModalTitle = () => {
@@ -107,6 +117,23 @@ const FileUploadModal = ({ show, type, onClose, onUpload, loading }) => {
               />
               <div className="form-text">{getFileDescription()}</div>
             </div>
+
+            {type === 'prompt' && (
+              <div className="mb-3">
+                <label htmlFor="promptVersion" className="form-label">Version (optional)</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  id="promptVersion"
+                  placeholder="e.g. v1"
+                  maxLength={50}
+                  value={version}
+                  onChange={(e) => setVersion(e.target.value)}
+                  disabled={loading}
+                />
+                <div className="form-text">Optional version label for this prompt (max 50 characters)</div>
+              </div>
+            )}
             
             {error && (
               <div className="alert alert-danger">

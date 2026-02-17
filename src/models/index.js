@@ -41,6 +41,7 @@ export const PromptResponse = {
   id: null,
   content: '',
   file_path: '',
+  version: null,  // string | null, e.g. "v1"
   seed_paper_id: null,
   created_at: null
 };

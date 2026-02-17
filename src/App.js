@@ -8,6 +8,7 @@ import FileUploadModal from './components/FileUploadModal';
 import PublicationVerifier from './components/PublicationVerifier';
 import ReferenceComparer from './components/ReferenceComparer';
 import EvaluationMetricsGuide from './components/EvaluationMetrics';
+import ImportExecution from './components/import/ImportExecution';
 import Footer from './components/Footer';
 import apiService from './services/api';
 import { 
@@ -75,6 +76,13 @@ function Navigation() {
               onClick={handleNavClick}
             >
               <i className="fas fa-chart-line"></i> Metrics
+            </Link>
+            <Link 
+              className={`nav-link ${location.pathname === '/import-execution' ? 'active' : ''}`} 
+              to="/import-execution"
+              onClick={handleNavClick}
+            >
+              <i className="fas fa-file-import"></i> Import Execution
             </Link>
             <a className="nav-link" href="/api/docs" target="_blank" rel="noopener noreferrer" onClick={handleNavClick}>
               <i className="fas fa-book"></i> API Docs
@@ -174,7 +182,7 @@ function MainDashboard() {
     }
   };
 
-  const handleFileUpload = async (type, file) => {
+  const handleFileUpload = async (type, file, options = {}) => {
     try {
       setLoading(true);
       
@@ -194,7 +202,7 @@ function MainDashboard() {
           if (!selectedSeedPaper) {
             throw new Error('Please select a seed paper first');
           }
-          await apiService.addPrompt(file, selectedSeedPaper.id);
+          await apiService.addPrompt(file, selectedSeedPaper.id, options.version);
           await loadInitialData();
           break;
         default:
@@ -471,6 +479,7 @@ function App() {
             <Route path="/publication-verifier" element={<PublicationVerifier />} />
             <Route path="/reference-comparer" element={<ReferenceComparer />} />
             <Route path="/evaluation-metrics" element={<EvaluationMetricsGuide />} />
+            <Route path="/import-execution" element={<ImportExecution />} />
           </Routes>
         </main>
         <Footer />

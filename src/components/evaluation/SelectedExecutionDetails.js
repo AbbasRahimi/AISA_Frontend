@@ -20,6 +20,9 @@ const SelectedExecutionDetails = ({ selectedExecution, calculatingMetrics, onCal
   const promptId = selectedExecution.prompt?.id || 
                   selectedExecution.prompt_id || 
                   'N/A';
+  const promptVersion = selectedExecution.prompt_version ?? 
+                       selectedExecution.prompt?.version ?? 
+                       'N/A';
   const llmName = selectedExecution.llm_system?.name || 
                  selectedExecution.llm_provider || 
                  'N/A';
@@ -45,6 +48,7 @@ const SelectedExecutionDetails = ({ selectedExecution, calculatingMetrics, onCal
             <p><strong>Seed Paper ID:</strong> {seedPaperId}</p>
             <p><strong>Seed Paper Title:</strong> {seedPaperTitle}</p>
             <p><strong>Prompt ID:</strong> {promptId}</p>
+            <p><strong>Prompt Version:</strong> {promptVersion}</p>
             <p><strong>LLM Name:</strong> {llmName}</p>
             <p><strong>LLM Version:</strong> {llmVersion}</p>
           </div>

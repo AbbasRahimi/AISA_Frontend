@@ -106,6 +106,7 @@ const ExecutionsTable = ({ executions, loading, currentPage, setCurrentPage, ite
               <th style={{ width: '50px' }}>Select</th>
               <th>Seed Paper Title</th>
               <th>Prompt ID</th>
+              <th>Prompt Version</th>
               <th>LLM Name</th>
               <th>LLM Version</th>
               <th>Execution Date</th>
@@ -124,6 +125,10 @@ const ExecutionsTable = ({ executions, loading, currentPage, setCurrentPage, ite
                               execution.prompt_id || 
                               execution.promptId || 
                               'N/A';
+              
+              const promptVersion = execution.prompt_version ?? 
+                                   execution.prompt?.version ?? 
+                                   '—';
               
               // Handle nested llm_system object
               const llmName = execution.llm_system?.name || 
@@ -164,6 +169,7 @@ const ExecutionsTable = ({ executions, loading, currentPage, setCurrentPage, ite
                     {seedPaperTitle}
                   </td>
                   <td>{promptId}</td>
+                  <td>{promptVersion}</td>
                   <td>{llmName}</td>
                   <td>{llmVersion}</td>
                   <td>{formatDate(executionDate)}</td>
