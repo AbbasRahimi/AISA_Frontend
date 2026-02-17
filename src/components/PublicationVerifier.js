@@ -3,6 +3,7 @@ import apiService from '../services/api';
 import ConfigurationPanel from './verification/VerificationConfigPanel';
 import FileUploadSection from './verification/FileUploadSection';
 import ResultsDisplay from './verification/ResultsDisplay';
+import { downloadBlob } from '../utils';
 
 const PublicationVerifier = () => {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -44,7 +45,6 @@ const PublicationVerifier = () => {
       
       setVerificationResults(results);
     } catch (error) {
-      console.error('Verification error:', error);
       setError('Error during verification: ' + error.message);
     } finally {
       setIsVerifying(false);
@@ -56,19 +56,10 @@ const PublicationVerifier = () => {
       alert('No results to export.');
       return;
     }
-
     try {
       const blob = await apiService.exportVerificationResults(verificationResults, 'text');
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `publication_verification_${new Date().toISOString().split('T')[0]}.txt`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      downloadBlob(blob, `publication_verification_${new Date().toISOString().split('T')[0]}.txt`);
     } catch (error) {
-      console.error('Export error:', error);
       setError('Error exporting results: ' + error.message);
     }
   };

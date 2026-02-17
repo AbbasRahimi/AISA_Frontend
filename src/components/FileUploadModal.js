@@ -1,9 +1,48 @@
 import React, { useState, useEffect } from 'react';
 
+/** Upload type configuration (Strategy / table-driven) to avoid repeated switch statements */
+const UPLOAD_TYPE_CONFIG = {
+  'seed-paper': {
+    validExtensions: ['bib'],
+    modalTitle: 'Add Seed Paper',
+    fileLabel: 'BibTeX File',
+    fileDescription: 'Select a BibTeX file containing the seed paper',
+    accept: '.bib',
+    hasVersion: false,
+  },
+  'ground-truth': {
+    validExtensions: ['bib', 'json'],
+    modalTitle: 'Add Ground Truth References',
+    fileLabel: 'BibTeX or JSON File',
+    fileDescription: 'Select a BibTeX or JSON file containing ground truth references',
+    accept: '.bib,.json',
+    hasVersion: false,
+  },
+  'prompt': {
+    validExtensions: ['txt'],
+    modalTitle: 'Add Prompt',
+    fileLabel: 'Text File',
+    fileDescription: 'Select a text file containing the prompt',
+    accept: '.txt',
+    hasVersion: true,
+  },
+};
+
+const DEFAULT_CONFIG = {
+  validExtensions: [],
+  modalTitle: 'Upload File',
+  fileLabel: 'File',
+  fileDescription: 'Select a file to upload',
+  accept: '*',
+  hasVersion: false,
+};
+
 const FileUploadModal = ({ show, type, onClose, onUpload, loading }) => {
   const [file, setFile] = useState(null);
   const [version, setVersion] = useState('');
   const [error, setError] = useState('');
+
+  const config = UPLOAD_TYPE_CONFIG[type] || DEFAULT_CONFIG;
 
   useEffect(() => {
     if (!show) {
@@ -24,69 +63,17 @@ const FileUploadModal = ({ show, type, onClose, onUpload, loading }) => {
       setError('Please select a file');
       return;
     }
-
-    // Validate file type based on upload type
-    const fileExtension = file.name.split('.').pop().toLowerCase();
-    let validExtensions = [];
-
-    switch (type) {
-      case 'seed-paper':
-        validExtensions = ['bib'];
-        break;
-      case 'ground-truth':
-        validExtensions = ['bib', 'json'];
-        break;
-      case 'prompt':
-        validExtensions = ['txt'];
-        break;
-      default:
-        setError('Unknown file type');
-        return;
-    }
-
-    if (!validExtensions.includes(fileExtension)) {
-      setError(`Invalid file type. Please select a ${validExtensions.join(' or ')} file.`);
+    if (!config.validExtensions.length) {
+      setError('Unknown file type');
       return;
     }
-
-    const options = type === 'prompt' ? { version: version.trim() || null } : {};
+    const fileExtension = file.name.split('.').pop().toLowerCase();
+    if (!config.validExtensions.includes(fileExtension)) {
+      setError(`Invalid file type. Please select a ${config.validExtensions.join(' or ')} file.`);
+      return;
+    }
+    const options = config.hasVersion ? { version: version.trim() || null } : {};
     onUpload(type, file, options);
-  };
-
-  const getModalTitle = () => {
-    switch (type) {
-      case 'seed-paper': return 'Add Seed Paper';
-      case 'ground-truth': return 'Add Ground Truth References';
-      case 'prompt': return 'Add Prompt';
-      default: return 'Upload File';
-    }
-  };
-
-  const getFileLabel = () => {
-    switch (type) {
-      case 'seed-paper': return 'BibTeX File';
-      case 'ground-truth': return 'BibTeX or JSON File';
-      case 'prompt': return 'Text File';
-      default: return 'File';
-    }
-  };
-
-  const getFileDescription = () => {
-    switch (type) {
-      case 'seed-paper': return 'Select a BibTeX file containing the seed paper';
-      case 'ground-truth': return 'Select a BibTeX or JSON file containing ground truth references';
-      case 'prompt': return 'Select a text file containing the prompt';
-      default: return 'Select a file to upload';
-    }
-  };
-
-  const getAcceptedTypes = () => {
-    switch (type) {
-      case 'seed-paper': return '.bib';
-      case 'ground-truth': return '.bib,.json';
-      case 'prompt': return '.txt';
-      default: return '*';
-    }
   };
 
   if (!show) return null;
@@ -96,7 +83,7 @@ const FileUploadModal = ({ show, type, onClose, onUpload, loading }) => {
       <div className="modal-dialog">
         <div className="modal-content">
           <div className="modal-header">
-            <h5 className="modal-title">{getModalTitle()}</h5>
+            <h5 className="modal-title">{config.modalTitle}</h5>
             <button
               type="button"
               className="btn-close"
@@ -106,19 +93,19 @@ const FileUploadModal = ({ show, type, onClose, onUpload, loading }) => {
           </div>
           <div className="modal-body">
             <div className="mb-3">
-              <label htmlFor="fileInput" className="form-label">{getFileLabel()}</label>
+              <label htmlFor="fileInput" className="form-label">{config.fileLabel}</label>
               <input
                 type="file"
                 className="form-control"
                 id="fileInput"
-                accept={getAcceptedTypes()}
+                accept={config.accept}
                 onChange={handleFileChange}
                 disabled={loading}
               />
-              <div className="form-text">{getFileDescription()}</div>
+              <div className="form-text">{config.fileDescription}</div>
             </div>
 
-            {type === 'prompt' && (
+            {config.hasVersion && (
               <div className="mb-3">
                 <label htmlFor="promptVersion" className="form-label">Version (optional)</label>
                 <input

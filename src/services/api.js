@@ -7,6 +7,18 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || (
     : `${window.location.protocol}//${window.location.hostname}:8000` // Use server IP/hostname in development
 );
 
+/**
+ * Builds query string from key-value params (skips null/undefined).
+ * @param {Record<string, string|number|boolean|null|undefined>} params
+ * @returns {string} e.g. "llm_system_id=1&status=completed"
+ */
+function buildQueryParams(params) {
+  const pairs = Object.entries(params)
+    .filter(([, v]) => v != null && v !== '')
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
+  return pairs.length ? '?' + pairs.join('&') : '';
+}
+
 class ApiService {
   constructor() {
     this.baseURL = API_BASE_URL;
@@ -51,6 +63,10 @@ class ApiService {
           errorMessage = `HTTP error! status: ${response.status}`;
         }
         throw new Error(errorMessage);
+      }
+
+      if (options.responseType === 'blob') {
+        return await response.blob();
       }
 
       // Handle empty responses
@@ -193,19 +209,11 @@ class ApiService {
   }
 
   async exportVerificationResults(results, format = 'text') {
-    const response = await fetch(`${this.baseURL}/api/publication-verifier/export?format=${format}`, {
+    return this.request(`/api/publication-verifier/export?format=${format}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({ results }),
+      responseType: 'blob',
     });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    return await response.blob();
   }
 
   async getPublicationVerifierHealth() {
@@ -230,44 +238,23 @@ class ApiService {
   }
 
   async exportComparisonResults(results, format = 'json') {
-    const response = await fetch(`${this.baseURL}/api/reference-comparer/export?format=${format}`, {
+    return this.request(`/api/reference-comparer/export?format=${format}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({ results }),
+      responseType: 'blob',
     });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    return await response.blob();
   }
 
   // Execution Management
   async getExecutions(llmSystemId = null, seedPaperId = null, promptId = null, status = null, limit = null) {
-    let url = '/api/executions';
-    const params = [];
-    if (llmSystemId) {
-      params.push(`llm_system_id=${llmSystemId}`);
-    }
-    if (seedPaperId) {
-      params.push(`seed_paper_id=${seedPaperId}`);
-    }
-    if (promptId) {
-      params.push(`prompt_id=${promptId}`);
-    }
-    if (status) {
-      params.push(`status=${encodeURIComponent(status)}`);
-    }
-    if (limit) {
-      params.push(`limit=${limit}`);
-    }
-    if (params.length > 0) {
-      url += '?' + params.join('&');
-    }
-    return this.request(url);
+    const query = buildQueryParams({
+      llm_system_id: llmSystemId,
+      seed_paper_id: seedPaperId,
+      prompt_id: promptId,
+      status,
+      limit,
+    });
+    return this.request(`/api/executions${query}`);
   }
 
   async getExecutionDetails(executionId) {
@@ -358,18 +345,8 @@ class ApiService {
 
   // LLM Systems
   async getLLMSystems(name = null, version = null) {
-    let url = '/api/llm-systems';
-    const params = [];
-    if (name) {
-      params.push(`name=${encodeURIComponent(name)}`);
-    }
-    if (version) {
-      params.push(`version=${encodeURIComponent(version)}`);
-    }
-    if (params.length > 0) {
-      url += '?' + params.join('&');
-    }
-    return this.request(url);
+    const query = buildQueryParams({ name, version });
+    return this.request(`/api/llm-systems${query}`);
   }
 
   async getLLMSystemById(llmSystemId) {
@@ -389,8 +366,6 @@ class ApiService {
     params.append('include_partial', includePartial);
     
     const url = `/api/evaluation/batch/${seedPaperId}?${params.toString()}`;
-    
-    console.log('[API] Batch evaluation URL:', url);
     return this.request(url);
   }
 
@@ -403,8 +378,6 @@ class ApiService {
     params.append('include_partial', includePartial);
     
     const url = `/api/evaluation/compare-llms/${seedPaperId}?${params.toString()}`;
-    
-    console.log('[API] Compare LLMs URL:', url);
     return this.request(url);
   }
 

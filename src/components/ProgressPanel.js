@@ -1,30 +1,9 @@
 import React from 'react';
 import { ExecutionStatus } from '../models';
+import { formatTimeAgo, getStatusColor } from '../utils';
 
 const ProgressPanel = ({ executionStatus, executionId, workflowProgress }) => {
-  const getStatusColor = (status) => {
-    switch (status) {
-      case ExecutionStatus.PENDING: return 'secondary';
-      case ExecutionStatus.RUNNING: return 'primary';
-      case ExecutionStatus.COMPLETED: return 'success';
-      case ExecutionStatus.FAILED: return 'danger';
-      default: return 'secondary';
-    }
-  };
-
-  const formatTimeAgo = (timestamp) => {
-    if (!timestamp) return '';
-    const now = new Date();
-    const time = new Date(timestamp);
-    const diffMs = now - time;
-    const diffSecs = Math.floor(diffMs / 1000);
-    
-    if (diffSecs < 60) return `${diffSecs}s ago`;
-    const diffMins = Math.floor(diffSecs / 60);
-    if (diffMins < 60) return `${diffMins}m ago`;
-    const diffHours = Math.floor(diffMins / 60);
-    return `${diffHours}h ago`;
-  };
+  const statusColor = getStatusColor(executionStatus?.status);
 
   return (
     <div className="card mb-3">
@@ -40,7 +19,7 @@ const ProgressPanel = ({ executionStatus, executionId, workflowProgress }) => {
         {/* Overall Progress Bar */}
         <div className="progress mb-3">
           <div
-            className={`progress-bar bg-${getStatusColor(executionStatus.status)}`}
+            className={`progress-bar bg-${statusColor}`}
             role="progressbar"
             style={{ width: `${executionStatus.progress}%` }}
           >
@@ -51,10 +30,8 @@ const ProgressPanel = ({ executionStatus, executionId, workflowProgress }) => {
         {/* Status Badge */}
         <div className="d-flex justify-content-between align-items-center mb-3">
           <div>
-            <span className={`badge bg-${getStatusColor(executionStatus.status)} me-2`}>
-              <i className={`fas fa-${getStatusColor(executionStatus.status) === 'success' ? 'check' : 
-                            getStatusColor(executionStatus.status) === 'danger' ? 'times' : 
-                            getStatusColor(executionStatus.status) === 'primary' ? 'spinner fa-spin' : 'clock'}`}></i> {executionStatus.status}
+            <span className={`badge bg-${statusColor} me-2`}>
+              <i className={`fas fa-${statusColor === 'success' ? 'check' : statusColor === 'danger' ? 'times' : statusColor === 'primary' ? 'spinner fa-spin' : 'clock'}`}></i> {executionStatus.status}
             </span>
             <span>{executionStatus.message}</span>
             {/* Show loading spinner when workflow is running but LLM response not yet received */}

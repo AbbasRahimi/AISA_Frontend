@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import './App.css';
 import ConfigurationPanel from './components/ConfigurationPanel';
@@ -12,11 +12,9 @@ import ImportExecution from './components/import/ImportExecution';
 import DatabaseView from './components/database/DatabaseView';
 import Footer from './components/Footer';
 import apiService from './services/api';
-import { 
-  createWorkflowRequest,
-  LLMProvider,
-  ExecutionStatus
-} from './models';
+import { createWorkflowRequest, LLMProvider } from './models';
+import { useExecutionPolling } from './hooks/useExecutionPolling';
+import { downloadBlob } from './utils';
 
 // Navigation Component
 function Navigation() {
@@ -120,16 +118,23 @@ function MainDashboard() {
   const [showModal, setShowModal] = useState({ type: null, isOpen: false });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  
-  // NEW: Progressive workflow state
   const [workflowProgress, setWorkflowProgress] = useState({
-    stage: null,  // 'pending', 'llm', 'verification', 'comparison', 'completed'
+    stage: null,
     llmPublications: null,
-    verificationResults: [],  // Progressive results
+    verificationResults: [],
     verificationProgress: { completed: 0, total: 0 },
     comparisonResults: [],
     comparisonProgress: { completed: 0, total: 0 },
-    lastUpdate: null
+    lastUpdate: null,
+  });
+  const pollCleanupRef = useRef(null);
+
+  const startPolling = useExecutionPolling({
+    onStatus: setExecutionStatus,
+    onProgress: setWorkflowProgress,
+    onResults: (results) => setResults(results),
+    onFailed: (msg) => setError('Workflow execution failed: ' + msg),
+    onPollError: () => setError('Failed to poll execution status'),
   });
 
   // Load initial data
@@ -185,7 +190,6 @@ function MainDashboard() {
       const references = await apiService.getGroundTruthReferences(seedPaperId);
       setGroundTruthReferences(references);
     } catch (error) {
-      console.error('Failed to load ground truth references:', error);
       setGroundTruthReferences([]);
     }
   };
@@ -252,11 +256,8 @@ function MainDashboard() {
 
       setExecutionId(response.execution_id);
       setExecutionStatus(response);
-      
-      // Start polling for status updates with a small initial delay to avoid race conditions
-      setTimeout(() => {
-        pollExecutionStatus(response.execution_id);
-      }, 800);
+      if (pollCleanupRef.current) pollCleanupRef.current();
+      pollCleanupRef.current = startPolling(response.execution_id);
     } catch (error) {
       // Handle gateway timeout specifically
       if (error.message && error.message.includes('Gateway timeout')) {
@@ -280,113 +281,18 @@ function MainDashboard() {
     }
   };
 
-  const pollExecutionStatus = async (execId) => {
-    const gracePeriodMs = 30000; // tolerate transient 404s for up to 30s
-    const startTime = Date.now();
-    const pollInterval = setInterval(async () => {
-      try {
-        const status = await apiService.getExecutionStatus(execId);
-        console.log('[App] Execution status received:', status);
-        console.log('[App] LLM response in status:', status.llm_response);
-        setExecutionStatus(status);
-        
-        // NEW: Update progressive results
-        setWorkflowProgress(prev => {
-          const newProgress = {
-            ...prev,
-            stage: status.current_stage || prev.stage,
-            lastUpdate: new Date().toISOString()
-          };
-          
-          // Update LLM publications if available
-          // Backend can return llm_response in multiple formats
-          if (status.llm_response) {
-            // If llm_response has publications array
-            if (status.llm_response.publications) {
-              newProgress.llmPublications = status.llm_response.publications;
-            } 
-            // If llm_response IS the publications array
-            else if (Array.isArray(status.llm_response)) {
-              newProgress.llmPublications = status.llm_response;
-            }
-            // If llm_response is an object with other structure, store the whole thing
-            else {
-              newProgress.llmPublications = status.llm_response;
-            }
-          }
-          
-          // Update verification progress
-          if (status.verification_progress) {
-            newProgress.verificationProgress = {
-              completed: status.verification_progress.completed || 0,
-              total: status.verification_progress.total || 0
-            };
-            
-            // Add new verification results
-            if (status.verification_progress.results) {
-              newProgress.verificationResults = status.verification_progress.results;
-            }
-          }
-          
-          // Update comparison progress
-          if (status.comparison_progress) {
-            newProgress.comparisonProgress = {
-              completed: status.comparison_progress.completed || 0,
-              total: status.comparison_progress.total || 0
-            };
-            
-            // Add new comparison results
-            if (status.comparison_progress.results) {
-              newProgress.comparisonResults = status.comparison_progress.results;
-            }
-          }
-          
-          return newProgress;
-        });
-        
-        if (status.status === ExecutionStatus.COMPLETED) {
-          clearInterval(pollInterval);
-          const results = await apiService.getExecutionResults(execId);
-          console.log('[App] Execution results received:', results);
-          setResults(results);
-          // Mark workflow as completed
-          setWorkflowProgress(prev => ({ ...prev, stage: 'completed' }));
-        } else if (status.status === ExecutionStatus.FAILED) {
-          clearInterval(pollInterval);
-          setError('Workflow execution failed: ' + (status.error || 'Unknown error'));
-        }
-      } catch (error) {
-        const msg = (error && error.message) ? error.message.toLowerCase() : '';
-        const looksLikeNotFound = msg.includes('execution not found') || msg.includes('status: 404');
-        const withinGrace = Date.now() - startTime < gracePeriodMs;
-        
-        if (looksLikeNotFound && withinGrace) {
-          // Backend may not have registered the execution yet; ignore and keep polling
-          return;
-        }
-
-        console.error('Failed to poll execution status:', error);
-        clearInterval(pollInterval);
-      }
-    }, 2000);
-  };
+  useEffect(() => {
+    return () => {
+      if (pollCleanupRef.current) pollCleanupRef.current();
+    };
+  }, []);
 
   const handleExportResults = async (format) => {
     if (!executionId) return;
-    
     try {
       const data = await apiService.exportResults(executionId, format);
-      
-      // Create download link
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `workflow-results-${executionId}.${format}`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      downloadBlob(blob, `workflow-results-${executionId}.${format}`);
     } catch (error) {
       setError('Failed to export results: ' + error.message);
     }

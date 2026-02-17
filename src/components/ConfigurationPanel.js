@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { LLMProvider } from '../models';
+import { TEXT_PREVIEW_WORD_COUNT } from '../utils';
 
 const ConfigurationPanel = ({
   email,
@@ -43,13 +44,11 @@ const ConfigurationPanel = ({
   const getTextPreview = (text, isExpanded) => {
     if (!text) return '';
     const words = text.trim().split(/\s+/);
-    const first20Words = words.slice(0, 20).join(' ');
-    
+    const preview = words.slice(0, TEXT_PREVIEW_WORD_COUNT).join(' ');
     if (!isExpanded) {
-      return first20Words + (words.length > 20 ? ' ...more' : '');
-    } else {
-      return text.trim() + ' ...show less';
+      return preview + (words.length > TEXT_PREVIEW_WORD_COUNT ? ' ...more' : '');
     }
+    return text.trim() + ' ...show less';
   };
 
   return (

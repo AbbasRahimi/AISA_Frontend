@@ -24,11 +24,7 @@ export const getStatusBadgeClass = (status) => {
 
 // Transform raw database results to the format expected by evaluation API
 export const transformVerificationResults = (rawResults) => {
-  console.log('Raw verification results structure:', rawResults);
-  console.log('Type:', typeof rawResults, 'Is Array:', Array.isArray(rawResults));
-  
   if (!rawResults) {
-    console.warn('No verification results provided');
     return {
       total_publications: 0,
       found_in_database: 0,
@@ -46,7 +42,6 @@ export const transformVerificationResults = (rawResults) => {
     } else if (rawResults.verification_results && Array.isArray(rawResults.verification_results)) {
       resultsArray = rawResults.verification_results;
     } else {
-      console.error('Unexpected verification results structure:', rawResults);
       return {
         total_publications: 0,
         found_in_database: 0,
@@ -57,7 +52,6 @@ export const transformVerificationResults = (rawResults) => {
   }
 
   if (resultsArray.length === 0) {
-    console.warn('Empty verification results array');
     return {
       total_publications: 0,
       found_in_database: 0,
@@ -65,9 +59,6 @@ export const transformVerificationResults = (rawResults) => {
       detailed_results: []
     };
   }
-
-  console.log('Processing', resultsArray.length, 'verification result records');
-  console.log('First result sample:', resultsArray[0]);
 
   // Check if data is already in literature format (each record is a literature item)
   // vs verification format (each record is a verification check per database per literature)
@@ -81,8 +72,6 @@ export const transformVerificationResults = (rawResults) => {
   let foundCount;
 
   if (isLiteratureFormat) {
-    // Data is already in literature format - each record is a publication
-    console.log('Data is in literature format (one record per publication)');
     detailedResults = resultsArray.map(result => ({
       literature_id: result.id || result.literature_id,
       title: result.title || '',
@@ -95,17 +84,12 @@ export const transformVerificationResults = (rawResults) => {
     }));
     foundCount = detailedResults.length; // All publications in this format are found
   } else {
-    // Data is in verification format - group by publication (literature_id)
-    console.log('Data is in verification format (multiple records per publication, one per database)');
     const publicationMap = {};
     resultsArray.forEach((result, index) => {
       // Handle different possible field names for literature ID
       const litId = result.literature_id || result.literatureId || result.publication_id || result.id;
       
-      if (!litId) {
-        console.warn(`Result at index ${index} has no literature_id:`, result);
-        return; // Skip this result
-      }
+      if (!litId) return;
 
       if (!publicationMap[litId]) {
         publicationMap[litId] = {
@@ -147,12 +131,6 @@ export const transformVerificationResults = (rawResults) => {
     foundCount = detailedResults.filter(pub => pub.found_in_database).length;
   }
 
-  console.log('Transformed results:', {
-    total_publications: detailedResults.length,
-    found_in_database: foundCount,
-    publications: detailedResults
-  });
-
   return {
     total_publications: detailedResults.length,
     found_in_database: foundCount,
@@ -162,11 +140,7 @@ export const transformVerificationResults = (rawResults) => {
 };
 
 export const transformComparisonResults = (rawResults) => {
-  console.log('Raw comparison results structure:', rawResults);
-  console.log('Type:', typeof rawResults, 'Is Array:', Array.isArray(rawResults));
-  
   if (!rawResults) {
-    console.warn('No comparison results provided');
     return {
       total_comparisons: 0,
       exact_matches: 0,
@@ -185,7 +159,6 @@ export const transformComparisonResults = (rawResults) => {
     } else if (rawResults.comparison_results && Array.isArray(rawResults.comparison_results)) {
       resultsArray = rawResults.comparison_results;
     } else {
-      console.error('Unexpected comparison results structure:', rawResults);
       return {
         total_comparisons: 0,
         exact_matches: 0,
@@ -197,7 +170,6 @@ export const transformComparisonResults = (rawResults) => {
   }
 
   if (resultsArray.length === 0) {
-    console.warn('Empty comparison results array');
     return {
       total_comparisons: 0,
       exact_matches: 0,
@@ -207,22 +179,12 @@ export const transformComparisonResults = (rawResults) => {
     };
   }
 
-  console.log('Processing', resultsArray.length, 'comparison result records');
-  console.log('First comparison result sample:', resultsArray[0]);
-
   const exactMatches = resultsArray.filter(r => 
     r.match_status === 'exact' || r.match_status === 'EXACT' || r.status === 'exact'
   ).length;
   const partialMatches = resultsArray.filter(r => 
     r.match_status === 'partial' || r.match_status === 'PARTIAL' || r.status === 'partial'
   ).length;
-
-  console.log('Comparison stats:', {
-    total: resultsArray.length,
-    exact: exactMatches,
-    partial: partialMatches,
-    no_match: resultsArray.length - exactMatches - partialMatches
-  });
 
   return {
     total_comparisons: resultsArray.length,
@@ -235,10 +197,6 @@ export const transformComparisonResults = (rawResults) => {
 
 // Calculate relevance metrics according to EVALUATION_METRICS_GUIDE.md
 export const calculateRelevanceMetrics = (execution, comparisonResults, groundTruthCount = 0) => {
-  console.log('Calculating relevance metrics for execution:', execution.id);
-  console.log('Comparison results data:', comparisonResults);
-  console.log('Ground truth count provided:', groundTruthCount);
-  
   const missingData = [];
   
   // Get total publications generated by LLM
@@ -263,12 +221,6 @@ export const calculateRelevanceMetrics = (execution, comparisonResults, groundTr
   const exactMatches = comparisonResults.exact_matches || 0;
   const partialMatches = comparisonResults.partial_matches || 0;
   const truePositives = exactMatches + partialMatches;
-  
-  console.log('Match counts:', {
-    exact: exactMatches,
-    partial: partialMatches,
-    truePositives
-  });
   
   // Calculate False Positives (LLM publications that don't match ground truth)
   // From guide: False Positives = Publications that don't match ground truth
@@ -301,14 +253,6 @@ export const calculateRelevanceMetrics = (execution, comparisonResults, groundTr
   // From guide: False Negatives = Ground truth publications the LLM missed
   const falseNegatives = totalGroundTruth - truePositives;
   
-  console.log('Confusion matrix:', {
-    truePositives,
-    falsePositives,
-    falseNegatives,
-    totalGroundTruth,
-    totalLLMPublications
-  });
-  
   // Calculate Precision = TP / (TP + FP)
   // From guide: "When the LLM suggests a paper, how likely is it to be relevant?"
   const precision = totalLLMPublications > 0 
@@ -326,12 +270,6 @@ export const calculateRelevanceMetrics = (execution, comparisonResults, groundTr
   const f1Score = (precision + recall) > 0 
     ? (2 * precision * recall) / (precision + recall) 
     : 0;
-  
-  console.log('Calculated metrics:', {
-    precision: (precision * 100).toFixed(2) + '%',
-    recall: (recall * 100).toFixed(2) + '%',
-    f1_score: (f1Score * 100).toFixed(2) + '%'
-  });
   
   // Check if we have all required data for a complete calculation
   const hasRequiredData = missingData.length === 0 && totalGroundTruth > 0;
