@@ -110,10 +110,13 @@ class ApiService {
     return this.request('/api/seed-papers');
   }
 
-  async addSeedPaper(file) {
+  async addSeedPaper(file, alias = null) {
     const formData = new FormData();
     formData.append('file', file);
-    
+    if (alias != null && String(alias).trim() !== '') {
+      formData.append('alias', String(alias).trim());
+    }
+
     return this.request('/api/seed-papers', {
       method: 'POST',
       headers: {}, // Let browser set Content-Type for FormData
@@ -148,7 +151,7 @@ class ApiService {
     return this.request('/api/prompts');
   }
 
-  async addPrompt(file, seedPaperId = null, version = null) {
+  async addPrompt(file, seedPaperId = null, version = null, alias = null) {
     const formData = new FormData();
     formData.append('file', file);
     if (seedPaperId) {
@@ -157,7 +160,10 @@ class ApiService {
     if (version != null && String(version).trim() !== '') {
       formData.append('version', String(version).trim());
     }
-    
+    if (alias != null && String(alias).trim() !== '') {
+      formData.append('alias', String(alias).trim());
+    }
+
     return this.request('/api/prompts', {
       method: 'POST',
       headers: {}, // Let browser set Content-Type for FormData
@@ -272,7 +278,7 @@ class ApiService {
   /**
    * Import execution from uploaded file (JSON or BibTeX).
    * Filename must follow: systemName_seedpaperID_promptID_promptversion_YYMMDD_HHMMSS_comment.json|.bib
-   * Options (when server returns missing_data): seed_paper_id, seed_paper_content (BibTeX),
+   * Options (when server returns missing_data): seed_paper_id, seed_paper_content (BibTeX), seed_paper_alias,
    *   prompt_id, prompt_content so the server can create missing records and continue.
    * Returns { status: 'success', insertion_report, ... } or { status: 'missing_data', requires_seed_paper?, requires_prompt?, message, existing_seed_papers?, existing_prompts?, ... }.
    */
@@ -285,6 +291,9 @@ class ApiService {
     if (options.seed_paper_content != null && options.seed_paper_content.trim() !== '') {
       formData.append('seed_paper_content', options.seed_paper_content.trim());
     }
+    if (options.seed_paper_alias != null && options.seed_paper_alias.trim() !== '') {
+      formData.append('seed_paper_alias', options.seed_paper_alias.trim());
+    }
     if (options.prompt_id != null) {
       formData.append('prompt_id', String(options.prompt_id));
     }
@@ -293,6 +302,9 @@ class ApiService {
     }
     if (options.prompt_version != null && String(options.prompt_version).trim() !== '') {
       formData.append('prompt_version', String(options.prompt_version).trim());
+    }
+    if (options.prompt_alias != null && options.prompt_alias.trim() !== '') {
+      formData.append('prompt_alias', options.prompt_alias.trim());
     }
     return this.request('/api/executions/import', {
       method: 'POST',

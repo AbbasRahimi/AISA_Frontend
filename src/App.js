@@ -200,7 +200,7 @@ function MainDashboard() {
       
       switch (type) {
         case 'seed-paper':
-          await apiService.addSeedPaper(file);
+          await apiService.addSeedPaper(file, options.alias);
           await loadInitialData();
           break;
         case 'ground-truth':
@@ -214,7 +214,7 @@ function MainDashboard() {
           if (!selectedSeedPaper) {
             throw new Error('Please select a seed paper first');
           }
-          await apiService.addPrompt(file, selectedSeedPaper.id, options.version);
+          await apiService.addPrompt(file, selectedSeedPaper.id, options.version, options.alias);
           await loadInitialData();
           break;
         default:

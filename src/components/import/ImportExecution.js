@@ -2,8 +2,63 @@ import React, { useState, useRef, useEffect } from 'react';
 import apiService from '../../services/api';
 
 const ACCEPT_EXTENSIONS = '.json,.bib';
-const FILENAME_PATTERN = 'systemName_seedpaperID_promptID_promptversion_YYMMDD_HHMMSS_comment';
+const FILENAME_PATTERN = 'systemName_seedpaperAlias_promptID_promptversion_YYMMDD_HHMMSS_comment';
 const EXAMPLE_FILENAME = 'chatgpt.gpt4_test1_prompt1_v3_250729_131049_firstresults.json';
+
+/**
+ * Parses execution filename: systemName_seedpaperAlias_promptID_promptversion_YYMMDD_HHMMSS_comment
+ * Returns { system_name, seed_paper_alias, prompt_id, prompt_version, date_str, time_str, comment } or null.
+ */
+function parseExecutionFilename(filename) {
+  if (!filename || typeof filename !== 'string') return null;
+  const base = filename.replace(/\.(json|bib)$/i, '').trim();
+  const parts = base.split('_');
+  if (parts.length < 6) return null;
+  const last = parts[parts.length - 1];
+  const isTime = /^\d{6}$/.test(last);
+  let systemName, seed_paper_alias, prompt_id, prompt_version, date_str, time_str, comment;
+  if (isTime) {
+    time_str = parts[parts.length - 1];
+    date_str = parts[parts.length - 2];
+    prompt_version = parts[parts.length - 3];
+    prompt_id = parts[parts.length - 4];
+    seed_paper_alias = parts[parts.length - 5];
+    systemName = parts.slice(0, parts.length - 5).join('_');
+    comment = '';
+  } else {
+    comment = parts[parts.length - 1];
+    time_str = parts[parts.length - 2];
+    date_str = parts[parts.length - 3];
+    prompt_version = parts[parts.length - 4];
+    prompt_id = parts[parts.length - 5];
+    seed_paper_alias = parts[parts.length - 6];
+    systemName = parts.slice(0, parts.length - 6).join('_');
+  }
+  if (!/^\d{6}$/.test(date_str) || !/^\d{6}$/.test(time_str)) return null;
+  return { system_name: systemName || '', seed_paper_alias, prompt_id, prompt_version, date_str, time_str, comment: comment || '' };
+}
+
+/**
+ * Formats parsed date_str (YYMMDD) and time_str (HHMMSS) for display.
+ * @returns {string} e.g. "25 Nov 2025, 19:43:31" or raw "date_str / time_str" if invalid
+ */
+function formatParsedDateTime(date_str, time_str) {
+  if (!date_str || !time_str || date_str.length !== 6 || time_str.length !== 6) {
+    return [date_str, time_str].filter(Boolean).join(' / ') || '—';
+  }
+  const yy = parseInt(date_str.slice(0, 2), 10);
+  const mm = parseInt(date_str.slice(2, 4), 10) - 1; // 0-indexed
+  const dd = parseInt(date_str.slice(4, 6), 10);
+  const hh = parseInt(time_str.slice(0, 2), 10);
+  const min = time_str.slice(2, 4);
+  const ss = time_str.slice(4, 6);
+  const year = yy < 100 ? 2000 + yy : yy;
+  const date = new Date(year, mm, dd);
+  if (isNaN(date.getTime())) return `${date_str} / ${time_str}`;
+  const dateFormatted = `${String(dd).padStart(2, '0')}/${String(mm + 1).padStart(2, '0')}/${year}`;
+  const timeFormatted = `${String(hh).padStart(2, '0')}:${min}:${ss}`;
+  return `${dateFormatted}, ${timeFormatted}`;
+}
 
 function InsertionReport({ report, fileName, createdAt }) {
   const [showItems, setShowItems] = useState(false);
@@ -128,6 +183,8 @@ function MissingDataCard({
   setSeedPaperContent,
   seedPaperFile,
   setSeedPaperFile,
+  seedPaperAlias,
+  setSeedPaperAlias,
   seedPaperFileInputRef,
   selectedPromptId,
   setSelectedPromptId,
@@ -135,6 +192,8 @@ function MissingDataCard({
   setPromptContent,
   promptVersion,
   setPromptVersion,
+  promptAlias,
+  setPromptAlias,
   promptFile,
   setPromptFile,
   promptFileInputRef,
@@ -160,11 +219,13 @@ function MissingDataCard({
   const hasPromptContent = (promptContent != null && promptContent.trim() !== '') || promptFile;
 
   const hasSeedPaperInput = selectedSeedPaperId !== '' || (seedPaperContent != null && seedPaperContent.trim() !== '') || seedPaperFile;
+  const hasValidAliasWhenAddingNew = !isAddingNewSeedPaper || (seedPaperAlias != null && seedPaperAlias.trim() !== '');
+  const hasValidPromptAliasWhenCreatingNew = !isCreatingNewPrompt || (promptAlias != null && promptAlias.trim() !== '');
   const canContinue =
-    (!requires_seed_paper || hasSeedPaperInput) &&
+    (!requires_seed_paper || (hasSeedPaperInput && hasValidAliasWhenAddingNew)) &&
     (!requires_prompt ||
       selectedPromptId !== '' ||
-      (hasPromptContent && promptVersion != null && promptVersion.trim() !== '' && (selectedSeedPaperId !== '' || (requires_seed_paper && seedPaperContent?.trim()))));
+      (hasPromptContent && promptVersion != null && promptVersion.trim() !== '' && hasValidPromptAliasWhenCreatingNew && (selectedSeedPaperId !== '' || (requires_seed_paper && seedPaperContent?.trim()))));
 
   return (
     <div className="card mb-3 border-warning">
@@ -212,6 +273,16 @@ function MissingDataCard({
             <label className="form-label small text-muted">
               {existing_seed_papers.length > 0 ? 'Or add a new seed paper (like on Main Dashboard)' : 'Add a new seed paper (like on Main Dashboard)'}
             </label>
+            <label className="form-label small text-muted">Alias (required for new seed paper)</label>
+            <input
+              type="text"
+              className="form-control form-control-sm mb-2"
+              placeholder="e.g. test1"
+              maxLength={100}
+              value={seedPaperAlias ?? ''}
+              onChange={(e) => setSeedPaperAlias(e.target.value)}
+              disabled={loading}
+            />
             <div className="mb-2">
               <button
                 type="button"
@@ -259,8 +330,8 @@ function MissingDataCard({
               }}
               disabled={loading}
             />
-            {seed_paper_identifier && (
-              <small className="text-muted">Expected identifier from filename: {seed_paper_identifier}</small>
+            {(seed_paper_identifier != null && seed_paper_identifier !== '') && (
+              <small className="text-muted">Expected alias from filename: {seed_paper_identifier}</small>
             )}
           </div>
         )}
@@ -319,6 +390,16 @@ function MissingDataCard({
             {requires_seed_paper && (
               <p className="small text-muted mb-2">Use the seed paper selected above for the new prompt.</p>
             )}
+            <label className="form-label small text-muted">Prompt alias (required for new prompt)</label>
+            <input
+              type="text"
+              className="form-control mb-2"
+              placeholder="e.g. prompt1"
+              maxLength={100}
+              value={promptAlias ?? ''}
+              onChange={(e) => setPromptAlias(e.target.value)}
+              disabled={loading}
+            />
             <label className="form-label small text-muted">Prompt version (required for new prompt)</label>
             <input
               type="text"
@@ -408,17 +489,182 @@ export default function ImportExecution() {
   const [missingDataResponse, setMissingDataResponse] = useState(null);
   const [selectedSeedPaperId, setSelectedSeedPaperId] = useState('');
   const [seedPaperContent, setSeedPaperContent] = useState('');
+  const [seedPaperAlias, setSeedPaperAlias] = useState('');
+  const [seedPaperFile, setSeedPaperFile] = useState(null);
   const [selectedPromptId, setSelectedPromptId] = useState('');
   const [promptContent, setPromptContent] = useState('');
   const [promptVersion, setPromptVersion] = useState('');
+  const [promptAlias, setPromptAlias] = useState('');
   const [promptFile, setPromptFile] = useState(null);
-  const [seedPaperFile, setSeedPaperFile] = useState(null);
   const [availableSeedPapers, setAvailableSeedPapers] = useState([]);
   const fileInputRef = useRef(null);
   const promptFileInputRef = useRef(null);
   const seedPaperFileInputRef = useRef(null);
 
+  // Parsed metadata from filename (set when file is selected)
+  const [parsedMeta, setParsedMeta] = useState(null);
+  const [checkLoading, setCheckLoading] = useState(false);
+  const [matchedSeedPaper, setMatchedSeedPaper] = useState(null);
+  const [matchedPrompt, setMatchedPrompt] = useState(null);
+  const [checkTrigger, setCheckTrigger] = useState(0);
+
   const acceptExtensions = ACCEPT_EXTENSIONS;
+
+  // When file changes, parse filename and reset DB check
+  useEffect(() => {
+    if (!file) {
+      setParsedMeta(null);
+      setMatchedSeedPaper(null);
+      setMatchedPrompt(null);
+      return;
+    }
+    const meta = parseExecutionFilename(file.name);
+    setParsedMeta(meta);
+    setMatchedSeedPaper(null);
+    setMatchedPrompt(null);
+  }, [file]);
+
+  // Fetch seed papers and prompts and check existence when we have parsed meta (or after add seed paper/prompt)
+  useEffect(() => {
+    if (!parsedMeta) return;
+    let cancelled = false;
+    setCheckLoading(true);
+    Promise.all([apiService.getSeedPapers(), apiService.getPrompts()])
+      .then(([seedPapers, prompts]) => {
+        if (cancelled) return;
+        const spList = Array.isArray(seedPapers) ? seedPapers : [];
+        const prList = Array.isArray(prompts) ? prompts : [];
+
+        const { seed_paper_alias } = parsedMeta;
+        const aliasTrimmed = String(seed_paper_alias || '').trim();
+        const seedPaper = spList.find(
+          (sp) =>
+            String(sp.alias || '').trim() === aliasTrimmed ||
+            String(sp.bibtex_key || '').trim() === aliasTrimmed ||
+            String(sp.id) === aliasTrimmed
+        );
+        setMatchedSeedPaper(seedPaper || null);
+
+        if (!seedPaper) {
+          setMatchedPrompt(null);
+          return;
+        }
+        const promptsForSeed = prList.filter((p) => p.seed_paper_id === seedPaper.id);
+        const byVersion = parsedMeta.prompt_version
+          ? promptsForSeed.find((p) => (p.version || '').toLowerCase() === (parsedMeta.prompt_version || '').toLowerCase())
+          : null;
+        setMatchedPrompt(byVersion || promptsForSeed[0] || null);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setMatchedSeedPaper(null);
+          setMatchedPrompt(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCheckLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [parsedMeta, checkTrigger]);
+
+  const runExistenceCheck = () => setCheckTrigger((t) => t + 1);
+
+  // Pre-check "add to DB" forms (add seed paper / prompt before import)
+  const [addSeedPaperPaste, setAddSeedPaperPaste] = useState('');
+  const [addSeedPaperFile, setAddSeedPaperFile] = useState(null);
+  const [addSeedPaperAlias, setAddSeedPaperAlias] = useState('');
+  const [addPromptVersion, setAddPromptVersion] = useState('');
+  const [addPromptAlias, setAddPromptAlias] = useState('');
+  const [addPromptContent, setAddPromptContent] = useState('');
+  const [addPromptFile, setAddPromptFile] = useState(null);
+  const [addSeedPaperLoading, setAddSeedPaperLoading] = useState(false);
+  const [addPromptLoading, setAddPromptLoading] = useState(false);
+  const addSeedPaperInputRef = useRef(null);
+  const addPromptFileInputRef = useRef(null);
+
+  // Pre-fill alias from filename when file is selected; clear when no parsed meta
+  useEffect(() => {
+    if (parsedMeta?.seed_paper_alias) {
+      setAddSeedPaperAlias(parsedMeta.seed_paper_alias);
+    } else {
+      setAddSeedPaperAlias('');
+    }
+  }, [parsedMeta?.seed_paper_alias]);
+
+  // Pre-fill prompt alias from filename when file is selected
+  useEffect(() => {
+    if (parsedMeta?.prompt_id) {
+      setAddPromptAlias(parsedMeta.prompt_id);
+    } else {
+      setAddPromptAlias('');
+    }
+  }, [parsedMeta?.prompt_id]);
+
+  const handleAddSeedPaperToDb = async () => {
+    const fileToSend = addSeedPaperFile || (addSeedPaperPaste.trim() ? new File([addSeedPaperPaste.trim()], 'seed.bib', { type: 'text/plain' }) : null);
+    if (!fileToSend) {
+      setError('Provide a BibTeX file or paste BibTeX content.');
+      return;
+    }
+    const aliasTrimmed = addSeedPaperAlias.trim();
+    if (!aliasTrimmed) {
+      setError('Enter an alias for the seed paper (e.g. the value from the filename).');
+      return;
+    }
+    setAddSeedPaperLoading(true);
+    setError(null);
+    try {
+      await apiService.addSeedPaper(fileToSend, aliasTrimmed);
+      setAddSeedPaperPaste('');
+      setAddSeedPaperFile(null);
+      setAddSeedPaperAlias('');
+      if (addSeedPaperInputRef.current) addSeedPaperInputRef.current.value = '';
+      runExistenceCheck();
+    } catch (err) {
+      setError('Failed to add seed paper: ' + (err?.message || ''));
+    } finally {
+      setAddSeedPaperLoading(false);
+    }
+  };
+
+  const handleAddPromptToDb = async () => {
+    if (!matchedSeedPaper) return;
+    const version = addPromptVersion.trim();
+    if (!version) {
+      setError('Enter a prompt version (e.g. v1).');
+      return;
+    }
+    const aliasTrimmed = addPromptAlias.trim();
+    if (!aliasTrimmed) {
+      setError('Enter an alias for the prompt (e.g. the value from the filename).');
+      return;
+    }
+    let contentFile = addPromptFile;
+    if (!contentFile && addPromptContent.trim()) {
+      contentFile = new File([addPromptContent.trim()], 'prompt.txt', { type: 'text/plain' });
+    }
+    if (!contentFile) {
+      setError('Provide prompt content (paste text or upload a .txt file).');
+      return;
+    }
+    setAddPromptLoading(true);
+    setError(null);
+    try {
+      await apiService.addPrompt(contentFile, matchedSeedPaper.id, version, aliasTrimmed);
+      setAddPromptVersion('');
+      setAddPromptAlias('');
+      setAddPromptContent('');
+      setAddPromptFile(null);
+      if (addPromptFileInputRef.current) addPromptFileInputRef.current.value = '';
+      runExistenceCheck();
+    } catch (err) {
+      setError('Failed to add prompt: ' + (err?.message || ''));
+    } finally {
+      setAddPromptLoading(false);
+    }
+  };
+
+  const canAddToDb = file && parsedMeta && !checkLoading && matchedSeedPaper && matchedPrompt && !loading && !missingDataResponse;
 
   // Load seed papers when we need to show prompt form (so user can select seed paper for new prompt)
   useEffect(() => {
@@ -437,14 +683,31 @@ export default function ImportExecution() {
     return () => { cancelled = true; };
   }, [missingDataResponse?.requires_prompt, missingDataResponse?.existing_seed_papers]);
 
+  // Pre-fill seed paper alias when missing-data form appears (from filename or backend hint)
+  useEffect(() => {
+    if (!missingDataResponse?.requires_seed_paper) return;
+    const fromFilename = parsedMeta?.seed_paper_alias;
+    const fromBackend = missingDataResponse.seed_paper_identifier;
+    if (fromFilename) setSeedPaperAlias(fromFilename);
+    else if (fromBackend) setSeedPaperAlias(fromBackend);
+  }, [missingDataResponse?.requires_seed_paper, parsedMeta?.seed_paper_alias, missingDataResponse?.seed_paper_identifier]);
+
+  // Pre-fill prompt alias when missing-data form appears (from filename)
+  useEffect(() => {
+    if (!missingDataResponse?.requires_prompt) return;
+    if (parsedMeta?.prompt_id) setPromptAlias(parsedMeta.prompt_id);
+  }, [missingDataResponse?.requires_prompt, parsedMeta?.prompt_id]);
+
   const clearMissingDataForm = () => {
     setMissingDataResponse(null);
     setSelectedSeedPaperId('');
     setSeedPaperContent('');
+    setSeedPaperAlias('');
     setSeedPaperFile(null);
     setSelectedPromptId('');
     setPromptContent('');
     setPromptVersion('');
+    setPromptAlias('');
     setPromptFile(null);
     setAvailableSeedPapers([]);
     if (promptFileInputRef.current) promptFileInputRef.current.value = '';
@@ -467,7 +730,10 @@ export default function ImportExecution() {
     const opts = {};
     if (missingDataResponse?.requires_seed_paper) {
       if (selectedSeedPaperId) opts.seed_paper_id = Number(selectedSeedPaperId);
-      else if (seedPaperContent?.trim()) opts.seed_paper_content = seedPaperContent.trim();
+      else if (seedPaperContent?.trim()) {
+        opts.seed_paper_content = seedPaperContent.trim();
+        if (seedPaperAlias?.trim()) opts.seed_paper_alias = seedPaperAlias.trim();
+      }
       // If only seedPaperFile, handleContinueImport will create seed paper first then set seed_paper_id
     }
     if (missingDataResponse?.requires_prompt) {
@@ -475,6 +741,7 @@ export default function ImportExecution() {
         opts.prompt_id = Number(selectedPromptId);
       } else if (promptContent?.trim() || promptFile) {
         if (promptVersion?.trim()) opts.prompt_version = promptVersion.trim();
+        if (promptAlias?.trim()) opts.prompt_alias = promptAlias.trim();
         // Only send prompt_content here when we have pasted text; if only promptFile, handleContinueImport will read file and set it
         if (promptContent?.trim()) opts.prompt_content = promptContent.trim();
       }
@@ -591,9 +858,10 @@ export default function ImportExecution() {
         missingDataResponse.requires_seed_paper &&
         !options.seed_paper_id &&
         !options.seed_paper_content &&
-        seedPaperFile
+        seedPaperFile &&
+        seedPaperAlias?.trim()
       ) {
-        const created = await apiService.addSeedPaper(seedPaperFile);
+        const created = await apiService.addSeedPaper(seedPaperFile, seedPaperAlias.trim());
         const newSeedPaperId = created?.id ?? created?.seed_paper_id;
         if (newSeedPaperId != null) {
           options = { ...options, seed_paper_id: newSeedPaperId };
@@ -611,8 +879,8 @@ export default function ImportExecution() {
         if (!promptFileForApi && promptContent?.trim()) {
           promptFileForApi = new File([promptContent.trim()], 'prompt.txt', { type: 'text/plain' });
         }
-        if (promptFileForApi) {
-          const created = await apiService.addPrompt(promptFileForApi, Number(selectedSeedPaperId), promptVersion.trim());
+        if (promptFileForApi && promptAlias?.trim()) {
+          const created = await apiService.addPrompt(promptFileForApi, Number(selectedSeedPaperId), promptVersion.trim(), promptAlias.trim());
           const newPromptId = created?.id ?? created?.prompt_id;
           if (newPromptId != null) {
             options = { ...options, prompt_id: newPromptId };
@@ -710,6 +978,179 @@ export default function ImportExecution() {
                   </div>
                 )}
               </div>
+
+              {file && (
+                <>
+                  {checkLoading ? (
+                    <div className="mb-3 text-muted small">
+                      <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                      Checking database…
+                    </div>
+                  ) : parsedMeta ? (
+                    <div className="card mb-3 bg-light">
+                      <div className="card-body py-2">
+                        <h6 className="card-title small mb-2">Metadata from filename</h6>
+                        <dl className="row small mb-0">
+                          <dt className="col-sm-3">System</dt>
+                          <dd className="col-sm-9">{parsedMeta.system_name}</dd>
+                          <dt className="col-sm-3">Seed paper alias</dt>
+                          <dd className="col-sm-9">{parsedMeta.seed_paper_alias}</dd>
+                          <dt className="col-sm-3">Prompt ID</dt>
+                          <dd className="col-sm-9">{parsedMeta.prompt_id}</dd>
+                          <dt className="col-sm-3">Prompt version</dt>
+                          <dd className="col-sm-9">{parsedMeta.prompt_version}</dd>
+                          <dt className="col-sm-3">Date / Time</dt>
+                          <dd className="col-sm-9">{formatParsedDateTime(parsedMeta.date_str, parsedMeta.time_str)}</dd>
+                          {parsedMeta.comment && (
+                            <>
+                              <dt className="col-sm-3">Comment</dt>
+                              <dd className="col-sm-9">{parsedMeta.comment}</dd>
+                            </>
+                          )}
+                          <dt className="col-sm-3">Seed paper in DB</dt>
+                          <dd className="col-sm-9">
+                            {matchedSeedPaper ? (
+                              <span className="text-success"><i className="fas fa-check-circle me-1"></i>Found (ID {matchedSeedPaper.id})</span>
+                            ) : (
+                              <span className="text-danger"><i className="fas fa-times-circle me-1"></i>Not in DB — add below</span>
+                            )}
+                          </dd>
+                          <dt className="col-sm-3">Prompt in DB</dt>
+                          <dd className="col-sm-9">
+                            {matchedPrompt ? (
+                              <span className="text-success"><i className="fas fa-check-circle me-1"></i>Found (ID {matchedPrompt.id})</span>
+                            ) : matchedSeedPaper ? (
+                              <span className="text-danger"><i className="fas fa-times-circle me-1"></i>Not in DB — add below</span>
+                            ) : (
+                              <span className="text-muted">— (add seed paper first)</span>
+                            )}
+                          </dd>
+                        </dl>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="alert alert-warning small mb-3">
+                      Invalid filename format. Expected: <code>{FILENAME_PATTERN}</code>
+                    </div>
+                  )}
+
+                  {parsedMeta && !matchedSeedPaper && !checkLoading && (
+                    <div className="card mb-3 border-warning">
+                      <div className="card-header py-2 bg-warning bg-opacity-10">
+                        <strong className="small">Add seed paper to DB</strong>
+                      </div>
+                      <div className="card-body py-2">
+                        <p className="small text-muted mb-2">Filename expects seed paper alias &quot;{parsedMeta.seed_paper_alias}&quot;. Add it so you can import.</p>
+                        <label className="form-label small">Alias (required)</label>
+                        <input
+                          type="text"
+                          className="form-control form-control-sm mb-2"
+                          placeholder="e.g. test1"
+                          maxLength={100}
+                          value={addSeedPaperAlias}
+                          onChange={(e) => setAddSeedPaperAlias(e.target.value)}
+                          disabled={addSeedPaperLoading}
+                        />
+                        <div className="mb-2">
+                          <input
+                            ref={addSeedPaperInputRef}
+                            type="file"
+                            className="form-control form-control-sm"
+                            accept=".bib"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              setAddSeedPaperFile(f || null);
+                              if (f) setAddSeedPaperPaste('');
+                            }}
+                          />
+                        </div>
+                        <label className="form-label small text-muted">Or paste BibTeX</label>
+                        <textarea
+                          className="form-control form-control-sm font-monospace small mb-2"
+                          rows={3}
+                          placeholder="@article{...}"
+                          value={addSeedPaperPaste}
+                          onChange={(e) => {
+                            setAddSeedPaperPaste(e.target.value);
+                            if (e.target.value.trim()) setAddSeedPaperFile(null);
+                          }}
+                          disabled={addSeedPaperLoading}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-warning"
+                          disabled={addSeedPaperLoading || (!addSeedPaperPaste.trim() && !addSeedPaperFile) || !addSeedPaperAlias.trim()}
+                          onClick={handleAddSeedPaperToDb}
+                        >
+                          {addSeedPaperLoading ? <span className="spinner-border spinner-border-sm me-1" /> : null}
+                          Add seed paper to DB
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {parsedMeta && matchedSeedPaper && !matchedPrompt && !checkLoading && (
+                    <div className="card mb-3 border-warning">
+                      <div className="card-header py-2 bg-warning bg-opacity-10">
+                        <strong className="small">Add prompt to DB</strong>
+                      </div>
+                      <div className="card-body py-2">
+                        <p className="small text-muted mb-2">Filename expects a prompt for seed paper &quot;{matchedSeedPaper.alias || matchedSeedPaper.title || matchedSeedPaper.bibtex_key || matchedSeedPaper.id}&quot;. Add it so you can import.</p>
+                        <label className="form-label small">Prompt alias (required)</label>
+                        <input
+                          type="text"
+                          className="form-control form-control-sm mb-2"
+                          placeholder="e.g. prompt1"
+                          maxLength={100}
+                          value={addPromptAlias}
+                          onChange={(e) => setAddPromptAlias(e.target.value)}
+                          disabled={addPromptLoading}
+                        />
+                        <label className="form-label small">Version (e.g. {parsedMeta.prompt_version || 'v1'})</label>
+                        <input
+                          type="text"
+                          className="form-control form-control-sm mb-2"
+                          placeholder={parsedMeta.prompt_version ? `e.g. ${parsedMeta.prompt_version}` : 'e.g. v1'}
+                          value={addPromptVersion}
+                          onChange={(e) => setAddPromptVersion(e.target.value)}
+                          disabled={addPromptLoading}
+                        />
+                        <label className="form-label small text-muted">Content: paste or upload .txt</label>
+                        <textarea
+                          className="form-control form-control-sm mb-2"
+                          rows={3}
+                          placeholder="Prompt text..."
+                          value={addPromptContent}
+                          onChange={(e) => setAddPromptContent(e.target.value)}
+                          disabled={addPromptLoading}
+                        />
+                        <input
+                          ref={addPromptFileInputRef}
+                          type="file"
+                          className="form-control form-control-sm mb-2"
+                          accept=".txt"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            setAddPromptFile(f || null);
+                            if (f) setAddPromptContent('');
+                          }}
+                          disabled={addPromptLoading}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-warning"
+                          disabled={addPromptLoading || !addPromptAlias.trim() || !addPromptVersion.trim() || (!addPromptContent.trim() && !addPromptFile)}
+                          onClick={handleAddPromptToDb}
+                        >
+                          {addPromptLoading ? <span className="spinner-border spinner-border-sm me-1" /> : null}
+                          Add prompt to DB
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
               <div className="alert alert-light border small">
                 <strong>Filename format:</strong>
                 <code className="d-block mt-1 mb-1">{FILENAME_PATTERN}.json | .bib</code>
@@ -722,10 +1163,10 @@ export default function ImportExecution() {
               <button
                 type="button"
                 className="btn btn-primary"
-                disabled={!file || loading || !!missingDataResponse}
+                disabled={!canAddToDb}
                 onClick={handleAddToDb}
               >
-                {loading && !missingDataResponse ? (
+                {loading ? (
                   <>
                     <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
                     Importing…
@@ -737,6 +1178,11 @@ export default function ImportExecution() {
                   </>
                 )}
               </button>
+              {file && parsedMeta && !canAddToDb && !loading && (
+                <p className="small text-muted mt-2 mb-0">
+                  {!parsedMeta ? 'Use a valid filename format.' : checkLoading ? 'Checking…' : !matchedSeedPaper ? 'Add the seed paper above first.' : !matchedPrompt ? 'Add the prompt above first.' : ''}
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -754,6 +1200,8 @@ export default function ImportExecution() {
               setSeedPaperContent={setSeedPaperContent}
               seedPaperFile={seedPaperFile}
               setSeedPaperFile={setSeedPaperFile}
+              seedPaperAlias={seedPaperAlias}
+              setSeedPaperAlias={setSeedPaperAlias}
               seedPaperFileInputRef={seedPaperFileInputRef}
               selectedPromptId={selectedPromptId}
               setSelectedPromptId={setSelectedPromptId}
@@ -761,6 +1209,8 @@ export default function ImportExecution() {
               setPromptContent={setPromptContent}
               promptVersion={promptVersion}
               setPromptVersion={setPromptVersion}
+              promptAlias={promptAlias}
+              setPromptAlias={setPromptAlias}
               promptFile={promptFile}
               setPromptFile={setPromptFile}
               promptFileInputRef={promptFileInputRef}

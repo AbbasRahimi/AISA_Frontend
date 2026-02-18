@@ -9,6 +9,7 @@ const UPLOAD_TYPE_CONFIG = {
     fileDescription: 'Select a BibTeX file containing the seed paper',
     accept: '.bib',
     hasVersion: false,
+    hasAlias: true,
   },
   'ground-truth': {
     validExtensions: ['bib', 'json'],
@@ -25,6 +26,7 @@ const UPLOAD_TYPE_CONFIG = {
     fileDescription: 'Select a text file containing the prompt',
     accept: '.txt',
     hasVersion: true,
+    hasPromptAlias: true,
   },
 };
 
@@ -40,6 +42,7 @@ const DEFAULT_CONFIG = {
 const FileUploadModal = ({ show, type, onClose, onUpload, loading }) => {
   const [file, setFile] = useState(null);
   const [version, setVersion] = useState('');
+  const [alias, setAlias] = useState('');
   const [error, setError] = useState('');
 
   const config = UPLOAD_TYPE_CONFIG[type] || DEFAULT_CONFIG;
@@ -48,6 +51,7 @@ const FileUploadModal = ({ show, type, onClose, onUpload, loading }) => {
     if (!show) {
       setFile(null);
       setVersion('');
+      setAlias('');
       setError('');
     }
   }, [show, type]);
@@ -72,7 +76,18 @@ const FileUploadModal = ({ show, type, onClose, onUpload, loading }) => {
       setError(`Invalid file type. Please select a ${config.validExtensions.join(' or ')} file.`);
       return;
     }
-    const options = config.hasVersion ? { version: version.trim() || null } : {};
+    if (config.hasAlias && (!alias || !alias.trim())) {
+      setError('Please enter an alias for the seed paper');
+      return;
+    }
+    if (config.hasPromptAlias && (!alias || !alias.trim())) {
+      setError('Please enter an alias for the prompt');
+      return;
+    }
+    const options = {};
+    if (config.hasVersion) options.version = version.trim() || null;
+    if (config.hasAlias) options.alias = alias.trim();
+    if (config.hasPromptAlias) options.alias = alias.trim();
     onUpload(type, file, options);
   };
 
@@ -104,6 +119,27 @@ const FileUploadModal = ({ show, type, onClose, onUpload, loading }) => {
               />
               <div className="form-text">{config.fileDescription}</div>
             </div>
+
+            {(config.hasAlias || config.hasPromptAlias) && (
+              <div className="mb-3">
+                <label htmlFor="aliasInput" className="form-label">
+                  {config.hasPromptAlias ? 'Prompt alias (required)' : 'Alias (required)'}
+                </label>
+                <input
+                  type="text"
+                  className="form-control"
+                  id="aliasInput"
+                  placeholder="e.g. test1"
+                  maxLength={100}
+                  value={alias}
+                  onChange={(e) => setAlias(e.target.value)}
+                  disabled={loading}
+                />
+                <div className="form-text">
+                  {config.hasPromptAlias ? 'Unique alias for this prompt' : 'Unique alias for this seed paper (used in execution filenames)'}
+                </div>
+              </div>
+            )}
 
             {config.hasVersion && (
               <div className="mb-3">
@@ -147,7 +183,7 @@ const FileUploadModal = ({ show, type, onClose, onUpload, loading }) => {
               type="button"
               className="btn btn-primary"
               onClick={handleUpload}
-              disabled={loading || !file}
+              disabled={loading || !file || ((config.hasAlias || config.hasPromptAlias) && !alias.trim())}
             >
               {loading ? (
                 <>
