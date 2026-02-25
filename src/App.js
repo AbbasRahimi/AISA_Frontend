@@ -214,7 +214,7 @@ function MainDashboard() {
           if (!selectedSeedPaper) {
             throw new Error('Please select a seed paper first');
           }
-          await apiService.addPrompt(file, selectedSeedPaper.id, options.version, options.alias);
+          await apiService.addPrompt({ file }, selectedSeedPaper.id, options.version, options.alias);
           await loadInitialData();
           break;
         default:

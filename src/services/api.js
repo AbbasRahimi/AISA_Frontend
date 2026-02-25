@@ -106,8 +106,8 @@ class ApiService {
   }
 
   // Seed Papers
-  async getSeedPapers() {
-    return this.request('/api/seed-papers');
+  async getSeedPapers(options = {}) {
+    return this.request('/api/seed-papers', options);
   }
 
   async addSeedPaper(file, alias = null) {
@@ -147,13 +147,32 @@ class ApiService {
   }
 
   // Prompts
-  async getPrompts() {
-    return this.request('/api/prompts');
+  async getPrompts(options = {}) {
+    return this.request('/api/prompts', options);
   }
 
-  async addPrompt(file, seedPaperId = null, version = null, alias = null) {
+  /**
+   * Add a new prompt from either inline text (prompt_content) or an uploaded text file (one required).
+   * @param { { prompt_content?: string, content?: string, file?: File } } payload - Inline prompt text and/or uploaded file; at least one required
+   * @param { number | null } seedPaperId
+   * @param { string | null } version
+   * @param { string | null } alias
+   */
+  async addPrompt(payload, seedPaperId = null, version = null, alias = null) {
+    const { prompt_content, content, file } = payload || {};
+    const text = prompt_content ?? content;
+    const hasText = text != null && String(text).trim() !== '';
+    const hasFile = file != null;
+    if (!hasText && !hasFile) {
+      throw new Error('Provide either prompt text (prompt_content) or upload a text file (.txt). One of them is required.');
+    }
     const formData = new FormData();
-    formData.append('file', file);
+    if (hasText) {
+      formData.append('prompt_content', String(text).trim());
+    }
+    if (hasFile) {
+      formData.append('file', file);
+    }
     if (seedPaperId) {
       formData.append('seed_paper_id', seedPaperId);
     }
