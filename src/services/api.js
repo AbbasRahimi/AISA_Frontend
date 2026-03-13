@@ -19,6 +19,37 @@ function buildQueryParams(params) {
   return pairs.length ? '?' + pairs.join('&') : '';
 }
 
+/**
+ * @typedef {Object} LiteratureRef
+ * @property {number} id
+ * @property {string} title
+ * @property {string|null} authors
+ * @property {number|null} year
+ * @property {string|null} doi
+ * @property {string|null} journal
+ */
+
+/**
+ * @typedef {Object} LLMSystemRef
+ * @property {string} name
+ * @property {string} version
+ */
+
+/**
+ * @typedef {Object} GtFoundByLlmEntry
+ * @property {LiteratureRef} reference
+ * @property {LLMSystemRef[]} found_by_systems
+ */
+
+/**
+ * @typedef {Object} AuthorReportResponse
+ * @property {number} seed_paper_id
+ * @property {LiteratureRef[]} deduplicated_llm_refs
+ * @property {LiteratureRef[]} gt_not_in_llm
+ * @property {LiteratureRef[]} llm_not_in_gt
+ * @property {GtFoundByLlmEntry[]} [gt_found_by_llm]
+ */
+
 class ApiService {
   constructor() {
     this.baseURL = API_BASE_URL;
@@ -26,9 +57,10 @@ class ApiService {
 
   async request(endpoint, options = {}) {
     const url = `${this.baseURL}${endpoint}`;
+    const isFormData = options.body instanceof FormData;
     const config = {
       headers: {
-        'Content-Type': 'application/json',
+        ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
         ...options.headers,
       },
       ...options,
@@ -127,6 +159,15 @@ class ApiService {
   // Ground Truth References
   async getGroundTruthReferences(seedPaperId) {
     return this.request(`/api/seed-papers/${seedPaperId}/ground-truth`);
+  }
+
+  /**
+   * Get author report for a seed paper (deduplicated LLM refs, GT not in LLM, LLM not in GT, GT found by LLM).
+   * @param {number} seedPaperId
+   * @returns {Promise<AuthorReportResponse>}
+   */
+  async getAuthorReport(seedPaperId) {
+    return this.request(`/api/seed-papers/${seedPaperId}/author-report`);
   }
 
   async addGroundTruthReferences(seedPaperId, file) {
@@ -295,11 +336,13 @@ class ApiService {
   }
 
   /**
-   * Import execution from uploaded file (JSON or BibTeX).
-   * Filename must follow: systemName_seedpaperID_promptID_promptversion_YYMMDD_HHMMSS_comment.json|.bib
+   * Import execution from uploaded file (JSON, BibTeX, or .txt for _na no-result executions).
+   * Filename must follow: systemName_seedpaperID_promptID_promptversion_YYMMDD_HHMMSS_comment.json|.bib|.txt
+   * For *_na.txt files the backend creates an execution with total_publications_found=0 and optional execution_comment.
    * Options (when server returns missing_data): seed_paper_id, seed_paper_content (BibTeX), seed_paper_alias,
    *   prompt_id, prompt_content so the server can create missing records and continue.
-   * Returns { status: 'success', insertion_report, ... } or { status: 'missing_data', requires_seed_paper?, requires_prompt?, message, existing_seed_papers?, existing_prompts?, ... }.
+   * Options: execution_comment (for _na .txt imports – file body stored as execution comment).
+   * Returns { status: 'success', insertion_report, ... } or { status: 'missing_data', ... }.
    */
   async importExecutionFromFile(file, options = {}) {
     const formData = new FormData();
@@ -324,6 +367,9 @@ class ApiService {
     }
     if (options.prompt_alias != null && options.prompt_alias.trim() !== '') {
       formData.append('prompt_alias', options.prompt_alias.trim());
+    }
+    if (options.execution_comment != null && String(options.execution_comment).trim() !== '') {
+      formData.append('execution_comment', String(options.execution_comment).trim());
     }
     return this.request('/api/executions/import', {
       method: 'POST',

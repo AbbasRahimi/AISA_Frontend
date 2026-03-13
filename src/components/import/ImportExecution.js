@@ -6,6 +6,7 @@ import {
   EXAMPLE_FILENAME,
   parseExecutionFilename,
   readFileAsText,
+  isNaExecutionFile,
 } from './importExecutionUtils';
 import FilenameMetadataCard from './FilenameMetadataCard';
 import AddSeedPaperCard from './AddSeedPaperCard';
@@ -197,91 +198,66 @@ export default function ImportExecution() {
       setError('Enter an alias for the seed paper (e.g. the value from the filename).');
       return;
     }
-    if (!file) {
-      setError('Please select an execution file first.');
-      return;
-    }
     setAddSeedPaperLoading(true);
     setError(null);
-    const fileName = file.name;
-    const createdAt = new Date().toISOString();
     try {
-      const response = await apiService.importExecutionFromFile(file, {
-        seed_paper_content: seedPaperContentStr,
-        seed_paper_alias: aliasTrimmed,
-      });
-      if (response.status === 'missing_data') {
-        setMissingDataResponse(response);
-        return;
+      // Only add the seed paper to DB; do not send the execution file.
+      const seedPaperFile = addSeedPaperFile || new File([seedPaperContentStr], 'seed.bib', { type: 'text/plain' });
+      const response = await apiService.addSeedPaper(seedPaperFile, aliasTrimmed);
+      setAddSeedPaperPaste('');
+      setAddSeedPaperFile(null);
+      setAddSeedPaperAlias('');
+      if (addSeedPaperInputRef.current) addSeedPaperInputRef.current.value = '';
+      const createdSeedPaper = response?.id != null ? response : null;
+      if (createdSeedPaper) {
+        setMatchedSeedPaper({
+          id: createdSeedPaper.id,
+          alias: createdSeedPaper.alias ?? createdSeedPaper.identifier ?? aliasTrimmed,
+          ...createdSeedPaper,
+        });
       }
-      if (response.status === 'success' || response.insertion_report) {
-        setImportHistory((prev) => [
-          {
-            type: 'success',
-            fileName,
-            createdAt,
-            data: response,
-            report: response.insertion_report,
-          },
-          ...prev,
+      setCheckLoading(true);
+      await new Promise((r) => setTimeout(r, 150));
+      try {
+        const [seedPapers, prompts] = await Promise.all([
+          apiService.getSeedPapers({ cache: 'no-store' }),
+          apiService.getPrompts({ cache: 'no-store' }),
         ]);
-        setAddSeedPaperPaste('');
-        setAddSeedPaperFile(null);
-        setAddSeedPaperAlias('');
-        if (addSeedPaperInputRef.current) addSeedPaperInputRef.current.value = '';
-        const reportSeedPaper = response.insertion_report?.seed_paper;
-        if (reportSeedPaper?.id != null) {
-          setMatchedSeedPaper({
-            id: reportSeedPaper.id,
-            alias: reportSeedPaper.alias ?? reportSeedPaper.identifier ?? aliasTrimmed,
-            ...reportSeedPaper,
-          });
+        const spList = Array.isArray(seedPapers) ? seedPapers : [];
+        const prList = Array.isArray(prompts) ? prompts : [];
+        const seedPaper = spList.find(
+          (sp) =>
+            String(sp.alias || '').trim() === aliasTrimmed ||
+            String(sp.bibtex_key || '').trim() === aliasTrimmed ||
+            String(sp.id) === aliasTrimmed
+        );
+        setMatchedSeedPaper(seedPaper || (createdSeedPaper ? { id: createdSeedPaper.id, alias: aliasTrimmed, ...createdSeedPaper } : null));
+        if (seedPaper) {
+          const promptsForSeed = prList.filter((p) => p.seed_paper_id === seedPaper.id);
+          const promptIdTrimmed = String(parsedMeta?.prompt_id || '').trim();
+          const byAlias = promptIdTrimmed
+            ? promptsForSeed.find(
+                (p) => String(p.alias || p.identifier || '').trim() === promptIdTrimmed
+              )
+            : null;
+          const byAliasAndVersion = parsedMeta?.prompt_version && promptIdTrimmed
+            ? promptsForSeed.find(
+                (p) =>
+                  String(p.alias || p.identifier || '').trim() === promptIdTrimmed &&
+                  (p.version || '').toLowerCase() === (parsedMeta.prompt_version || '').toLowerCase()
+              )
+            : null;
+          setMatchedPrompt(byAliasAndVersion || byAlias || null);
+        } else {
+          setMatchedPrompt(null);
         }
-        setCheckLoading(true);
-        await new Promise((r) => setTimeout(r, 150));
-        try {
-          const [seedPapers, prompts] = await Promise.all([
-            apiService.getSeedPapers({ cache: 'no-store' }),
-            apiService.getPrompts({ cache: 'no-store' }),
-          ]);
-          const spList = Array.isArray(seedPapers) ? seedPapers : [];
-          const prList = Array.isArray(prompts) ? prompts : [];
-          const seedPaper = spList.find(
-            (sp) =>
-              String(sp.alias || '').trim() === aliasTrimmed ||
-              String(sp.bibtex_key || '').trim() === aliasTrimmed ||
-              String(sp.id) === aliasTrimmed
-          );
-          setMatchedSeedPaper(seedPaper || (reportSeedPaper?.id != null ? { id: reportSeedPaper.id, alias: aliasTrimmed, ...reportSeedPaper } : null));
-          if (seedPaper) {
-            const promptsForSeed = prList.filter((p) => p.seed_paper_id === seedPaper.id);
-            const promptIdTrimmed = String(parsedMeta?.prompt_id || '').trim();
-            const byAlias = promptIdTrimmed
-              ? promptsForSeed.find(
-                  (p) => String(p.alias || p.identifier || '').trim() === promptIdTrimmed
-                )
-              : null;
-            const byAliasAndVersion = parsedMeta?.prompt_version && promptIdTrimmed
-              ? promptsForSeed.find(
-                  (p) =>
-                    String(p.alias || p.identifier || '').trim() === promptIdTrimmed &&
-                    (p.version || '').toLowerCase() === (parsedMeta.prompt_version || '').toLowerCase()
-                )
-              : null;
-            setMatchedPrompt(byAliasAndVersion || byAlias || null);
-          } else {
-            setMatchedPrompt(null);
-          }
-        } catch (e) {
-          runExistenceCheck();
-        } finally {
-          setCheckLoading(false);
-        }
-        return;
+      } catch (e) {
+        runExistenceCheck();
+      } finally {
+        setCheckLoading(false);
       }
-      setError('Unexpected response from server.');
     } catch (err) {
-      setError('Import failed: ' + (err?.message || ''));
+      setError('Failed to add seed paper: ' + (err?.message || ''));
     } finally {
       setAddSeedPaperLoading(false);
     }
@@ -362,7 +338,20 @@ export default function ImportExecution() {
     const createdAt = new Date().toISOString();
 
     try {
-      const response = await apiService.importExecutionFromFile(file);
+      const options = {};
+      if (isNaExecutionFile(file.name)) {
+        try {
+          const fileContent = await readFileAsText(file);
+          if (fileContent && fileContent.trim() !== '') {
+            options.execution_comment = fileContent.trim();
+          }
+        } catch (e) {
+          setError('Failed to read _na file content.');
+          setLoading(false);
+          return;
+        }
+      }
+      const response = await apiService.importExecutionFromFile(file, options);
       if (response.status === 'missing_data') {
         setMissingDataResponse(response);
         return;
@@ -445,7 +434,7 @@ export default function ImportExecution() {
             Import execution from file
           </h2>
           <p className="text-muted">
-            Upload a JSON or BibTeX file (list of publications) exported from a manual run. The file name must follow the naming format so the system can extract execution metadata.
+            Upload a JSON or BibTeX file (list of publications) exported from a manual run, or a .txt file for no-result executions (filename ending with <code>_na.txt</code>). The file name must follow the naming format so the system can extract execution metadata.
           </p>
         </div>
       </div>
@@ -461,7 +450,7 @@ export default function ImportExecution() {
             </div>
             <div className="card-body">
               <div className="mb-3">
-                <label className="form-label fw-bold">File (JSON or BibTeX)</label>
+                <label className="form-label fw-bold">File (JSON, BibTeX, or .txt for no-result)</label>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -473,6 +462,9 @@ export default function ImportExecution() {
                   <div className="mt-2 text-muted small">
                     <i className="fas fa-file me-1"></i>
                     {file.name} ({(file.size / 1024).toFixed(2)} KB)
+                    {isNaExecutionFile(file.name) && (
+                      <span className="d-block mt-1 text-info">No-result execution — will be stored with 0 publications; file content (if any) as execution comment.</span>
+                    )}
                   </div>
                 )}
               </div>
@@ -546,11 +538,11 @@ export default function ImportExecution() {
 
               <div className="alert alert-light border small">
                 <strong>Filename format:</strong>
-                <code className="d-block mt-1 mb-1">{FILENAME_PATTERN}.json | .bib</code>
+                <code className="d-block mt-1 mb-1">{FILENAME_PATTERN}.json | .bib | .txt</code>
                 <span className="text-muted">Example: </span>
                 <code>{EXAMPLE_FILENAME}</code>
                 <p className="mt-2 mb-0 text-muted">
-                  Comment is optional and can be empty. Extensions: .json or .bib
+                  Comment is optional. Use <code>.json</code> or <code>.bib</code> for publication lists; use <code>_na.txt</code> for no-result runs (execution stored with 0 publications; file content saved as execution comment if present).
                 </p>
               </div>
               <button

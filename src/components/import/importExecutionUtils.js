@@ -1,14 +1,21 @@
-export const ACCEPT_EXTENSIONS = '.json,.bib';
+export const ACCEPT_EXTENSIONS = '.json,.bib,.txt';
 export const FILENAME_PATTERN = 'systemName_seedpaperAlias_promptID_promptversion_YYMMDD_HHMMSS_comment';
 export const EXAMPLE_FILENAME = 'chatgpt.gpt4_test1_prompt1_v3_250729_131049_firstresults.json';
 
+/** True if filename is an "_na" execution (no results; .txt with comment "na"). */
+export function isNaExecutionFile(filename) {
+  if (!filename || typeof filename !== 'string') return false;
+  return /_na\.txt$/i.test(filename.trim());
+}
+
 /**
  * Parses execution filename: systemName_seedpaperAlias_promptID_promptversion_YYMMDD_HHMMSS_comment
+ * Supports .json, .bib, and .txt (including *_na.txt for no-result executions).
  * Returns { system_name, seed_paper_alias, prompt_id, prompt_version, date_str, time_str, comment } or null.
  */
 export function parseExecutionFilename(filename) {
   if (!filename || typeof filename !== 'string') return null;
-  const base = filename.replace(/\.(json|bib)$/i, '').trim();
+  const base = filename.replace(/\.(json|bib|txt)$/i, '').trim();
   const parts = base.split('_');
   if (parts.length < 6) return null;
   const last = parts[parts.length - 1];

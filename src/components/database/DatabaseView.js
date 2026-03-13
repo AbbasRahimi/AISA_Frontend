@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import apiService from '../../services/api';
+import AuthorReport from './AuthorReport';
 import './DatabaseView.css';
 
 // Returns true if the value looks like a number (for numeric sort).
@@ -386,6 +387,7 @@ const TAB_CONFIG = [
   { id: 'llm-systems', label: 'LLM Systems', icon: 'fa-cogs', fetch: () => apiService.getLLMSystems() },
   { id: 'executions', label: 'Executions', icon: 'fa-play', fetch: () => apiService.getExecutions() },
   { id: 'literature', label: 'Literature', icon: 'fa-book', fetch: () => apiService.getLiterature() },
+  { id: 'author-report', label: 'Author report', icon: 'fa-user-edit', fetch: null },
 ];
 
 function DatabaseView() {
@@ -395,10 +397,12 @@ function DatabaseView() {
   const [error, setError] = useState(null);
 
   const activeConfig = TAB_CONFIG.find((t) => t.id === activeTab);
+  const isAuthorReportTab = activeTab === 'author-report';
 
   useEffect(() => {
+    if (isAuthorReportTab) return;
     const config = TAB_CONFIG.find((t) => t.id === activeTab);
-    if (!config) return;
+    if (!config || !config.fetch) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -418,7 +422,7 @@ function DatabaseView() {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [activeTab]);
+  }, [activeTab, isAuthorReportTab]);
 
   return (
     <div className="container-fluid mt-4 database-view">
@@ -446,12 +450,16 @@ function DatabaseView() {
       </ul>
 
       <div className="tab-content border border-top-0 rounded-bottom p-3 bg-white">
-        <DataTable
-          data={tableData}
-          loading={loading}
-          error={error}
-          emptyMessage={`No records in ${activeConfig?.label || activeTab}.`}
-        />
+        {isAuthorReportTab ? (
+          <AuthorReport />
+        ) : (
+          <DataTable
+            data={tableData}
+            loading={loading}
+            error={error}
+            emptyMessage={`No records in ${activeConfig?.label || activeTab}.`}
+          />
+        )}
       </div>
     </div>
   );

@@ -1,0 +1,86 @@
+.author-report-select {
+  max-width: 100%;
+}
+
+.author-report-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.author-report-section {
+  border: 1px solid #dee2e6;
+  border-radius: 0.25rem;
+  padding: 1rem;
+  background: #fff;
+}
+
+.author-report-section-title-btn {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.author-report-section-title-btn:hover {
+  color: #0d6efd;
+}
+
+.author-report-section-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.author-report-cell-title {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.author-report-cell-title:hover {
+  overflow: visible;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.author-report-cell {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.author-report-cell-year {
+  max-width: 4rem;
+  text-align: center;
+}
+
+.author-report-cell-doi a {
+  word-break: break-all;
+}
+
+.author-report-cell-found-by {
+  min-width: 140px;
+  max-width: 320px;
+}
+
+.author-report-found-by {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.author-report-system-badge {
+  font-weight: 500;
+  white-space: nowrap;
+}
