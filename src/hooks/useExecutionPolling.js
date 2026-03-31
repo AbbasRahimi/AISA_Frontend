@@ -1,7 +1,8 @@
 import { useCallback, useRef } from 'react';
 import apiService from '../services/api';
 import { ExecutionStatus } from '../models';
-import { POLL_INITIAL_DELAY_MS, POLL_INTERVAL_MS, POLL_404_GRACE_PERIOD_MS } from '../utils';
+import { POLL_INITIAL_DELAY_MS, POLL_INTERVAL_MS, POLL_404_GRACE_PERIOD_MS, WORKFLOW_MAX_WAIT_MS } from '../utils';
+import { getPublicationsFromLlmData } from '../components/dashboard/resultsDataAdapters';
 
 /**
  * Custom hook to poll execution status and update workflow progress.
@@ -35,15 +36,13 @@ export function useExecutionPolling({
           lastUpdate: new Date().toISOString(),
         };
 
-        if (status.llm_response) {
-          if (status.llm_response.publications) {
-            newProgress.llmPublications = status.llm_response.publications;
-          } else if (Array.isArray(status.llm_response)) {
-            newProgress.llmPublications = status.llm_response;
-          } else {
-            newProgress.llmPublications = status.llm_response;
-          }
-        }
+        // Normalize backend llm_response into an array so the UI can safely render it.
+        // Different backend implementations may return shapes like:
+        // - Array (publications)
+        // - { publications: [...] }
+        // - { results: [...] }
+        const pubs = getPublicationsFromLlmData(status.llm_response);
+        newProgress.llmPublications = pubs;
 
         if (status.verification_progress) {
           newProgress.verificationProgress = {
@@ -71,6 +70,12 @@ export function useExecutionPolling({
 
     const poll = async () => {
       try {
+        const elapsedMs = Date.now() - startTime;
+        if (elapsedMs > WORKFLOW_MAX_WAIT_MS) {
+          onPollError(new Error(`Workflow did not complete within ${Math.round(WORKFLOW_MAX_WAIT_MS / 60000)} minutes`));
+          return true;
+        }
+
         const status = await apiService.getExecutionStatus(execId);
         onStatus(status);
         updateProgress(status);

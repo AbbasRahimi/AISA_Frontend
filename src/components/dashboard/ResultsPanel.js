@@ -3,7 +3,8 @@ import {
   getRuleDescription,
   getRuleBadgeClass,
   getInterpretationDisplay,
-} from './comparer/helpers';
+  getConfidenceBadgeClass,
+} from '../comparer/helpers';
 import {
   getPublicationsFromLlmData,
   getVerificationResultsArray,
@@ -98,13 +99,59 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
     }
 
     // Calculate summary from the data
-    const totalReferences = summaryData?.total_publications || results?.total_publications || verificationData.length;
-    const validReferences = summaryData?.verified_publications !== undefined
-      ? summaryData.verified_publications
-      : results?.verified_publications !== undefined
-      ? results.verified_publications
-      : verificationData.filter(ref => ref.found === true).length;
-    const invalidReferences = totalReferences - validReferences;
+    const totalReferences =
+      summaryData?.total_publications ?? results?.total_publications ?? verificationData.length;
+
+    // Derive validity from the same per-detail "found" logic we use in the table.
+    const foundReferences = verificationData.filter((ref) => {
+      const foundIn = ref?.found_in_database;
+      if (foundIn && foundIn !== 'Not Found') return true;
+
+      const dbResults = ref?.database_results;
+      if (!dbResults || typeof dbResults !== 'object') return false;
+      return Object.values(dbResults).some((r) => r?.found === true);
+    }).length;
+
+    const validReferences = foundReferences;
+    const invalidReferences = Math.max(0, totalReferences - foundReferences);
+
+    const isDetailFound = (detail) => {
+      const foundIn = detail?.found_in_database;
+      if (foundIn && foundIn !== 'Not Found') return true;
+
+      const dbResults = detail?.database_results;
+      if (!dbResults || typeof dbResults !== 'object') return false;
+      return Object.values(dbResults).some((r) => r?.found === true);
+    };
+
+    const getDetailDatabaseName = (detail) => {
+      const foundIn = detail?.found_in_database;
+      if (foundIn && foundIn !== 'Not Found') return foundIn;
+
+      const dbResults = detail?.database_results;
+      if (!dbResults || typeof dbResults !== 'object') return '-';
+
+      const foundEntry = Object.values(dbResults).find((r) => r?.found === true);
+      return foundEntry?.database_name || '-';
+    };
+
+    const getDetailMethod = (detail) => {
+      const foundIn = detail?.found_in_database;
+      const dbResults = detail?.database_results;
+      if (!dbResults || typeof dbResults !== 'object') return '-';
+
+      const values = Object.values(dbResults);
+      const normalizedFoundIn = typeof foundIn === 'string' ? foundIn.toLowerCase() : null;
+      const matchedEntry =
+        (normalizedFoundIn
+          ? values.find((v) => (v?.database_name || '').toLowerCase() === normalizedFoundIn)
+          : null) || values.find((v) => v?.found === true);
+
+      if (!matchedEntry || matchedEntry.found !== true) return '-';
+      if (matchedEntry.exact_match_found) return 'Exact';
+      if (matchedEntry.best_similarity && matchedEntry.best_similarity > 0) return 'Similarity';
+      return '-';
+    };
 
     return (
       <div className="mt-3">
@@ -129,6 +176,7 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
             <thead>
               <tr>
                 <th>#</th>
+                <th>Title</th>
                 <th>Database</th>
                 <th>Status</th>
                 <th>Similarity</th>
@@ -139,23 +187,26 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
               {verificationData.map((ref, index) => (
                 <tr key={ref.id || index}>
                   <td>{index + 1}</td>
-                  <td>
-                    <span className="badge bg-secondary">{ref.database_name || ref.database || '-'}</span>
+                  <td className="text-truncate" style={{ maxWidth: '260px' }} title={ref?.title || '-'}>
+                    {ref?.title || '-'}
                   </td>
                   <td>
-                    <span className={`badge bg-${ref.found ? 'success' : 'danger'}`}>
-                      {ref.found ? 'Found' : 'Not Found'}
+                    <span className="badge bg-secondary">
+                      {getDetailDatabaseName(ref)}
                     </span>
                   </td>
                   <td>
-                    {ref.similarity_score !== undefined && ref.similarity_score !== null
-                      ? `${(ref.similarity_score * 100).toFixed(0)}%`
-                      : ref.best_match_similarity !== undefined
+                    <span className={`badge bg-${isDetailFound(ref) ? 'success' : 'danger'}`}>
+                      {isDetailFound(ref) ? 'Found' : 'Not Found'}
+                    </span>
+                  </td>
+                  <td>
+                    {ref.best_match_similarity !== undefined && ref.best_match_similarity !== null
                       ? `${(ref.best_match_similarity * 100).toFixed(0)}%`
                       : '-'}
                   </td>
                   <td>
-                    <small className="text-muted">{ref.verification_method || '-'}</small>
+                    <small className="text-muted">{getDetailMethod(ref)}</small>
                   </td>
                 </tr>
               ))}
@@ -176,9 +227,35 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
 
     // Calculate summary from progressive data
     const totalMatches = comparisonArray.length;
-    const exactMatches = comparisonArray.filter(match => match.match_status === 'exact' || match.match_type === 'exact' || match.is_exact_match).length;
-    const partialMatches = comparisonArray.filter(match => match.match_status === 'partial' || match.match_type === 'partial' || match.is_partial_match).length;
-    const noMatches = totalMatches - exactMatches - partialMatches;
+    const exactMatches = comparisonArray.filter(
+      (m) => m?.is_exact_match === true || m?.match_status === 'exact'
+    ).length;
+    const partialMatches = comparisonArray.filter(
+      (m) => m?.is_partial_match === true || m?.match_status === 'partial'
+    ).length;
+    // Prefer explicit no-match flag; otherwise keep the counts consistent with total.
+    const explicitNoMatches = comparisonArray.filter((m) => m?.is_no_match === true).length;
+    const noMatches = explicitNoMatches > 0 ? explicitNoMatches : totalMatches - exactMatches - partialMatches;
+
+    const formatSimilarity = (value) => {
+      if (value === null || value === undefined) return '-';
+      const raw =
+        typeof value === 'string' ? parseFloat(value.replace('%', '').trim()) : value;
+      if (Number.isNaN(raw)) return '-';
+      // Some older payloads may use 0..1 instead of 0..100.
+      const percent = raw <= 1 ? raw * 100 : raw;
+      return `${percent.toFixed(percent % 1 === 0 ? 0 : 1)}%`;
+    };
+
+    const getMatchStatus = (m) => {
+      if (m?.is_exact_match === true) return 'exact';
+      if (m?.is_partial_match === true) return 'partial';
+      if (m?.is_no_match === true) return 'no match';
+      // Fallbacks for legacy shapes
+      if (m?.match_status === 'exact' || m?.match_type === 'exact') return 'exact';
+      if (m?.match_status === 'partial' || m?.match_type === 'partial') return 'partial';
+      return 'no match';
+    };
 
     return (
       <div className="mt-3">
@@ -216,12 +293,13 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
               {comparisonArray.map((match, index) => {
                 const generatedTitle = match.generated_title || match.llm_title || match.title || '-';
                 const groundTruthTitle = match.ground_truth_title || match.gt_title || match.reference_title || '-';
-                const matchStatus = match.match_status || match.match_type ||
-                  (match.is_exact_match ? 'exact' : match.is_partial_match ? 'partial' : 'no match');
-                const similarity = match.similarity || match.similarity_percentage;
-                const interpretation = getInterpretationDisplay(match);
+                const matchStatus = getMatchStatus(match);
+                const similarity = formatSimilarity(match.similarity_percentage ?? match.similarity);
+                // `interpretation` is the human-readable explanation; `match_type` is the matching method ("title", "authors_year", ...).
+                const interpretation = match.interpretation ?? getInterpretationDisplay(match);
                 const ruleNumber = match.rule_number ?? null;
                 const ruleDescription = ruleNumber ? getRuleDescription(ruleNumber) : null;
+                const confidence = match.confidence_score;
 
                 return (
                   <tr key={index}>
@@ -239,7 +317,7 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
                         {matchStatus}
                       </span>
                     </td>
-                    <td>{similarity ? `${typeof similarity === 'number' && similarity <= 1 ? (similarity * 100).toFixed(1) : similarity}%` : '-'}</td>
+                    <td>{similarity}</td>
                     <td>
                       {interpretation && interpretation !== 'Unknown' ? (
                         <span className="text-muted small" title={interpretation}>
@@ -263,11 +341,8 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
                       )}
                     </td>
                     <td>
-                      <span className={`badge bg-${
-                        match.quality === 'high' ? 'success' : 
-                        match.quality === 'medium' ? 'warning' : 'danger'
-                      }`}>
-                        {match.quality || 'unknown'}
+                      <span className={`badge bg-${getConfidenceBadgeClass(confidence)?.replace('bg-', '') || 'secondary'}`}>
+                        {confidence === null || confidence === undefined ? 'N/A' : `${(confidence * 100).toFixed(0)}%`}
                       </span>
                     </td>
                   </tr>

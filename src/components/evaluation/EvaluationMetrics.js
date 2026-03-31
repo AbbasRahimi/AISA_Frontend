@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import apiService from '../services/api';
-import ExecutionsTable from './evaluation/ExecutionsTable';
-import SelectedExecutionDetails from './evaluation/SelectedExecutionDetails';
-import MetricsResults from './evaluation/MetricsResults';
-import MetricsGuide from './evaluation/MetricsGuide';
-import BatchEvaluation from './evaluation/BatchEvaluation';
+import apiService from '../../services/api';
+import ExecutionsTable from './ExecutionsTable';
+import SelectedExecutionDetails from './SelectedExecutionDetails';
+import MetricsResults from './MetricsResults';
+import MetricsGuide from './MetricsGuide';
+import BatchEvaluation from './BatchEvaluation';
 import {
   transformVerificationResults,
   transformComparisonResults,
-  calculateRelevanceMetrics
-} from './evaluation/helpers';
+  calculateRelevanceMetrics,
+  calculateWMCC
+} from './helpers';
 
 const EvaluationMetricsGuide = () => {
   const [activeTab, setActiveTab] = useState('executions');
@@ -190,6 +191,61 @@ const EvaluationMetricsGuide = () => {
         combined_quality_score: combinedQualityScore,
         quality_adjusted_f1: qualityAdjustedF1
       };
+
+      // Calculate WMCC (Weighted Matthews Correlation Coefficient) if we have TN.
+      // WMCC requires a complete confusion matrix (TP/TN/FP/FN) and a cost-ratio weight `w` for positives (TP, FN).
+      try {
+        const rel = metrics.relevance_metrics || {};
+        const tp = rel.true_positives;
+        const fp = rel.false_positives;
+        const fn = rel.false_negatives;
+
+        // Best-effort reconstruction of TN from whatever the backend provides.
+        let tn =
+          rel.true_negatives ?? rel.tn ?? rel.trueNegatives ?? undefined;
+
+        if (tn === undefined) {
+          const totalNegatives =
+            rel.total_negatives ?? rel.totalNegatives ?? rel.negatives_total;
+          if (totalNegatives !== undefined && fp !== undefined) {
+            tn = Number(totalNegatives) - Number(fp);
+          }
+        }
+
+        if (tn === undefined) {
+          const totalArticles =
+            rel.total_articles ??
+            rel.totalArticles ??
+            rel.total_items ??
+            selectedExecution.total_articles ??
+            selectedExecution.total_items;
+          if (totalArticles !== undefined && tp !== undefined && fp !== undefined && fn !== undefined) {
+            tn = Number(totalArticles) - Number(tp) - Number(fp) - Number(fn);
+          }
+        }
+
+        const w =
+          rel.wmcc_weight ??
+          rel.wmccWeight ??
+          selectedExecution.wmcc_weight ??
+          10;
+
+        const wmcc = calculateWMCC({ tp, fp, fn, tn, w });
+        if (wmcc !== undefined) {
+          metrics.relevance_metrics = {
+            ...rel,
+            wmcc,
+            wmcc_weight: w
+          };
+          metrics._wmccCalculationStatus = 'calculated';
+        } else {
+          metrics._wmccCalculationStatus = 'incomplete';
+        }
+      } catch (e) {
+        // WMCC is optional; if it fails for any reason, keep the rest of the metrics.
+        console.warn('Failed to calculate WMCC:', e);
+        metrics._wmccCalculationStatus = 'incomplete';
+      }
 
       console.log('Final evaluation metrics:', metrics);
       setEvaluationMetrics(metrics);

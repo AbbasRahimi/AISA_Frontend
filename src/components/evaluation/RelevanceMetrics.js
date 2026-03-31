@@ -1,6 +1,19 @@
 import React from 'react';
 
 const RelevanceMetrics = ({ evaluationMetrics, relevanceMetrics }) => {
+  const wmcc = relevanceMetrics?.wmcc;
+  const w = relevanceMetrics?.wmcc_weight ?? 10;
+  const wmccClass =
+    wmcc === undefined || wmcc === null || Number.isNaN(wmcc)
+      ? 'text-muted'
+      : wmcc >= 0.5
+        ? 'text-success'
+        : wmcc >= 0.2
+          ? 'text-info'
+          : wmcc >= 0
+            ? 'text-warning'
+            : 'text-danger';
+
   return (
     <div className="card mb-4">
       <div className="card-header bg-primary text-white d-flex justify-content-between align-items-center">
@@ -72,7 +85,7 @@ const RelevanceMetrics = ({ evaluationMetrics, relevanceMetrics }) => {
           </div>
         </div>
         <div className="row mt-3">
-          <div className="col-md-4">
+          <div className="col-md-3">
             <div className="card text-center">
               <div className="card-body">
                 <h6 className="text-muted">False Positives</h6>
@@ -80,7 +93,7 @@ const RelevanceMetrics = ({ evaluationMetrics, relevanceMetrics }) => {
               </div>
             </div>
           </div>
-          <div className="col-md-4">
+          <div className="col-md-3">
             <div className="card text-center">
               <div className="card-body">
                 <h6 className="text-muted">False Negatives</h6>
@@ -88,11 +101,24 @@ const RelevanceMetrics = ({ evaluationMetrics, relevanceMetrics }) => {
               </div>
             </div>
           </div>
-          <div className="col-md-4">
+          <div className="col-md-3">
             <div className="card text-center">
               <div className="card-body">
                 <h6 className="text-muted">Total Ground Truth</h6>
                 <h3 className="text-info">{relevanceMetrics?.total_ground_truth || 0}</h3>
+              </div>
+            </div>
+          </div>
+          <div className="col-md-3">
+            <div className="card text-center">
+              <div className="card-body">
+                <h6 className="text-muted" title="Weighted Matthews Correlation Coefficient (WMCC), from LLM4SCREENLIT">WMCC</h6>
+                <h3 className={wmccClass}>
+                  {wmcc !== undefined && wmcc !== null && !Number.isNaN(wmcc)
+                    ? wmcc.toFixed(3)
+                    : 'N/A'}
+                </h3>
+                <small className="text-muted">{`w=${w}`}</small>
               </div>
             </div>
           </div>

@@ -1,7 +1,18 @@
 import React from 'react';
-import StorageConfig from '../StorageConfig';
+import StorageConfig from '../shared/StorageConfig';
 
-const ConfigurationPanel = ({ email, setEmail, apiKey, setApiKey, useStorage, setUseStorage, executionName, setExecutionName }) => {
+const ConfigurationPanel = ({
+  email,
+  setEmail,
+  apiKey,
+  setApiKey,
+  enrichDoi,
+  setEnrichDoi,
+  useStorage,
+  setUseStorage,
+  executionName,
+  setExecutionName,
+}) => {
   return (
     <div className="row mb-4">
       <div className="col-12">
@@ -37,6 +48,26 @@ const ConfigurationPanel = ({ email, setEmail, apiKey, setApiKey, useStorage, se
                 />
                 <div className="form-text">
                   Optional API key for enhanced Semantic Scholar access.
+                </div>
+              </div>
+            </div>
+
+            <div className="row mt-3">
+              <div className="col-12">
+                <div className="form-check">
+                  <input
+                    className="form-check-input"
+                    type="checkbox"
+                    id="enrichDoi"
+                    checked={!!enrichDoi}
+                    onChange={(e) => setEnrichDoi(e.target.checked)}
+                  />
+                  <label className="form-check-label" htmlFor="enrichDoi">
+                    Enrich/validate DOIs (slower, more detailed)
+                  </label>
+                </div>
+                <div className="form-text">
+                  When enabled, the backend validates/enriches DOI metadata and returns detailed DOI validation fields per publication.
                 </div>
               </div>
             </div>

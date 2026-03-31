@@ -305,6 +305,41 @@ export const calculateRelevanceMetrics = (execution, comparisonResults, groundTr
   };
 };
 
+/**
+ * Weighted Matthews Correlation Coefficient (WMCC).
+ *
+ * Paper: LLM4SCREENLIT (Weighted MCC), with weighting factor `w` applied to positive examples (TP, FN).
+ *
+ * WMCC = (w*TP*TN - FP*w*FN) / sqrt( (w*TP+FP)*(w*TP+w*FN)*(TN+FP)*(TN+w*FN) )
+ */
+export const calculateWMCC = ({ tp, fp, fn, tn, w = 10 }) => {
+  const toNumber = (v) => (typeof v === 'number' ? v : Number(v));
+  const TP = toNumber(tp);
+  const FP = toNumber(fp);
+  const FN = toNumber(fn);
+  const TN = toNumber(tn);
+  const W = toNumber(w);
+
+  const allFinite =
+    Number.isFinite(TP) &&
+    Number.isFinite(FP) &&
+    Number.isFinite(FN) &&
+    Number.isFinite(TN) &&
+    Number.isFinite(W);
+
+  if (!allFinite) return undefined;
+
+  const a = W * TP + FP;
+  const b = W * TP + W * FN;
+  const c = TN + FP;
+  const d = TN + W * FN;
+
+  const denom = Math.sqrt(a * b * c * d);
+  if (!Number.isFinite(denom) || denom === 0) return undefined;
+
+  return (W * TP * TN - FP * W * FN) / denom;
+};
+
 
 
 

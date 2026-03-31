@@ -539,6 +539,26 @@ body {
   display: block;
 }
 
+/* Citation multi-search (Publication Verifier) */
+.citation-ms-section-heading {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #111827;
+  letter-spacing: 0.02em;
+}
+
+.citation-multi-search-panel .citation-multi-search-fields > div:last-child {
+  border-bottom: none !important;
+  margin-bottom: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+.citation-multi-search-panel ul li:last-child {
+  border-bottom: none !important;
+  margin-bottom: 0 !important;
+  padding-bottom: 0 !important;
+}
+
 /* Verification Results */
 .verification-results {
   display: none;

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { LLMProvider } from '../models';
-import { TEXT_PREVIEW_WORD_COUNT } from '../utils';
+import { LLMProvider } from '../../models';
+import { TEXT_PREVIEW_WORD_COUNT } from '../../utils';
 
 const ConfigurationPanel = ({
   email,

@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
-import apiService from '../services/api';
-import ConfigurationPanel from './verification/VerificationConfigPanel';
-import FileUploadSection from './verification/FileUploadSection';
-import ResultsDisplay from './verification/ResultsDisplay';
-import { downloadBlob } from '../utils';
+import apiService from '../../services/api';
+import ConfigurationPanel from './VerificationConfigPanel';
+import FileUploadSection from './FileUploadSection';
+import ResultsDisplay from './ResultsDisplay';
+import { downloadBlob } from '../../utils';
 
 const PublicationVerifier = () => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [email, setEmail] = useState('abbas.rahimi@jku.at');
   const [apiKey, setApiKey] = useState('');
+  const [enrichDoi, setEnrichDoi] = useState(true);
   const [executionName, setExecutionName] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationResults, setVerificationResults] = useState(null);
@@ -32,8 +33,14 @@ const PublicationVerifier = () => {
     try {
       const formData = new FormData();
       formData.append('file', selectedFile);
-      formData.append('email', email.trim());
-      formData.append('api_key', apiKey.trim());
+      // Critical: backend expects enrich_doi as multipart form field.
+      // Send as string for FormData compatibility with FastAPI Form(bool).
+      formData.append('enrich_doi', enrichDoi ? 'true' : 'false');
+
+      const emailTrimmed = (email || '').trim();
+      const apiKeyTrimmed = (apiKey || '').trim();
+      if (emailTrimmed) formData.append('email', emailTrimmed);
+      if (apiKeyTrimmed) formData.append('api_key', apiKeyTrimmed);
       
       if (useStorage) {
         formData.append('execution_name', executionName.trim());
@@ -94,6 +101,8 @@ const PublicationVerifier = () => {
         setEmail={setEmail}
         apiKey={apiKey}
         setApiKey={setApiKey}
+        enrichDoi={enrichDoi}
+        setEnrichDoi={setEnrichDoi}
         useStorage={useStorage}
         setUseStorage={setUseStorage}
         executionName={executionName}
@@ -143,7 +152,13 @@ const PublicationVerifier = () => {
       )}
 
       {/* Results Section */}
-      {verificationResults && <ResultsDisplay verificationResults={verificationResults} />}
+      {verificationResults && (
+        <ResultsDisplay
+          verificationResults={verificationResults}
+          email={email}
+          apiKey={apiKey}
+        />
+      )}
     </div>
   );
 };

@@ -1,5 +1,5 @@
 import React from 'react';
-import StorageConfig from '../StorageConfig';
+import StorageConfig from '../shared/StorageConfig';
 
 const ConfigurationPanel = ({ useStorage, setUseStorage, executionName, setExecutionName }) => {
   return (

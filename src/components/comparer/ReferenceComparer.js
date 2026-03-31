@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import apiService from '../services/api';
-import ConfigurationPanel from './comparer/ComparerConfigPanel';
-import FileUploadSection from './comparer/FileUploadSection';
-import ResultsDisplay from './comparer/ResultsDisplay';
-import ValidityMetrics from './evaluation/ValidityMetrics';
-import RelevanceMetrics from './evaluation/RelevanceMetrics';
-import CombinedMetrics from './evaluation/CombinedMetrics';
-import { downloadBlob } from '../utils';
+import apiService from '../../services/api';
+import ConfigurationPanel from './ComparerConfigPanel';
+import FileUploadSection from './FileUploadSection';
+import ResultsDisplay from './ResultsDisplay';
+import ValidityMetrics from '../evaluation/ValidityMetrics';
+import RelevanceMetrics from '../evaluation/RelevanceMetrics';
+import CombinedMetrics from '../evaluation/CombinedMetrics';
+import { downloadBlob } from '../../utils';
 
 const ReferenceComparer = () => {
   const [sourceFile, setSourceFile] = useState(null);

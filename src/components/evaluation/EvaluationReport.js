@@ -62,6 +62,13 @@ const generateEvaluationReport = (evaluationMetrics, selectedExecution) => {
     report += `Precision: ${relevance_metrics.precision !== undefined ? (relevance_metrics.precision * 100).toFixed(2) + '%' : 'N/A'}\n`;
     report += `Recall: ${relevance_metrics.recall !== undefined ? (relevance_metrics.recall * 100).toFixed(2) + '%' : 'N/A'}\n`;
     report += `F1-Score: ${relevance_metrics.f1_score !== undefined ? (relevance_metrics.f1_score * 100).toFixed(2) + '%' : 'N/A'}\n`;
+
+    if (relevance_metrics.wmcc !== undefined) {
+      const wmccW = relevance_metrics.wmcc_weight ?? 10;
+      report += `Weighted Matthews Correlation Coefficient (WMCC): ${Number(relevance_metrics.wmcc).toFixed(3)} (w=${wmccW})\n`;
+    } else {
+      report += `Weighted Matthews Correlation Coefficient (WMCC): N/A\n`;
+    }
     
     // Interpretation
     if (relevance_metrics.f1_score !== undefined) {

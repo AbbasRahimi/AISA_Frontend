@@ -1,16 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import './App.css';
-import ConfigurationPanel from './components/ConfigurationPanel';
-import ProgressPanel from './components/ProgressPanel';
-import ResultsPanel from './components/ResultsPanel';
-import FileUploadModal from './components/FileUploadModal';
-import PublicationVerifier from './components/PublicationVerifier';
-import ReferenceComparer from './components/ReferenceComparer';
-import EvaluationMetricsGuide from './components/EvaluationMetrics';
+import ConfigurationPanel from './components/dashboard/ConfigurationPanel';
+import ProgressPanel from './components/dashboard/ProgressPanel';
+import ResultsPanel from './components/dashboard/ResultsPanel';
+import FileUploadModal from './components/dashboard/FileUploadModal';
+import PublicationVerifier from './components/verification/PublicationVerifier';
+import ReferenceComparer from './components/comparer/ReferenceComparer';
+import EvaluationMetricsGuide from './components/evaluation/EvaluationMetrics';
 import ImportExecution from './components/import/ImportExecution';
 import DatabaseView from './components/database/DatabaseView';
-import Footer from './components/Footer';
+import Footer from './components/layout/Footer';
 import apiService from './services/api';
 import { createWorkflowRequest, LLMProvider } from './models';
 import { useExecutionPolling } from './hooks/useExecutionPolling';
@@ -134,7 +134,8 @@ function MainDashboard() {
     onProgress: setWorkflowProgress,
     onResults: (results) => setResults(results),
     onFailed: (msg) => setError('Workflow execution failed: ' + msg),
-    onPollError: () => setError('Failed to poll execution status'),
+    onPollError: (err) =>
+      setError(err?.message ? err.message : 'Failed to poll execution status'),
   });
 
   // Load initial data

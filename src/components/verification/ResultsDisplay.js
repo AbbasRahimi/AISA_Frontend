@@ -1,8 +1,15 @@
 import React, { useState } from 'react';
-import { formatDatabaseResults, getDatabaseBadgeClass, getSimilarityBadgeClass } from './helpers';
+import apiService from '../../services/api';
+import {
+  formatDatabaseResults,
+  getDatabaseBadgeClass,
+  getSimilarityBadgeClass,
+  renderCitationMultiSearchResult,
+} from './helpers';
 
-const ResultsDisplay = ({ verificationResults }) => {
+const ResultsDisplay = ({ verificationResults, email, apiKey }) => {
   const [activeTab, setActiveTab] = useState('summary');
+  const [citationLookup, setCitationLookup] = useState({});
 
   const totalFound = verificationResults ? 
     verificationResults.found_in_openalex + verificationResults.found_in_crossref + 
@@ -11,6 +18,67 @@ const ResultsDisplay = ({ verificationResults }) => {
 
   const successRate = verificationResults && verificationResults.total_publications > 0 ? 
     ((totalFound / verificationResults.total_publications) * 100).toFixed(1) : 0;
+
+  const buildCitationBibtex = (detail, fallbackKey) => {
+    const titleRaw = detail?.title != null ? String(detail.title) : '';
+    const authorsRaw = detail?.authors != null ? String(detail.authors) : '';
+    const yearRaw = detail?.year != null ? String(detail.year) : '';
+    const doiRaw = detail?.doi != null ? String(detail.doi) : '';
+
+    const title = titleRaw.replace(/[{}]/g, '').replace(/\s+/g, ' ').trim();
+    const authors = authorsRaw
+      .replace(/[{}]/g, '')
+      .trim()
+      .replace(/\s*;\s*/g, ' and ')
+      .replace(/\s*\|\s*/g, ' and ');
+    const year = yearRaw.replace(/[^\d]/g, '').trim();
+    const doi = doiRaw.trim();
+
+    const keyBase = doi ? doi.replace(/[^a-zA-Z0-9]/g, '') : `citation${fallbackKey}`;
+    const key = keyBase || `citation${fallbackKey}`;
+
+    const fields = [];
+    fields.push(`  title = {${title || 'Unknown'}}`);
+    if (authors) fields.push(`  author = {${authors}}`);
+    if (year) fields.push(`  year = {${year}}`);
+    if (doi) fields.push(`  doi = {${doi}}`);
+
+    return `@article{${key},\n${fields.join(',\n')}\n}`;
+  };
+
+  const lookupUnknownCitation = async (entityKey, detail) => {
+    if (!entityKey) return;
+
+    setCitationLookup((prev) => ({
+      ...prev,
+      [entityKey]: { ...(prev[entityKey] || {}), loading: true, error: null, response: null },
+    }));
+
+    try {
+      const citation_bibtex = buildCitationBibtex(detail, entityKey);
+      const payload = { citation_bibtex };
+
+      const emailTrimmed = (email || '').trim();
+      const apiKeyTrimmed = (apiKey || '').trim();
+      if (emailTrimmed) payload.email = emailTrimmed;
+      if (apiKeyTrimmed) payload.api_key = apiKeyTrimmed;
+
+      const response = await apiService.citationMultiSearch(payload);
+      setCitationLookup((prev) => ({
+        ...prev,
+        [entityKey]: { loading: false, error: null, response },
+      }));
+    } catch (error) {
+      setCitationLookup((prev) => ({
+        ...prev,
+        [entityKey]: {
+          loading: false,
+          error: error?.message ? String(error.message) : String(error),
+          response: null,
+        },
+      }));
+    }
+  };
 
   const renderSummaryTab = () => {
     if (!verificationResults) return null;
@@ -84,6 +152,28 @@ const ResultsDisplay = ({ verificationResults }) => {
   const renderDetailsTab = () => {
     if (!verificationResults?.detailed_results) return null;
 
+    const safeId = (value) => String(value || '').replace(/[^a-zA-Z0-9_-]/g, '');
+
+    const renderMaybeJson = (value) => {
+      if (value == null) return <span className="text-muted">—</span>;
+      if (typeof value === 'string') return <span>{value}</span>;
+      try {
+        return (
+          <pre className="mb-0 small bg-light border rounded p-2" style={{ whiteSpace: 'pre-wrap' }}>
+            {JSON.stringify(value, null, 2)}
+          </pre>
+        );
+      } catch {
+        return <span>{String(value)}</span>;
+      }
+    };
+
+    const renderDoiValidityBadge = (doiValid) => {
+      if (doiValid === true) return <span className="badge bg-success">Valid</span>;
+      if (doiValid === false) return <span className="badge bg-danger">Invalid</span>;
+      return <span className="badge bg-secondary">Unknown</span>;
+    };
+
     const databaseGroups = {};
     verificationResults.detailed_results.forEach((result, index) => {
       const foundIn = result.found_in_database || 'Not Found';
@@ -122,6 +212,7 @@ const ResultsDisplay = ({ verificationResults }) => {
                     {results.map(result => {
                       const similarity = result.best_match_similarity ? 
                         (result.best_match_similarity * 100).toFixed(1) + '%' : 'N/A';
+                      const pubCollapseId = `pub_${safeId(database)}_${result.index}`;
                       
                       return (
                         <div key={result.index} className="list-group-item">
@@ -129,8 +220,110 @@ const ResultsDisplay = ({ verificationResults }) => {
                             <h6 className="mb-1">{result.index}. {result.title || 'N/A'}</h6>
                             <small className="badge bg-primary">{similarity}</small>
                           </div>
+                          <div className="mb-2">
+                            <div className="d-flex flex-wrap gap-2 align-items-center">
+                              <span className={`badge ${getDatabaseBadgeClass(result.found_in_database)}`}>
+                                {result.found_in_database || 'Not Found'}
+                              </span>
+                              {renderDoiValidityBadge(result.doi_valid)}
+                              {result.doi_valid == null ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline-primary"
+                                  disabled={!!citationLookup[result.index]?.loading}
+                                  onClick={() => lookupUnknownCitation(result.index, result)}
+                                >
+                                  {citationLookup[result.index]?.loading ? 'Looking up...' : 'Lookup citation'}
+                                </button>
+                              ) : null}
+                              {result.resolved_doi ? (
+                                <span className="badge bg-info text-dark">Resolved DOI</span>
+                              ) : null}
+                            </div>
+                          </div>
+
                           <p className="mb-1"><strong>Best Match:</strong> {result.best_match_title || 'N/A'}</p>
-                          <small>Database Results: {formatDatabaseResults(result.database_results)}</small>
+                          <small className="d-block">
+                            <strong>Database Results:</strong> {formatDatabaseResults(result.database_results)}
+                          </small>
+
+                          <div className="mt-2">
+                            <button
+                              className="btn btn-sm btn-outline-primary"
+                              type="button"
+                              data-bs-toggle="collapse"
+                              data-bs-target={`#${pubCollapseId}`}
+                              aria-expanded="false"
+                              aria-controls={pubCollapseId}
+                            >
+                              <i className="fas fa-info-circle me-1"></i>
+                              Metadata & DOI validation details
+                            </button>
+                          </div>
+
+                          <div className="collapse mt-2" id={pubCollapseId}>
+                            <div className="card card-body">
+                              <div className="row g-3">
+                                <div className="col-md-6">
+                                  <h6 className="mb-2">Input metadata</h6>
+                                  <div className="small">
+                                    <div><strong>Title:</strong> {result.title || '—'}</div>
+                                    <div><strong>Authors:</strong> {result.authors || '—'}</div>
+                                    <div><strong>Year:</strong> {result.year ?? '—'}</div>
+                                    <div><strong>DOI:</strong> {result.doi || '—'}</div>
+                                  </div>
+                                </div>
+                                <div className="col-md-6">
+                                  <h6 className="mb-2">DOI validation</h6>
+                                  <div className="small">
+                                    <div className="d-flex align-items-center gap-2">
+                                      <strong>Status:</strong> {renderDoiValidityBadge(result.doi_valid)}
+                                    </div>
+                                    <div><strong>Resolved DOI:</strong> {result.resolved_doi || '—'}</div>
+                                    <div><strong>Source:</strong> {result.doi_validation_source || '—'}</div>
+                                  </div>
+                                </div>
+
+                                <div className="col-12">
+                                  <h6 className="mb-2">Metadata sources tried</h6>
+                                  <div className="small">
+                                    {Array.isArray(result.metadata_sources_tried) && result.metadata_sources_tried.length > 0
+                                      ? result.metadata_sources_tried.join(', ')
+                                      : '—'}
+                                  </div>
+                                </div>
+
+                                <div className="col-12">
+                                  <h6 className="mb-2">DOI validation details</h6>
+                                  {renderMaybeJson(result.doi_validation)}
+                                </div>
+
+                                <div className="col-12">
+                                  <h6 className="mb-2">DOI validation diffs</h6>
+                                  {renderMaybeJson(result.doi_validation_diffs)}
+                                </div>
+
+                                {result.doi_valid == null ? (
+                                  <div className="col-12">
+                                    <h6 className="mb-2">Citation multi-search result</h6>
+                                    {citationLookup[result.index]?.loading ? (
+                                      <div className="text-muted small">Running citation multi-search...</div>
+                                    ) : citationLookup[result.index]?.error ? (
+                                      <div className="alert alert-danger alert-sm">
+                                        {citationLookup[result.index]?.error}
+                                      </div>
+                                    ) : citationLookup[result.index]?.response ? (
+                                      renderCitationMultiSearchResult(citationLookup[result.index].response)
+                                    ) : (
+                                      <div className="text-muted small">
+                                        Click “Lookup citation” to fetch details.
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       );
                     })}
@@ -154,9 +347,13 @@ const ResultsDisplay = ({ verificationResults }) => {
             <tr>
               <th>#</th>
               <th>Title</th>
+              <th>DOI</th>
+              <th>Resolved DOI</th>
+              <th>DOI Valid</th>
               <th>Found In</th>
               <th>Similarity</th>
               <th>Best Match Title</th>
+              <th>Metadata Sources Tried</th>
               <th>Database Results</th>
             </tr>
           </thead>
@@ -169,6 +366,30 @@ const ResultsDisplay = ({ verificationResults }) => {
                 <tr key={index}>
                   <td>{index + 1}</td>
                   <td>{result.title || 'N/A'}</td>
+                  <td className="text-truncate" style={{ maxWidth: 160 }}>{result.doi || '—'}</td>
+                  <td className="text-truncate" style={{ maxWidth: 160 }}>{result.resolved_doi || '—'}</td>
+                  <td>
+                    {result.doi_valid === true ? (
+                      <span className="badge bg-success">Valid</span>
+                    ) : result.doi_valid === false ? (
+                      <span className="badge bg-danger">Invalid</span>
+                    ) : (
+                      <div className="d-flex align-items-center gap-2 flex-wrap">
+                        <span className="badge bg-secondary">Unknown</span>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-primary"
+                          disabled={!!citationLookup[index + 1]?.loading}
+                          onClick={() => lookupUnknownCitation(index + 1, result)}
+                        >
+                          {citationLookup[index + 1]?.loading ? 'Looking up...' : 'Lookup citation'}
+                        </button>
+                        {citationLookup[index + 1]?.response ? (
+                          <span className="badge bg-success">Lookup done</span>
+                        ) : null}
+                      </div>
+                    )}
+                  </td>
                   <td>
                     <span className={`badge ${getDatabaseBadgeClass(result.found_in_database)}`}>
                       {result.found_in_database || 'Not Found'}
@@ -180,6 +401,11 @@ const ResultsDisplay = ({ verificationResults }) => {
                     </span>
                   </td>
                   <td>{result.best_match_title || 'N/A'}</td>
+                  <td className="text-truncate" style={{ maxWidth: 220 }}>
+                    {Array.isArray(result.metadata_sources_tried) && result.metadata_sources_tried.length > 0
+                      ? result.metadata_sources_tried.join(', ')
+                      : '—'}
+                  </td>
                   <td>{formatDatabaseResults(result.database_results)}</td>
                 </tr>
               );

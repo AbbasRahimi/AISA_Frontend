@@ -21,6 +21,14 @@ const LLMComparisonResults = ({ results }) => {
     return `${(value * 100).toFixed(2)}%`;
   };
 
+  // Helper to format correlation-like metrics (-1..1)
+  const formatCorrelation = (value) => {
+    if (value === null || value === undefined) return 'N/A';
+    const n = typeof value === 'number' ? value : Number(value);
+    if (!Number.isFinite(n)) return 'N/A';
+    return n.toFixed(3);
+  };
+
   // Helper to get badge class based on score
   const getScoreBadgeClass = (score) => {
     if (!score) return 'bg-secondary';
@@ -28,6 +36,16 @@ const LLMComparisonResults = ({ results }) => {
     if (percent >= 80) return 'bg-success';
     if (percent >= 60) return 'bg-info';
     if (percent >= 40) return 'bg-warning';
+    return 'bg-danger';
+  };
+
+  const getWMCCBadgeClass = (wmcc) => {
+    if (wmcc === null || wmcc === undefined) return 'bg-secondary';
+    const n = typeof wmcc === 'number' ? wmcc : Number(wmcc);
+    if (!Number.isFinite(n)) return 'bg-secondary';
+    if (n >= 0.5) return 'bg-success';
+    if (n >= 0.2) return 'bg-info';
+    if (n >= 0) return 'bg-warning';
     return 'bg-danger';
   };
 
@@ -56,6 +74,10 @@ const LLMComparisonResults = ({ results }) => {
       case 'recall':
         aValue = a.aggregate_metrics?.relevance_metrics?.mean_recall || 0;
         bValue = b.aggregate_metrics?.relevance_metrics?.mean_recall || 0;
+        break;
+      case 'wmcc':
+        aValue = a.aggregate_metrics?.relevance_metrics?.mean_wmcc || 0;
+        bValue = b.aggregate_metrics?.relevance_metrics?.mean_wmcc || 0;
         break;
       case 'execution_count':
         aValue = a.execution_count || 0;
@@ -190,6 +212,12 @@ const LLMComparisonResults = ({ results }) => {
                   >
                     F1 Score {getSortIcon('f1_score')}
                   </th>
+                  <th
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => handleSort('wmcc')}
+                  >
+                    WMCC {getSortIcon('wmcc')}
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -199,6 +227,7 @@ const LLMComparisonResults = ({ results }) => {
                   const precision = llm.aggregate_metrics?.relevance_metrics?.mean_precision;
                   const recall = llm.aggregate_metrics?.relevance_metrics?.mean_recall;
                   const f1 = llm.aggregate_metrics?.relevance_metrics?.mean_f1_score;
+                  const wmcc = llm.aggregate_metrics?.relevance_metrics?.mean_wmcc;
 
                   return (
                     <tr key={index}>
@@ -235,6 +264,11 @@ const LLMComparisonResults = ({ results }) => {
                       <td>
                         <span className={`badge ${getScoreBadgeClass(f1)}`}>
                           {formatPercent(f1)}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={`badge ${getWMCCBadgeClass(wmcc)}`}>
+                          {formatCorrelation(wmcc)}
                         </span>
                       </td>
                     </tr>
@@ -339,6 +373,13 @@ const LLMComparisonResults = ({ results }) => {
                           <td>{formatPercent(llm.aggregate_metrics.relevance_metrics.std_f1_score)}</td>
                           <td>{formatPercent(llm.aggregate_metrics.relevance_metrics.min_f1_score)}</td>
                           <td>{formatPercent(llm.aggregate_metrics.relevance_metrics.max_f1_score)}</td>
+                        </tr>
+                        <tr>
+                          <td>WMCC</td>
+                          <td>{formatCorrelation(llm.aggregate_metrics.relevance_metrics.mean_wmcc)}</td>
+                          <td>{formatCorrelation(llm.aggregate_metrics.relevance_metrics.std_wmcc)}</td>
+                          <td>{formatCorrelation(llm.aggregate_metrics.relevance_metrics.min_wmcc)}</td>
+                          <td>{formatCorrelation(llm.aggregate_metrics.relevance_metrics.max_wmcc)}</td>
                         </tr>
                       </tbody>
                     </table>

@@ -29,6 +29,14 @@ const BatchEvaluationResults = ({ results }) => {
     return value.toFixed(2);
   };
 
+  // Helper to format correlation-like metrics (-1..1)
+  const formatCorrelation = (value) => {
+    if (value === null || value === undefined) return 'N/A';
+    const n = typeof value === 'number' ? value : Number(value);
+    if (!Number.isFinite(n)) return 'N/A';
+    return n.toFixed(3);
+  };
+
   return (
     <div>
       {/* Summary Card */}
@@ -166,6 +174,13 @@ const BatchEvaluationResults = ({ results }) => {
                     <td>{formatPercent(relevance_metrics.max_f1_score)}</td>
                   </tr>
                   <tr>
+                    <td><strong>WMCC</strong></td>
+                    <td>{formatCorrelation(relevance_metrics.mean_wmcc)}</td>
+                    <td>{formatCorrelation(relevance_metrics.std_wmcc)}</td>
+                    <td>{formatCorrelation(relevance_metrics.min_wmcc)}</td>
+                    <td>{formatCorrelation(relevance_metrics.max_wmcc)}</td>
+                  </tr>
+                  <tr>
                     <td><strong>True Positives</strong></td>
                     <td>{formatNumber(relevance_metrics.mean_true_positives)}</td>
                     <td>{formatNumber(relevance_metrics.std_true_positives)}</td>
@@ -266,6 +281,7 @@ const BatchEvaluationResults = ({ results }) => {
                     <th>Precision</th>
                     <th>Recall</th>
                     <th>F1 Score</th>
+                    <th>WMCC</th>
                     <th>Combined Score</th>
                   </tr>
                 </thead>
@@ -289,6 +305,9 @@ const BatchEvaluationResults = ({ results }) => {
                       </td>
                       <td>
                         {formatPercent(eval_item.relevance_metrics?.f1_score)}
+                      </td>
+                      <td>
+                        {formatCorrelation(eval_item.relevance_metrics?.wmcc)}
                       </td>
                       <td>
                         {formatPercent(eval_item.combined_metrics?.combined_quality_score)}

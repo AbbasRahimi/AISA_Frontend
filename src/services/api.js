@@ -142,11 +142,44 @@ class ApiService {
     return this.request('/api/seed-papers', options);
   }
 
-  async addSeedPaper(file, alias = null) {
+  /**
+   * Add a new seed paper from either a BibTeX file or a citation string.
+   * OpenAPI: POST /api/seed-papers (multipart/form-data) with one of: file|citation; optional alias.
+   *
+   * Backward-compatible usage:
+   * - addSeedPaper(file, alias?)
+   * - addSeedPaper(citationString, alias?)
+   * - addSeedPaper({ file?: File, citation?: string, alias?: string })
+   */
+  async addSeedPaper(fileOrCitationOrPayload, alias = null) {
     const formData = new FormData();
-    formData.append('file', file);
-    if (alias != null && String(alias).trim() !== '') {
-      formData.append('alias', String(alias).trim());
+    let file = null;
+    let citation = null;
+    let finalAlias = alias;
+
+    if (fileOrCitationOrPayload && typeof fileOrCitationOrPayload === 'object' && !(fileOrCitationOrPayload instanceof File)) {
+      file = fileOrCitationOrPayload.file ?? null;
+      citation = fileOrCitationOrPayload.citation ?? null;
+      finalAlias = fileOrCitationOrPayload.alias ?? finalAlias;
+    } else if (fileOrCitationOrPayload instanceof File) {
+      file = fileOrCitationOrPayload;
+    } else if (typeof fileOrCitationOrPayload === 'string') {
+      citation = fileOrCitationOrPayload;
+    }
+
+    const hasFile = file != null;
+    const hasCitation = citation != null && String(citation).trim() !== '';
+    if (!hasFile && !hasCitation) {
+      throw new Error('Provide either a BibTeX file (.bib) or a citation string. One of them is required.');
+    }
+    if (hasFile && hasCitation) {
+      throw new Error('Provide either a BibTeX file (.bib) or a citation string, not both.');
+    }
+
+    if (hasFile) formData.append('file', file);
+    if (hasCitation) formData.append('citation', String(citation).trim());
+    if (finalAlias != null && String(finalAlias).trim() !== '') {
+      formData.append('alias', String(finalAlias).trim());
     }
 
     return this.request('/api/seed-papers', {
@@ -246,11 +279,14 @@ class ApiService {
   }
 
   async getExecutionStatus(executionId) {
-    return this.request(`/api/workflow/${executionId}/status`);
+    // Status polling can be slow while the backend is still processing.
+    // Keep it aligned with the 10-minute workflow execution timeout.
+    return this.request(`/api/workflow/${executionId}/status`, { timeout: 600000 });
   }
 
   async getExecutionResults(executionId) {
-    return this.request(`/api/workflow/${executionId}/results`);
+    // Results may require additional time to be assembled after completion.
+    return this.request(`/api/workflow/${executionId}/results`, { timeout: 600000 });
   }
 
   async exportResults(executionId, format = 'json') {
@@ -277,8 +313,25 @@ class ApiService {
   async exportVerificationResults(results, format = 'text') {
     return this.request(`/api/publication-verifier/export?format=${format}`, {
       method: 'POST',
-      body: JSON.stringify({ results }),
+      body: JSON.stringify(results),
       responseType: 'blob',
+    });
+  }
+
+  /**
+   * Citation multi-search for unknown/insufficient metadata.
+   * OpenAPI not included in provided excerpt, but endpoint contract is:
+   * POST /api/publication-verifier/citation-multi-search (application/json)
+   * {
+   *   citation_bibtex: string,
+   *   email?: string,
+   *   api_key?: string
+   * }
+   */
+  async citationMultiSearch(payload) {
+    return this.request('/api/publication-verifier/citation-multi-search', {
+      method: 'POST',
+      body: JSON.stringify(payload),
     });
   }
 
@@ -306,7 +359,7 @@ class ApiService {
   async exportComparisonResults(results, format = 'json') {
     return this.request(`/api/reference-comparer/export?format=${format}`, {
       method: 'POST',
-      body: JSON.stringify({ results }),
+      body: JSON.stringify(results),
       responseType: 'blob',
     });
   }
@@ -356,17 +409,17 @@ class ApiService {
     if (options.seed_paper_alias != null && options.seed_paper_alias.trim() !== '') {
       formData.append('seed_paper_alias', options.seed_paper_alias.trim());
     }
+    if (options.ground_truth_content != null && String(options.ground_truth_content).trim() !== '') {
+      formData.append('ground_truth_content', String(options.ground_truth_content).trim());
+    }
+    if (options.ground_truth_content_type != null && String(options.ground_truth_content_type).trim() !== '') {
+      formData.append('ground_truth_content_type', String(options.ground_truth_content_type).trim());
+    }
     if (options.prompt_id != null) {
       formData.append('prompt_id', String(options.prompt_id));
     }
     if (options.prompt_content != null && options.prompt_content.trim() !== '') {
       formData.append('prompt_content', options.prompt_content.trim());
-    }
-    if (options.prompt_version != null && String(options.prompt_version).trim() !== '') {
-      formData.append('prompt_version', String(options.prompt_version).trim());
-    }
-    if (options.prompt_alias != null && options.prompt_alias.trim() !== '') {
-      formData.append('prompt_alias', options.prompt_alias.trim());
     }
     if (options.execution_comment != null && String(options.execution_comment).trim() !== '') {
       formData.append('execution_comment', String(options.execution_comment).trim());
