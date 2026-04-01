@@ -51,7 +51,7 @@ const EvaluationMetricsGuide = () => {
     setEvaluationMetrics(null); // Clear previous metrics
   };
 
-  const handleCalculateMetrics = async () => {
+  const handleCalculateMetrics = async (recalculatePayload = {}) => {
     if (!selectedExecution) {
       setError('Please select an execution first');
       return;
@@ -61,9 +61,9 @@ const EvaluationMetricsGuide = () => {
       setCalculatingMetrics(true);
       setError(null);
 
-      // Metrics calculation is handled by the backend.
       const response = await apiService.recalculateMetricsForExecution(selectedExecution.id, {
         include_partial: true,
+        ...recalculatePayload,
       });
 
       const metrics = response?.evaluation ?? response;

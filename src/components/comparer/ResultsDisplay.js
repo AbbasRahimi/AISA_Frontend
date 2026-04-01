@@ -83,7 +83,11 @@ const ResultsDisplay = ({ comparisonResults }) => {
         if (!stats[ruleNum]) {
           stats[ruleNum] = {
             count: 0,
-            interpretation: result.interpretation || getRuleDescription(ruleNum) || `Rule ${ruleNum}`,
+            interpretation:
+              result.interpretation ||
+              result.ruleDescription ||
+              getRuleDescription(ruleNum) ||
+              `Rule ${ruleNum}`,
             ruleNumber: ruleNum
           };
         }
@@ -157,6 +161,28 @@ const ResultsDisplay = ({ comparisonResults }) => {
             </div>
           </div>
         </div>
+
+        {comparisonResults.summary.class_counts &&
+          typeof comparisonResults.summary.class_counts === 'object' &&
+          Object.keys(comparisonResults.summary.class_counts).length > 0 && (
+            <div className="card mb-4">
+              <div className="card-header">
+                <h5 className="mb-0">
+                  <i className="fas fa-layer-group"></i> Class counts
+                </h5>
+              </div>
+              <div className="card-body">
+                <div className="row">
+                  {Object.entries(comparisonResults.summary.class_counts).map(([key, value]) => (
+                    <div key={key} className="col-md-3 col-6 mb-2">
+                      <span className="text-muted small d-block">{key}</span>
+                      <span className="fw-semibold">{value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
         {/* Cascade Rules Breakdown */}
         {Object.keys(ruleStats).length > 0 && (
@@ -275,17 +301,20 @@ const ResultsDisplay = ({ comparisonResults }) => {
                     });
                     
                     const ruleNumber = result.rule_number ?? null;
-                    const ruleDescription = ruleNumber ? getRuleDescription(ruleNumber) : null;
-                    
-                    // Format match_type for display (replace underscores with spaces, capitalize)
-                    const matchTypeDisplay = result.match_type 
-                      ? result.match_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
-                      : 'N/A';
-                    
+                    const ruleDescription =
+                      result.ruleDescription ||
+                      (ruleNumber ? getRuleDescription(ruleNumber) : null);
+
+                    const matchTypeLabel =
+                      (result.matchTypeDisplay && String(result.matchTypeDisplay).trim()) ||
+                      (result.match_type
+                        ? result.match_type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
+                        : 'N/A');
+
                     // Log extracted/processed values
                     console.log(`[ResultsDisplay] Result ${index} processed values:`, {
                       matchType: result.match_type,
-                      matchTypeDisplay,
+                      matchTypeLabel,
                       ruleNumber,
                       ruleDescription
                     });
@@ -313,15 +342,28 @@ const ResultsDisplay = ({ comparisonResults }) => {
                           )}
                         </td>
                         <td>
-                          <span className={`badge ${getMethodBadgeClass(result.match_type)}`} title={result.match_type}>
-                            {matchTypeDisplay}
+                          <span
+                            className={`badge ${getMethodBadgeClass(result.match_type)}`}
+                            title={
+                              result.interpretation ||
+                              result.matchTypeDisplay ||
+                              result.match_type ||
+                              ''
+                            }
+                          >
+                            {matchTypeLabel}
                           </span>
                         </td>
                         <td>
                           {ruleNumber && ruleNumber > 0 ? (
                             <span 
                               className={`badge ${getRuleBadgeClass(ruleNumber)}`}
-                              title={ruleDescription || `Rule ${ruleNumber}`}
+                              title={
+                                result.ruleDescription ||
+                                result.interpretation ||
+                                ruleDescription ||
+                                `Rule ${ruleNumber}`
+                              }
                               style={{ cursor: 'help' }}
                             >
                               Rule {ruleNumber}

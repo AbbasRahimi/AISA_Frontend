@@ -15,6 +15,18 @@
   background: #fff;
 }
 
+.author-report-section-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+
+.author-report-bibtex-export {
+  flex-shrink: 0;
+}
+
 .author-report-section-title-btn {
   display: inline-flex;
   align-items: center;

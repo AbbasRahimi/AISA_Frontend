@@ -5,10 +5,16 @@ const generateEvaluationReport = (evaluationMetrics, selectedExecution) => {
   if (!evaluationMetrics || !selectedExecution) return 'No evaluation data available';
 
   const { validity_metrics, relevance_metrics, combined_metrics } = evaluationMetrics;
-  
-  // Use execution-level statistics
-  const totalPublications = selectedExecution.total_publications_found ?? 0;
-  const foundInDatabase = selectedExecution.verified_publications ?? 0;
+
+  const totalPublications =
+    validity_metrics?.total_publications ??
+    selectedExecution?.total_publications_found ??
+    0;
+  const foundInDatabase =
+    validity_metrics?.found_in_database ??
+    validity_metrics?.verified_publications ??
+    selectedExecution?.verified_publications ??
+    0;
   const notFound = totalPublications - foundInDatabase;
   
   // Build the report

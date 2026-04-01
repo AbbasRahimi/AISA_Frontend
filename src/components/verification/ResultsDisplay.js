@@ -57,6 +57,13 @@ const ResultsDisplay = ({ verificationResults, email, apiKey }) => {
     try {
       const citation_bibtex = buildCitationBibtex(detail, entityKey);
       const payload = { citation_bibtex };
+      if (detail?.title) payload.title = String(detail.title);
+      if (detail?.authors) payload.authors = String(detail.authors);
+      if (detail?.year != null && detail.year !== '') payload.year = detail.year;
+      if (detail?.doi) payload.doi = String(detail.doi).trim();
+      if (detail?.journal) payload.journal = String(detail.journal);
+      if (detail?.booktitle) payload.booktitle = String(detail.booktitle);
+      if (detail?.venue) payload.venue = String(detail.venue);
 
       const emailTrimmed = (email || '').trim();
       const apiKeyTrimmed = (apiKey || '').trim();

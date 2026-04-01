@@ -76,6 +76,9 @@ class ApiService {
   async request(endpoint, options = {}) {
     const url = `${this.baseURL}${endpoint}`;
     const isFormData = options.body instanceof FormData;
+    // Pull headers out so spreading ...restOptions does not overwrite merged headers
+    // (FormData calls use headers: {} only to avoid setting Content-Type; that must not drop Bearer auth).
+    const { headers: optionHeaders = {}, ...restOptions } = options;
     let token = null;
     if (this.accessTokenGetter) {
       try {
@@ -85,12 +88,12 @@ class ApiService {
       }
     }
     const config = {
+      ...restOptions,
       headers: {
         ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...options.headers,
+        ...optionHeaders,
       },
-      ...options,
     };
 
     // Add custom timeout for long-running operations
@@ -351,14 +354,10 @@ class ApiService {
   }
 
   /**
-   * Citation multi-search for unknown/insufficient metadata.
-   * OpenAPI not included in provided excerpt, but endpoint contract is:
+   * Citation multi-search (OpenAPI: CitationMultiSearchRequest).
    * POST /api/publication-verifier/citation-multi-search (application/json)
-   * {
-   *   citation_bibtex: string,
-   *   email?: string,
-   *   api_key?: string
-   * }
+   * Any subset of: email, api_key, citation_bibtex, title, authors (array|string), author,
+   * year (number|string), journal, booktitle, venue, doi.
    */
   async citationMultiSearch(payload) {
     return this.request('/api/publication-verifier/citation-multi-search', {
@@ -500,13 +499,16 @@ class ApiService {
   /**
    * Recalculate metrics for an existing execution and persist them server-side.
    * OpenAPI: POST /api/evaluation/executions/{execution_id}/recalculate
+   * Body (ExecutionRecalculateMetricsRequest): include_partial, wmcc_weight (positive),
+   * validity_weight, relevance_weight, openalex_email (optional, for verification pass).
    * @param {number} executionId
-   * @param {object} payload
+   * @param {object} [payload]
    * @param {boolean} [payload.include_partial]
    * @param {number} [payload.wmcc_weight]
    * @param {number} [payload.validity_weight]
    * @param {number} [payload.relevance_weight]
-   * @returns {Promise<{ execution_id: number, execution_evaluation_id: number, evaluation: any }>}
+   * @param {string|null} [payload.openalex_email]
+   * @returns {Promise<{ execution_id: number, execution_evaluation_id: number, evaluation: object }>}
    */
   async recalculateMetricsForExecution(executionId, payload = {}) {
     return this.request(`/api/evaluation/executions/${executionId}/recalculate`, {

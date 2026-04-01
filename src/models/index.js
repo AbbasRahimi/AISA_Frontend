@@ -22,6 +22,7 @@ export const SeedPaperResponse = {
   year: null,
   doi: null,
   journal: null,
+  alias: null,
   created_at: null
 };
 
@@ -41,6 +42,7 @@ export const PromptResponse = {
   id: null,
   content: '',
   file_path: '',
+  alias: null,
   version: null,  // string | null, e.g. "v1"
   seed_paper_id: null,
   created_at: null
@@ -83,12 +85,18 @@ export const ExecutionStatusResponse = {
   comparison_progress: null
 };
 
-// Verification Detail Model
+// Verification Detail Model (OpenAPI: VerificationDetail)
 export const VerificationDetail = {
   title: '',
   authors: null,
   year: null,
   doi: null,
+  resolved_doi: null,
+  doi_valid: null,
+  doi_validation: null,
+  doi_validation_diffs: null,
+  doi_validation_source: null,
+  metadata_sources_tried: null,
   found_in_database: null,
   best_match_similarity: 0.0,
   best_match_title: null,
@@ -135,22 +143,24 @@ export const VerificationResult = {
   search_time: null
 };
 
-// Comparison Detail Result Model
+// Comparison Detail Result Model (OpenAPI: ComparisonDetailResult)
 export const ComparisonDetailResult = {
   row_number: 0,
   llm_title: '',
   gt_title: '',
   similarity_percentage: 0.0,
-  confidence_score: 0.0,    // NEW: Confidence score used for matching algorithm (0.0-1.0)
+  confidence_score: 0.0,
   match_type: '',
   is_exact_match: false,
   is_partial_match: false,
   is_no_match: false,
-  rule_number: null,        // NEW: Cascade rule number (1-40, or 0 for no match)
-  interpretation: null     // NEW: Human-readable match reason
+  rule_number: null,
+  interpretation: null,
+  matchTypeDisplay: null,
+  ruleDescription: null
 };
 
-// Comparison Summary Model
+// Comparison Summary Model (OpenAPI: ComparisonSummary)
 export const ComparisonSummary = {
   total_llm_papers: 0,
   total_gt_papers: 0,
@@ -160,7 +170,8 @@ export const ComparisonSummary = {
   title_exact: 0,
   title_partial: 0,
   author_exact: 0,
-  author_partial: 0
+  author_partial: 0,
+  class_counts: null
 };
 
 // Comparison Result Model

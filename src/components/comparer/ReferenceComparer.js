@@ -237,7 +237,11 @@ const ReferenceComparer = () => {
                 {/* Validity Metrics */}
                 <ValidityMetrics 
                   totalPublications={evaluationMetrics.validity_metrics.total_publications}
-                  foundInDatabase={evaluationMetrics.validity_metrics.found_in_database}
+                  foundInDatabase={
+                    evaluationMetrics.validity_metrics.found_in_database ??
+                    evaluationMetrics.validity_metrics.verified_publications ??
+                    0
+                  }
                   validityMetrics={evaluationMetrics.validity_metrics}
                 />
 

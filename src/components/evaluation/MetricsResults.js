@@ -22,6 +22,7 @@ const MetricsResults = ({ evaluationMetrics, selectedExecution }) => {
     0;
   const foundInDatabase =
     validity_metrics?.found_in_database ??
+    validity_metrics?.verified_publications ??
     selectedExecution?.verified_publications ??
     0;
 

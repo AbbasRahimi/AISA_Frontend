@@ -246,19 +246,21 @@ export const isValidFile = (file) => {
 
 export const formatDatabaseResults = (databaseResults) => {
   if (!databaseResults) return 'N/A';
-  
+
   const results = [];
-  Object.keys(databaseResults).forEach(db => {
+  Object.keys(databaseResults).forEach((db) => {
     const result = databaseResults[db];
     if (result.exact_match_found) {
       results.push(`${db}: ✅`);
     } else if (result.best_similarity > 0) {
       results.push(`${db}: ⚠️ ${(result.best_similarity * 100).toFixed(1)}%`);
+    } else if (result.found) {
+      results.push(`${db}: ✓`);
     } else {
       results.push(`${db}: ❌`);
     }
   });
-  
+
   return results.join(' | ');
 };
 

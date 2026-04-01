@@ -1,6 +1,82 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import apiService from '../../services/api';
 import './AuthorReport.css';
+
+/** Escape braces and backslashes for BibTeX field values inside `{...}`. */
+function bibtexEscapeField(s) {
+  return String(s ?? '')
+    .replace(/\\/g, '\\\\')
+    .replace(/{/g, '\\{')
+    .replace(/}/g, '\\}');
+}
+
+/**
+ * Build a single @article entry from a LiteratureRef-like object.
+ * Keys are deduplicated when multiple refs share the same base key.
+ */
+function buildLiteratureRefsBibtex(refs) {
+  const list = Array.isArray(refs) ? refs.filter(Boolean) : [];
+  const usedKeys = new Map();
+
+  const entries = list.map((ref, index) => {
+    const titleRaw = ref.title != null ? String(ref.title) : '';
+    const authorsRaw = ref.authors != null ? String(ref.authors) : '';
+    const yearRaw = ref.year != null ? String(ref.year) : '';
+    const doiRaw = ref.doi != null ? String(ref.doi).trim() : '';
+    const journalRaw = ref.journal != null ? String(ref.journal) : '';
+
+    const title = bibtexEscapeField(titleRaw.replace(/\s+/g, ' ').trim()) || 'Unknown';
+    const authors = bibtexEscapeField(
+      authorsRaw
+        .replace(/\s*;\s*/g, ' and ')
+        .replace(/\s*\|\s*/g, ' and ')
+        .trim(),
+    );
+    const year = yearRaw.replace(/[^\d]/g, '').trim();
+    const journal = bibtexEscapeField(journalRaw.trim());
+    const doi = bibtexEscapeField(doiRaw.replace(/^https?:\/\/(dx\.)?doi\.org\//i, ''));
+
+    let baseKey = '';
+    if (doiRaw) {
+      baseKey = doiRaw.replace(/[^a-zA-Z0-9]/g, '');
+    } else if (ref.id != null && String(ref.id).trim() !== '') {
+      baseKey = `llm_related_${String(ref.id).replace(/[^a-zA-Z0-9_]/g, '_')}`;
+    } else {
+      baseKey = `llm_related_${index}`;
+    }
+    if (!baseKey) baseKey = `llm_related_${index}`;
+    if (/^[0-9]/.test(baseKey)) baseKey = `r${baseKey}`;
+
+    let key = baseKey;
+    let n = 1;
+    while (usedKeys.has(key)) {
+      key = `${baseKey}_${++n}`;
+    }
+    usedKeys.set(key, true);
+
+    const fields = [`  title = {${title}}`];
+    if (authors) fields.push(`  author = {${authors}}`);
+    if (year) fields.push(`  year = {${year}}`);
+    if (journal) fields.push(`  journal = {${journal}}`);
+    if (doi) fields.push(`  doi = {${doi}}`);
+
+    return `@article{${key},\n${fields.join(',\n')}\n}`;
+  });
+
+  return entries.join('\n\n');
+}
+
+function downloadTextFile(content, filename) {
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 /*
  * Author report types (match backend):
@@ -146,10 +222,24 @@ function GtFoundByLlmSection({ entries, defaultCollapsed = false }) {
 
 /**
  * Renders a section with optional collapse and a table of literature refs.
+ * @param {string} [bibtexDownloadFilename] — if set, shows an "Export BibTeX" control when there are refs.
  */
-function RefSection({ title, refs, defaultCollapsed = false, emptyMessage = 'No entries.' }) {
+function RefSection({
+  title,
+  refs,
+  defaultCollapsed = false,
+  emptyMessage = 'No entries.',
+  bibtexDownloadFilename,
+}) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const count = Array.isArray(refs) ? refs.length : 0;
+
+  const handleExportBibtex = useCallback(() => {
+    if (!bibtexDownloadFilename || count === 0) return;
+    const body = buildLiteratureRefsBibtex(refs);
+    const header = '% Suggested related work for authors (exported from AISA author report)\n\n';
+    downloadTextFile(header + body, bibtexDownloadFilename);
+  }, [bibtexDownloadFilename, count, refs]);
 
   if (count === 0) {
     return (
@@ -165,16 +255,29 @@ function RefSection({ title, refs, defaultCollapsed = false, emptyMessage = 'No 
 
   return (
     <section className="author-report-section">
-      <button
-        type="button"
-        className="author-report-section-title-btn"
-        onClick={() => setCollapsed((c) => !c)}
-        aria-expanded={!collapsed}
-      >
-        <i className={`fas fa-chevron-${collapsed ? 'right' : 'down'} me-2`} aria-hidden="true"></i>
-        {title}
-        <span className="ms-2 text-muted small">({count})</span>
-      </button>
+      <div className="author-report-section-header">
+        <button
+          type="button"
+          className="author-report-section-title-btn"
+          onClick={() => setCollapsed((c) => !c)}
+          aria-expanded={!collapsed}
+        >
+          <i className={`fas fa-chevron-${collapsed ? 'right' : 'down'} me-2`} aria-hidden="true"></i>
+          {title}
+          <span className="ms-2 text-muted small">({count})</span>
+        </button>
+        {bibtexDownloadFilename ? (
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-secondary author-report-bibtex-export"
+            onClick={handleExportBibtex}
+            aria-label="Download suggested related publications as BibTeX"
+          >
+            <i className="fas fa-download me-1" aria-hidden="true"></i>
+            Export BibTeX
+          </button>
+        ) : null}
+      </div>
       {!collapsed && (
         <div className="table-responsive mt-2">
           <table className="table table-sm table-bordered table-hover">
@@ -327,6 +430,7 @@ function AuthorReport() {
             refs={report.llm_not_in_gt}
             defaultCollapsed={false}
             emptyMessage="No LLM-only suggestions (all LLM refs are in ground truth)."
+            bibtexDownloadFilename={`author-report-suggested-related-seed-${selectedSeedPaperId}.bib`}
           />
           <RefSection
             title="All deduplicated LLM refs"
