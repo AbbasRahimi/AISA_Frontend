@@ -3,6 +3,10 @@ import React from 'react';
 const RelevanceMetrics = ({ evaluationMetrics, relevanceMetrics }) => {
   const wmcc = relevanceMetrics?.wmcc;
   const w = relevanceMetrics?.wmcc_weight ?? 10;
+  const totalGroundTruth =
+    relevanceMetrics?.total_gt_papers ??
+    relevanceMetrics?.total_ground_truth ??
+    0;
   const wmccClass =
     wmcc === undefined || wmcc === null || Number.isNaN(wmcc)
       ? 'text-muted'
@@ -105,7 +109,7 @@ const RelevanceMetrics = ({ evaluationMetrics, relevanceMetrics }) => {
             <div className="card text-center">
               <div className="card-body">
                 <h6 className="text-muted">Total Ground Truth</h6>
-                <h3 className="text-info">{relevanceMetrics?.total_ground_truth || 0}</h3>
+                <h3 className="text-info">{totalGroundTruth}</h3>
               </div>
             </div>
           </div>

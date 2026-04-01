@@ -1,11 +1,19 @@
 // Use environment variable or default to relative URL
 // In production with nginx proxy, use relative URLs
 // The proxy will be set at build time or use the current origin
-const API_BASE_URL = process.env.REACT_APP_API_URL || (
+export const API_BASE_URL = process.env.REACT_APP_API_URL || (
   process.env.NODE_ENV === 'production'
     ? '' // Use relative URLs in production (nginx will proxy)
     : `${window.location.protocol}//${window.location.hostname}:8000` // Use server IP/hostname in development
 );
+
+export function buildApiUrl(pathname) {
+  const base = API_BASE_URL || '';
+  const path = pathname || '';
+  if (!base) return path.startsWith('/') ? path : `/${path}`;
+  if (!path) return base;
+  return `${base.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
+}
 
 /**
  * Builds query string from key-value params (skips null/undefined).
@@ -53,14 +61,33 @@ function buildQueryParams(params) {
 class ApiService {
   constructor() {
     this.baseURL = API_BASE_URL;
+    /** @type {null | (() => Promise<string | null | undefined>)} */
+    this.accessTokenGetter = null;
+  }
+
+  /**
+   * Provide a function that returns an access token.
+   * @param {() => Promise<string | null | undefined>} getter
+   */
+  setAccessTokenGetter(getter) {
+    this.accessTokenGetter = getter;
   }
 
   async request(endpoint, options = {}) {
     const url = `${this.baseURL}${endpoint}`;
     const isFormData = options.body instanceof FormData;
+    let token = null;
+    if (this.accessTokenGetter) {
+      try {
+        token = await this.accessTokenGetter();
+      } catch (e) {
+        token = null;
+      }
+    }
     const config = {
       headers: {
         ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...options.headers,
       },
       ...options,
@@ -135,6 +162,11 @@ class ApiService {
   // Health check
   async healthCheck() {
     return this.request('/api/health');
+  }
+
+  // Current user (Auth)
+  async getMe(options = {}) {
+    return this.request('/api/user/me', options);
   }
 
   // Seed Papers
@@ -462,6 +494,24 @@ class ApiService {
     return this.request('/api/evaluation/evaluate', {
       method: 'POST',
       body: JSON.stringify(requestBody),
+    });
+  }
+
+  /**
+   * Recalculate metrics for an existing execution and persist them server-side.
+   * OpenAPI: POST /api/evaluation/executions/{execution_id}/recalculate
+   * @param {number} executionId
+   * @param {object} payload
+   * @param {boolean} [payload.include_partial]
+   * @param {number} [payload.wmcc_weight]
+   * @param {number} [payload.validity_weight]
+   * @param {number} [payload.relevance_weight]
+   * @returns {Promise<{ execution_id: number, execution_evaluation_id: number, evaluation: any }>}
+   */
+  async recalculateMetricsForExecution(executionId, payload = {}) {
+    return this.request(`/api/evaluation/executions/${executionId}/recalculate`, {
+      method: 'POST',
+      body: JSON.stringify(payload || {}),
     });
   }
 

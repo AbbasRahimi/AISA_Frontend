@@ -2,10 +2,19 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
+import { BrowserRouter } from 'react-router-dom';
+import Auth0ProviderWithNavigate from './auth/Auth0ProviderWithNavigate';
+import { AuthzProvider } from './auth/AuthzContext';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
-    <App />
+    <BrowserRouter>
+      <Auth0ProviderWithNavigate>
+        <AuthzProvider>
+          <App />
+        </AuthzProvider>
+      </Auth0ProviderWithNavigate>
+    </BrowserRouter>
   </React.StrictMode>
 );

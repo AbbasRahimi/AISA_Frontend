@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import './App.css';
 import ConfigurationPanel from './components/dashboard/ConfigurationPanel';
 import ProgressPanel from './components/dashboard/ProgressPanel';
@@ -11,14 +11,81 @@ import EvaluationMetricsGuide from './components/evaluation/EvaluationMetrics';
 import ImportExecution from './components/import/ImportExecution';
 import DatabaseView from './components/database/DatabaseView';
 import Footer from './components/layout/Footer';
-import apiService from './services/api';
+import apiService, { buildApiUrl } from './services/api';
 import { createWorkflowRequest, LLMProvider } from './models';
 import { useExecutionPolling } from './hooks/useExecutionPolling';
 import { downloadBlob } from './utils';
+import { useAuth0 } from '@auth0/auth0-react';
+import { useAuthz } from './auth/AuthzContext';
+import { RequireAuth, RequirePermission } from './auth/guards';
+
+function PublicProjectInfo() {
+  const { isAuthenticated, isLoading } = useAuth0();
+
+  return (
+    <div className="container mt-4">
+      <div className="row">
+        <div className="col-lg-8">
+          <h2 className="mb-3">AISA — Literature Search Auto Validation</h2>
+          <p className="text-muted">
+            This project helps validate and compare literature search results by running workflows, verifying
+            publications, comparing references, and reporting evaluation metrics.
+          </p>
+
+          <div className="card mb-3">
+            <div className="card-body">
+              <h5 className="card-title mb-2">What you can do (after login)</h5>
+              <ul className="mb-0">
+                <li>
+                  Run the main workflow (seed papers, prompts, executions)
+                </li>
+                <li>
+                  Verify publication metadata
+                </li>
+                <li>
+                  Compare reference lists
+                </li>
+                <li>
+                  View evaluation metrics and execution imports
+                </li>
+                <li>
+                  Browse literature/database views (role/permission dependent)
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-body">
+              <h5 className="card-title mb-2">API</h5>
+              <p className="mb-0">
+                You can view the API documentation any time via the <strong>API Docs</strong> link in the top
+                navigation.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="col-lg-4 mt-3 mt-lg-0">
+          {!isLoading && !isAuthenticated ? (
+            <div className="alert alert-info" role="alert">
+              <div className="fw-bold mb-1">Sign in to continue</div>
+              <div className="small">
+                Use the <strong>Log in</strong> button in the top-right to access the dashboard and tools.
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Navigation Component
 function Navigation() {
   const location = useLocation();
+  const { isAuthenticated, isLoading, loginWithRedirect, logout } = useAuth0();
+  const { me, meLoading, isAdmin, permissions } = useAuthz();
   
   const handleNavClick = () => {
     // Close the mobile menu when a link is clicked
@@ -27,6 +94,14 @@ function Navigation() {
       const bsCollapse = new window.bootstrap.Collapse(navCollapse, { toggle: false });
       bsCollapse.hide();
     }
+  };
+
+  const canSee = (permissionName) => {
+    if (!isAuthenticated) return false;
+    if (!permissionName) return true;
+    if (meLoading) return false;
+    if (isAdmin) return true;
+    return permissions.has(permissionName);
   };
   
   return (
@@ -48,51 +123,101 @@ function Navigation() {
         </button>
         <div className="collapse navbar-collapse" id="navbarNav">
           <div className="navbar-nav ms-auto">
-            <Link 
-              className={`nav-link ${location.pathname === '/' ? 'active' : ''}`} 
-              to="/"
+            <Link
+              className={`nav-link ${location.pathname === '/about' ? 'active' : ''}`}
+              to="/about"
               onClick={handleNavClick}
             >
-              Main Dashboard
+              About
             </Link>
-            <Link 
-              className={`nav-link ${location.pathname === '/reference-comparer' ? 'active' : ''}`} 
-              to="/reference-comparer"
+            {canSee('workflow') && (
+              <Link
+                className={`nav-link ${location.pathname === '/' ? 'active' : ''}`}
+                to="/"
+                onClick={handleNavClick}
+              >
+                Main Dashboard
+              </Link>
+            )}
+            {canSee('reference_comparer') && (
+              <Link
+                className={`nav-link ${location.pathname === '/reference-comparer' ? 'active' : ''}`}
+                to="/reference-comparer"
+                onClick={handleNavClick}
+              >
+                Reference Comparer
+              </Link>
+            )}
+            {canSee('publication_verifier') && (
+              <Link
+                className={`nav-link ${location.pathname === '/publication-verifier' ? 'active' : ''}`}
+                to="/publication-verifier"
+                onClick={handleNavClick}
+              >
+                Publication Verifier
+              </Link>
+            )}
+            {canSee('evaluation') && (
+              <Link
+                className={`nav-link ${location.pathname === '/evaluation-metrics' ? 'active' : ''}`}
+                to="/evaluation-metrics"
+                onClick={handleNavClick}
+              >
+                <i className="fas fa-chart-line"></i> Metrics
+              </Link>
+            )}
+            {canSee('executions') && (
+              <Link
+                className={`nav-link ${location.pathname === '/import-execution' ? 'active' : ''}`}
+                to="/import-execution"
+                onClick={handleNavClick}
+              >
+                <i className="fas fa-file-import"></i> Import Execution
+              </Link>
+            )}
+            {canSee('literature') && (
+              <Link
+                className={`nav-link ${location.pathname === '/database' ? 'active' : ''}`}
+                to="/database"
+                onClick={handleNavClick}
+              >
+                <i className="fas fa-database"></i> Database
+              </Link>
+            )}
+            <a
+              className="nav-link"
+              href={buildApiUrl('/api/docs')}
+              target="_blank"
+              rel="noopener noreferrer"
               onClick={handleNavClick}
             >
-              Reference Comparer
-            </Link>
-            <Link 
-              className={`nav-link ${location.pathname === '/publication-verifier' ? 'active' : ''}`} 
-              to="/publication-verifier"
-              onClick={handleNavClick}
-            >
-              Publication Verifier
-            </Link>
-            <Link 
-              className={`nav-link ${location.pathname === '/evaluation-metrics' ? 'active' : ''}`} 
-              to="/evaluation-metrics"
-              onClick={handleNavClick}
-            >
-              <i className="fas fa-chart-line"></i> Metrics
-            </Link>
-            <Link 
-              className={`nav-link ${location.pathname === '/import-execution' ? 'active' : ''}`} 
-              to="/import-execution"
-              onClick={handleNavClick}
-            >
-              <i className="fas fa-file-import"></i> Import Execution
-            </Link>
-            <Link 
-              className={`nav-link ${location.pathname === '/database' ? 'active' : ''}`} 
-              to="/database"
-              onClick={handleNavClick}
-            >
-              <i className="fas fa-database"></i> Database
-            </Link>
-            <a className="nav-link" href="/api/docs" target="_blank" rel="noopener noreferrer" onClick={handleNavClick}>
               <i className="fas fa-book"></i> API Docs
             </a>
+
+            <div className="nav-item d-flex align-items-center ms-lg-2">
+              {!isLoading && !isAuthenticated && (
+                <button
+                  className="btn btn-sm btn-light"
+                  onClick={() => loginWithRedirect({ appState: { returnTo: location.pathname } })}
+                >
+                  Log in
+                </button>
+              )}
+              {!isLoading && isAuthenticated && (
+                <div className="d-flex align-items-center gap-2">
+                  <span className="navbar-text small text-white-50 d-none d-lg-inline">
+                    {me?.email || me?.username || me?.name || 'Signed in'}
+                    {isAdmin ? ' (Admin)' : ''}
+                  </span>
+                  <button
+                    className="btn btn-sm btn-outline-light"
+                    onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
+                  >
+                    Log out
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -384,23 +509,95 @@ function MainDashboard() {
 }
 
 function App() {
+  const { isAuthenticated, isLoading } = useAuth0();
+  const { isAdmin, permissions, meLoading } = useAuthz();
+
   return (
-    <Router>
-      <div className="App">
-        <Navigation />
-        <main>
-          <Routes>
-            <Route path="/" element={<MainDashboard />} />
-            <Route path="/publication-verifier" element={<PublicationVerifier />} />
-            <Route path="/reference-comparer" element={<ReferenceComparer />} />
-            <Route path="/evaluation-metrics" element={<EvaluationMetricsGuide />} />
-            <Route path="/import-execution" element={<ImportExecution />} />
-            <Route path="/database" element={<DatabaseView />} />
-          </Routes>
-        </main>
-        <Footer />
-      </div>
-    </Router>
+    <div className="App">
+      <Navigation />
+      <main>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              isLoading ? null : isAuthenticated ? (
+                <RequirePermission permission="workflow">
+                  <MainDashboard />
+                </RequirePermission>
+              ) : (
+                <PublicProjectInfo />
+              )
+            }
+          />
+          <Route path="/about" element={<PublicProjectInfo />} />
+          <Route
+            path="/publication-verifier"
+            element={
+              <RequireAuth>
+                <RequirePermission permission="publication_verifier">
+                  <PublicationVerifier />
+                </RequirePermission>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/reference-comparer"
+            element={
+              <RequireAuth>
+                <RequirePermission permission="reference_comparer">
+                  <ReferenceComparer />
+                </RequirePermission>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/evaluation-metrics"
+            element={
+              <RequireAuth>
+                <RequirePermission permission="evaluation">
+                  <EvaluationMetricsGuide />
+                </RequirePermission>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/import-execution"
+            element={
+              <RequireAuth>
+                <RequirePermission permission="executions">
+                  <ImportExecution />
+                </RequirePermission>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/database"
+            element={
+              <RequireAuth>
+                <RequirePermission permission="literature">
+                  <DatabaseView />
+                </RequirePermission>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/unauthorized"
+            element={
+              isAuthenticated && !meLoading && (isAdmin || permissions.size > 0) ? (
+                <Navigate to="/" replace />
+              ) : (
+                <div className="container mt-4">
+                  <div className="alert alert-warning" role="alert">
+                    You don’t have permission to view this page.
+                  </div>
+                </div>
+              )
+            }
+          />
+        </Routes>
+      </main>
+      <Footer />
+    </div>
   );
 }
 

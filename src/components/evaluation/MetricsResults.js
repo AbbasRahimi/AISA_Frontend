@@ -15,9 +15,15 @@ const MetricsResults = ({ evaluationMetrics, selectedExecution }) => {
 
   const { validity_metrics, relevance_metrics, combined_metrics } = evaluationMetrics;
   
-  // Get the basic statistics from the selected execution (NOT from transformed data)
-  const totalPublications = selectedExecution?.total_publications_found ?? 0;
-  const foundInDatabase = selectedExecution?.verified_publications ?? 0;
+  // Prefer backend-computed counts when available; fall back to execution row fields.
+  const totalPublications =
+    validity_metrics?.total_publications ??
+    selectedExecution?.total_publications_found ??
+    0;
+  const foundInDatabase =
+    validity_metrics?.found_in_database ??
+    selectedExecution?.verified_publications ??
+    0;
 
   return (
     <div>

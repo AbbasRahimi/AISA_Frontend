@@ -4,7 +4,7 @@ const ValidityMetrics = ({ totalPublications, foundInDatabase, validityMetrics }
   return (
     <div className="card mb-4">
       <div className="card-header bg-success text-white">
-        <h5 className="mb-0"><i className="fas fa-check-circle"></i> Validity Metrics (Hallucination Detection)</h5>
+        <h5 className="mb-0"><i className="fas fa-check-circle"></i> Existence Validity Metrics (Hallucination Detection)</h5>
       </div>
       <div className="card-body">
         <div className="row">

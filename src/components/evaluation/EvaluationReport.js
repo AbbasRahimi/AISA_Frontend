@@ -57,7 +57,11 @@ const generateEvaluationReport = (evaluationMetrics, selectedExecution) => {
     report += `True Positives: ${relevance_metrics.true_positives || 0}\n`;
     report += `False Positives: ${relevance_metrics.false_positives || 0}\n`;
     report += `False Negatives: ${relevance_metrics.false_negatives !== undefined ? relevance_metrics.false_negatives : 0}\n`;
-    report += `Total Ground Truth References: ${relevance_metrics.total_ground_truth || 0}\n\n`;
+    const totalGt =
+      relevance_metrics.total_gt_papers ??
+      relevance_metrics.total_ground_truth ??
+      0;
+    report += `Total Ground Truth References: ${totalGt}\n\n`;
     
     report += `Precision: ${relevance_metrics.precision !== undefined ? (relevance_metrics.precision * 100).toFixed(2) + '%' : 'N/A'}\n`;
     report += `Recall: ${relevance_metrics.recall !== undefined ? (relevance_metrics.recall * 100).toFixed(2) + '%' : 'N/A'}\n`;

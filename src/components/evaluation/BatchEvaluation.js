@@ -226,9 +226,20 @@ const BatchEvaluation = () => {
       try {
         // Get LLM system ID
         const response = await apiService.getLLMSystems(selectedLlmProvider, selectedLlmModel);
-        
-        if (response && response.llm_systems && response.llm_systems.length > 0) {
-          const systemId = response.llm_systems[0].id;
+
+        const systems = Array.isArray(response)
+          ? response
+          : (response?.llm_systems || response?.items || response?.data || []);
+
+        // Try to find the exact system match; otherwise fall back to first.
+        const matchedSystem =
+          systems.find((s) => s?.name === selectedLlmProvider && s?.version === selectedLlmModel) ||
+          systems[0] ||
+          null;
+
+        const systemId = matchedSystem?.id ?? matchedSystem?.llm_system_id ?? null;
+
+        if (systemId != null) {
           setLlmSystemId(systemId);
           
           console.log('[BatchEvaluation] Fetching executions for LLM system ID:', systemId);
