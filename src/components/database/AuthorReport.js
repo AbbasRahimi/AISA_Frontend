@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import apiService from '../../services/api';
 import './AuthorReport.css';
 
@@ -11,6 +11,60 @@ function bibtexEscapeField(s) {
 }
 
 /**
+ * Normalize either a backend LiteratureRef or an OpenAlex "work" object
+ * into a LiteratureRef-like shape used by this UI.
+ */
+function normalizeToLiteratureRef(ref) {
+  if (!ref || typeof ref !== 'object') return null;
+
+  // Already in expected shape (backend).
+  const hasBackendShape =
+    'title' in ref &&
+    ('authors' in ref || 'year' in ref || 'doi' in ref || 'journal' in ref);
+  if (hasBackendShape) {
+    return {
+      id: ref.id ?? null,
+      title: ref.title ?? '—',
+      authors: ref.authors ?? null,
+      year: ref.year ?? null,
+      doi: ref.doi ?? null,
+      journal: ref.journal ?? null,
+    };
+  }
+
+  // OpenAlex work-like.
+  const title = ref.title ?? ref.display_name ?? null;
+  const year = ref.publication_year ?? ref.year ?? null;
+  const doi =
+    ref.doi ??
+    ref.ids?.doi ??
+    ref.primary_location?.landing_page_url ??
+    null;
+  const journal =
+    ref.journal ??
+    ref.primary_location?.source?.display_name ??
+    ref.primary_location?.raw_source_name ??
+    null;
+
+  const authorships = Array.isArray(ref.authorships) ? ref.authorships : [];
+  const authors = authorships.length
+    ? authorships
+        .map((a) => a?.raw_author_name ?? a?.author?.display_name)
+        .filter(Boolean)
+        .join('; ')
+    : (ref.authors ?? null);
+
+  return {
+    id: ref.id ?? ref.ids?.openalex ?? ref.doi ?? ref.ids?.doi ?? null,
+    title: title != null ? String(title) : '—',
+    authors: authors != null && String(authors).trim() !== '' ? String(authors) : null,
+    year: year != null && !Number.isNaN(Number(year)) ? Number(year) : null,
+    doi: doi != null && String(doi).trim() !== '' ? String(doi).trim() : null,
+    journal: journal != null && String(journal).trim() !== '' ? String(journal).trim() : null,
+  };
+}
+
+/**
  * Build a single @article entry from a LiteratureRef-like object.
  * Keys are deduplicated when multiple refs share the same base key.
  */
@@ -19,11 +73,12 @@ function buildLiteratureRefsBibtex(refs) {
   const usedKeys = new Map();
 
   const entries = list.map((ref, index) => {
-    const titleRaw = ref.title != null ? String(ref.title) : '';
-    const authorsRaw = ref.authors != null ? String(ref.authors) : '';
-    const yearRaw = ref.year != null ? String(ref.year) : '';
-    const doiRaw = ref.doi != null ? String(ref.doi).trim() : '';
-    const journalRaw = ref.journal != null ? String(ref.journal) : '';
+    const norm = normalizeToLiteratureRef(ref) || {};
+    const titleRaw = norm.title != null ? String(norm.title) : '';
+    const authorsRaw = norm.authors != null ? String(norm.authors) : '';
+    const yearRaw = norm.year != null ? String(norm.year) : '';
+    const doiRaw = norm.doi != null ? String(norm.doi).trim() : '';
+    const journalRaw = norm.journal != null ? String(norm.journal) : '';
 
     const title = bibtexEscapeField(titleRaw.replace(/\s+/g, ' ').trim()) || 'Unknown';
     const authors = bibtexEscapeField(
@@ -39,8 +94,8 @@ function buildLiteratureRefsBibtex(refs) {
     let baseKey = '';
     if (doiRaw) {
       baseKey = doiRaw.replace(/[^a-zA-Z0-9]/g, '');
-    } else if (ref.id != null && String(ref.id).trim() !== '') {
-      baseKey = `llm_related_${String(ref.id).replace(/[^a-zA-Z0-9_]/g, '_')}`;
+    } else if (norm.id != null && String(norm.id).trim() !== '') {
+      baseKey = `llm_related_${String(norm.id).replace(/[^a-zA-Z0-9_]/g, '_')}`;
     } else {
       baseKey = `llm_related_${index}`;
     }
@@ -48,9 +103,9 @@ function buildLiteratureRefsBibtex(refs) {
     if (/^[0-9]/.test(baseKey)) baseKey = `r${baseKey}`;
 
     let key = baseKey;
-    let n = 1;
+    let suffix = 1;
     while (usedKeys.has(key)) {
-      key = `${baseKey}_${++n}`;
+      key = `${baseKey}_${++suffix}`;
     }
     usedKeys.set(key, true);
 
@@ -90,16 +145,17 @@ function downloadTextFile(content, filename) {
  * Renders a single literature reference row: title, authors, year, journal, DOI (link if present).
  */
 function LiteratureRefRow({ item }) {
-  if (!item) return null;
-  const doi = item.doi != null && String(item.doi).trim() !== '' ? String(item.doi).trim() : null;
+  const n = normalizeToLiteratureRef(item);
+  if (!n) return null;
+  const doi = n.doi != null && String(n.doi).trim() !== '' ? String(n.doi).trim() : null;
   const doiUrl = doi ? (doi.startsWith('http') ? doi : `https://doi.org/${doi}`) : null;
 
   return (
     <tr>
-      <td className="author-report-cell-title" title={item.title}>{item.title || '—'}</td>
-      <td className="author-report-cell">{item.authors ?? '—'}</td>
-      <td className="author-report-cell author-report-cell-year">{item.year ?? '—'}</td>
-      <td className="author-report-cell" title={item.journal ?? ''}>{item.journal ?? '—'}</td>
+      <td className="author-report-cell-title" title={n.title}>{n.title || '—'}</td>
+      <td className="author-report-cell">{n.authors ?? '—'}</td>
+      <td className="author-report-cell author-report-cell-year">{n.year ?? '—'}</td>
+      <td className="author-report-cell" title={n.journal ?? ''}>{n.journal ?? '—'}</td>
       <td className="author-report-cell author-report-cell-doi">
         {doiUrl ? (
           <a href={doiUrl} target="_blank" rel="noopener noreferrer" title={doi}>
@@ -118,7 +174,8 @@ function LiteratureRefRow({ item }) {
  */
 function GtFoundByLlmRow({ entry }) {
   if (!entry || !entry.reference) return null;
-  const item = entry.reference;
+  const item = normalizeToLiteratureRef(entry.reference);
+  if (!item) return null;
   const systems = Array.isArray(entry.found_by_systems) ? entry.found_by_systems : [];
   const doi = item.doi != null && String(item.doi).trim() !== '' ? String(item.doi).trim() : null;
   const doiUrl = doi ? (doi.startsWith('http') ? doi : `https://doi.org/${doi}`) : null;
@@ -230,16 +287,22 @@ function RefSection({
   defaultCollapsed = false,
   emptyMessage = 'No entries.',
   bibtexDownloadFilename,
+  headerActions = null,
 }) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
-  const count = Array.isArray(refs) ? refs.length : 0;
+  const normalizedRefs = useMemo(() => {
+    return Array.isArray(refs)
+      ? refs.map((r) => normalizeToLiteratureRef(r)).filter(Boolean)
+      : [];
+  }, [refs]);
+  const count = normalizedRefs.length;
 
   const handleExportBibtex = useCallback(() => {
     if (!bibtexDownloadFilename || count === 0) return;
-    const body = buildLiteratureRefsBibtex(refs);
+    const body = buildLiteratureRefsBibtex(normalizedRefs);
     const header = '% Suggested related work for authors (exported from AISA author report)\n\n';
     downloadTextFile(header + body, bibtexDownloadFilename);
-  }, [bibtexDownloadFilename, count, refs]);
+  }, [bibtexDownloadFilename, count, normalizedRefs]);
 
   if (count === 0) {
     return (
@@ -266,17 +329,20 @@ function RefSection({
           {title}
           <span className="ms-2 text-muted small">({count})</span>
         </button>
-        {bibtexDownloadFilename ? (
-          <button
-            type="button"
-            className="btn btn-sm btn-outline-secondary author-report-bibtex-export"
-            onClick={handleExportBibtex}
-            aria-label="Download suggested related publications as BibTeX"
-          >
-            <i className="fas fa-download me-1" aria-hidden="true"></i>
-            Export BibTeX
-          </button>
-        ) : null}
+        <div className="d-flex align-items-center gap-2">
+          {bibtexDownloadFilename ? (
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-secondary author-report-bibtex-export"
+              onClick={handleExportBibtex}
+              aria-label="Download suggested related publications as BibTeX"
+            >
+              <i className="fas fa-download me-1" aria-hidden="true"></i>
+              Export BibTeX
+            </button>
+          ) : null}
+          {headerActions}
+        </div>
       </div>
       {!collapsed && (
         <div className="table-responsive mt-2">
@@ -291,8 +357,8 @@ function RefSection({
               </tr>
             </thead>
             <tbody>
-              {refs.filter(Boolean).map((r) => (
-                <LiteratureRefRow key={r.id} item={r} />
+              {normalizedRefs.map((r, idx) => (
+                <LiteratureRefRow key={r.id ?? idx} item={r} />
               ))}
             </tbody>
           </table>
@@ -308,7 +374,30 @@ function AuthorReport() {
   const [report, setReport] = useState(null);
   const [loadingSeedPapers, setLoadingSeedPapers] = useState(true);
   const [loadingReport, setLoadingReport] = useState(false);
+  const [verifyingCitationMetadata, setVerifyingCitationMetadata] = useState(false);
+  const [notice, setNotice] = useState(null);
   const [error, setError] = useState(null);
+
+  const handleCitationMetadataVerification = useCallback(async () => {
+    if (!selectedSeedPaperId) return;
+    const id = Number(selectedSeedPaperId);
+    if (Number.isNaN(id)) return;
+
+    setVerifyingCitationMetadata(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await apiService.request(
+        `/api/seed-papers/${id}/authoritative-metadata/enrich?force_refresh=true`,
+        { method: 'POST' },
+      );
+      setNotice('Citation metadata verification completed (authoritative metadata enriched).');
+    } catch (err) {
+      setError(err?.message || 'Citation metadata verification failed.');
+    } finally {
+      setVerifyingCitationMetadata(false);
+    }
+  }, [selectedSeedPaperId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -387,7 +476,7 @@ function AuthorReport() {
           <option value="">Select a seed paper…</option>
           {seedPapers.map((sp) => (
             <option key={sp.id} value={sp.id}>
-              {sp.title || sp.alias || `Seed paper ${sp.id}`}
+              {sp.title || sp.display_name || sp.alias || `Seed paper ${sp.id}`}
             </option>
           ))}
         </select>
@@ -397,6 +486,13 @@ function AuthorReport() {
         <div className="alert alert-danger">
           <i className="fas fa-exclamation-triangle me-2" aria-hidden="true"></i>
           {error}
+        </div>
+      )}
+
+      {notice && !error && (
+        <div className="alert alert-success">
+          <i className="fas fa-check-circle me-2" aria-hidden="true"></i>
+          {notice}
         </div>
       )}
 
@@ -437,6 +533,28 @@ function AuthorReport() {
             refs={report.deduplicated_llm_refs}
             defaultCollapsed={true}
             emptyMessage="No LLM references for this seed paper."
+            headerActions={(
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-primary"
+                onClick={handleCitationMetadataVerification}
+                disabled={verifyingCitationMetadata}
+                aria-label="Run citation metadata verification for this seed paper"
+                title="Compute/cache authoritative citation metadata + discrepancy checks"
+              >
+                {verifyingCitationMetadata ? (
+                  <>
+                    <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    Verifying…
+                  </>
+                ) : (
+                  <>
+                    <i className="fas fa-shield-alt me-1" aria-hidden="true"></i>
+                    Citation metadata verification
+                  </>
+                )}
+              </button>
+            )}
           />
         </div>
       )}
