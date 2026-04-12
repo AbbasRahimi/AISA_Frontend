@@ -420,17 +420,10 @@ class ApiService {
   }
 
   /**
-   * Import execution from uploaded file (JSON, BibTeX, or .txt for _na no-result executions).
-   * Filename must follow: systemName_seedpaperID_promptID_promptversion_YYMMDD_HHMMSS_comment.json|.bib|.txt
-   * For *_na.txt files the backend creates an execution with total_publications_found=0 and optional execution_comment.
-   * Options (when server returns missing_data): seed_paper_id, seed_paper_content (BibTeX), seed_paper_alias,
-   *   prompt_id, prompt_content so the server can create missing records and continue.
-   * Options: execution_comment (for _na .txt imports – file body stored as execution comment).
-   * Returns { status: 'success', insertion_report, ... } or { status: 'missing_data', ... }.
+   * @param {FormData} formData
+   * @param {Record<string, unknown>} options
    */
-  async importExecutionFromFile(file, options = {}) {
-    const formData = new FormData();
-    formData.append('file', file);
+  _appendImportExecutionOptions(formData, options = {}) {
     if (options.seed_paper_id != null) {
       formData.append('seed_paper_id', String(options.seed_paper_id));
     }
@@ -455,9 +448,49 @@ class ApiService {
     if (options.execution_comment != null && String(options.execution_comment).trim() !== '') {
       formData.append('execution_comment', String(options.execution_comment).trim());
     }
+  }
+
+  /**
+   * Import execution from uploaded file (JSON, BibTeX, or .txt for _na no-result executions).
+   * Filename must follow: systemName_seedpaperID_promptID_promptversion_YYMMDD_HHMMSS_comment.json|.bib|.txt
+   * For *_na.txt files the backend creates an execution with total_publications_found=0 and optional execution_comment.
+   * Options (when server returns missing_data): seed_paper_id, seed_paper_content (BibTeX), seed_paper_alias,
+   *   prompt_id, prompt_content so the server can create missing records and continue.
+   * Options: execution_comment (for _na .txt imports – file body stored as execution comment).
+   * Returns { status: 'success', insertion_report, ... } or { status: 'missing_data', ... }.
+   */
+  async importExecutionFromFile(file, options = {}) {
+    const formData = new FormData();
+    formData.append('file', file);
+    this._appendImportExecutionOptions(formData, options);
     return this.request('/api/executions/import', {
       method: 'POST',
       headers: {}, // Let browser set Content-Type for FormData (multipart/form-data)
+      body: formData,
+    });
+  }
+
+  /**
+   * Import one or more execution export files. Single file uses multipart field `file`; two or more use repeated `files` parts (OpenAPI).
+   * Batch responses include total_files, outcome_counts, and results[]; single-file responses stay a flat object.
+   */
+  async importExecutionFromFiles(files, options = {}) {
+    const list = Array.isArray(files) ? files : [];
+    if (list.length === 0) {
+      throw new Error('No files selected');
+    }
+    const formData = new FormData();
+    if (list.length === 1) {
+      formData.append('file', list[0]);
+    } else {
+      for (const f of list) {
+        formData.append('files', f);
+      }
+    }
+    this._appendImportExecutionOptions(formData, options);
+    return this.request('/api/executions/import', {
+      method: 'POST',
+      headers: {},
       body: formData,
     });
   }

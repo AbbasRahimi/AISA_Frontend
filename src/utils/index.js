@@ -7,3 +7,9 @@ export {
   WORKFLOW_MAX_WAIT_MS,
   TEXT_PREVIEW_WORD_COUNT,
 } from './constants';
+export {
+  PROMPT_TEMPLATE_PREFIX,
+  PROMPT_TEMPLATE_POSTFIX_1,
+  buildPostfix2,
+  buildPromptFromTemplate,
+} from './promptTemplateUtils';

@@ -7,6 +7,8 @@ import {
   parseExecutionFilename,
   readFileAsText,
   isNaExecutionFile,
+  hasImportExecutionExtension,
+  interpretImportExecutionResponse,
 } from './importExecutionUtils';
 import FilenameMetadataCard from './FilenameMetadataCard';
 import AddSeedPaperCard from './AddSeedPaperCard';
@@ -15,7 +17,7 @@ import AddPromptCard from './AddPromptCard';
 import ImportHistoryList from './ImportHistoryList';
 
 export default function ImportExecution() {
-  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [importHistory, setImportHistory] = useState([]);
@@ -44,19 +46,22 @@ export default function ImportExecution() {
   const addPromptFileInputRef = useRef(null);
   const groundTruthInputRef = useRef(null);
 
-  // When file changes, parse filename and reset DB check
+  const primaryFile = files[0] ?? null;
+  const isMultiFile = files.length > 1;
+
+  // When selected file(s) change, parse first file for metadata cards (single-file flow)
   useEffect(() => {
-    if (!file) {
+    if (!primaryFile || isMultiFile) {
       setParsedMeta(null);
       setMatchedSeedPaper(null);
       setMatchedPrompt(null);
       return;
     }
-    const meta = parseExecutionFilename(file.name);
+    const meta = parseExecutionFilename(primaryFile.name);
     setParsedMeta(meta);
     setMatchedSeedPaper(null);
     setMatchedPrompt(null);
-  }, [file]);
+  }, [primaryFile, isMultiFile]);
 
   // Fetch seed papers and prompts and check existence when we have parsed meta
   useEffect(() => {
@@ -117,10 +122,10 @@ export default function ImportExecution() {
   const runExistenceCheck = () => setCheckTrigger((t) => t + 1);
 
   const handleRefreshMetadataFromFilename = () => {
-    if (!file) return;
+    if (!primaryFile) return;
     setMatchedSeedPaper(null);
     setMatchedPrompt(null);
-    setParsedMeta(parseExecutionFilename(file.name));
+    setParsedMeta(parseExecutionFilename(primaryFile.name));
   };
 
   useEffect(() => {
@@ -306,27 +311,51 @@ export default function ImportExecution() {
     }
   };
 
-  const canAddToDb = file && parsedMeta && !checkLoading && matchedSeedPaper && matchedPrompt && !loading && !missingDataResponse;
+  const uploadableFiles = files.filter((f) => hasImportExecutionExtension(f.name));
+
+  const singleFileReady =
+    files.length === 1 &&
+    parsedMeta &&
+    !checkLoading &&
+    matchedSeedPaper &&
+    matchedPrompt;
+
+  const multiFileReady = isMultiFile && uploadableFiles.length > 0;
+
+  const canAddToDb =
+    files.length > 0 &&
+    !loading &&
+    !missingDataResponse &&
+    uploadableFiles.length > 0 &&
+    (singleFileReady || multiFileReady);
 
   const clearMissingDataForm = () => {
     setMissingDataResponse(null);
   };
 
   const handleFileChange = (e) => {
-    const selected = e.target.files?.[0];
-    if (selected) {
-      setFile(selected);
+    const list = e.target.files ? Array.from(e.target.files) : [];
+    if (list.length) {
+      setFiles(list);
       setError(null);
       setMissingDataResponse(null);
     } else {
-      setFile(null);
+      setFiles([]);
       clearMissingDataForm();
     }
   };
 
   const handleAddToDb = async () => {
-    if (!file) {
-      setError('Please select a file first.');
+    if (files.length === 0) {
+      setError('Please select at least one file.');
+      return;
+    }
+
+    const uploadable = files.filter((f) => hasImportExecutionExtension(f.name));
+    const skippedExt = files.filter((f) => !hasImportExecutionExtension(f.name));
+
+    if (uploadable.length === 0) {
+      setError('No files with a supported extension (.json, .bib, .txt).');
       return;
     }
 
@@ -334,14 +363,26 @@ export default function ImportExecution() {
     setError(null);
     setMissingDataResponse(null);
 
-    const fileName = file.name;
     const createdAt = new Date().toISOString();
+
+    const pushSkippedExtensionEntries = () => {
+      if (skippedExt.length === 0) return [];
+      return [
+        {
+          type: 'error',
+          fileName: skippedExt.map((f) => f.name).join(', '),
+          createdAt,
+          message:
+            'Not uploaded — unsupported extension (only .json, .bib, and .txt are sent to the server).',
+        },
+      ];
+    };
 
     try {
       const options = {};
-      if (isNaExecutionFile(file.name)) {
+      if (uploadable.length === 1 && isNaExecutionFile(uploadable[0].name)) {
         try {
-          const fileContent = await readFileAsText(file);
+          const fileContent = await readFileAsText(uploadable[0]);
           if (fileContent && fileContent.trim() !== '') {
             options.execution_comment = fileContent.trim();
           }
@@ -351,32 +392,114 @@ export default function ImportExecution() {
           return;
         }
       }
-      const response = await apiService.importExecutionFromFile(file, options);
+
+      const response = await apiService.importExecutionFromFiles(uploadable, options);
+
       if (response.status === 'missing_data') {
         setMissingDataResponse(response);
         return;
       }
-      if (response.status === 'success' || response.insertion_report) {
-        setImportHistory((prev) => [
-          {
-            type: 'success',
-            fileName,
-            createdAt,
-            data: response,
-            report: response.insertion_report,
-          },
-          ...prev,
-        ]);
-        setFile(null);
+
+      const interpreted = interpretImportExecutionResponse(response, uploadable.length);
+
+      if (uploadable.length > 1 && interpreted.kind !== 'batch') {
+        setError(
+          'Multiple files were sent but the server did not return a batch results list. Import files one at a time or update the API.'
+        );
+        return;
+      }
+
+      if (interpreted.kind === 'batch') {
+        const newEntries = [...pushSkippedExtensionEntries()];
+        let successCount = 0;
+        let failCount = 0;
+
+        for (const item of interpreted.items) {
+          const inner =
+            item.raw?.result && typeof item.raw.result === 'object' ? item.raw.result : null;
+          const report =
+            item.report ||
+            item.raw?.insertion_report ||
+            (inner?.insertion_report && typeof inner.insertion_report === 'object'
+              ? inner.insertion_report
+              : null) ||
+            null;
+          if (report) {
+            successCount += 1;
+            newEntries.push({
+              type: 'success',
+              fileName: item.fileName,
+              createdAt,
+              data: inner ?? item.raw,
+              report,
+            });
+          } else if (item.ok) {
+            successCount += 1;
+            newEntries.push({
+              type: 'success',
+              fileName: item.fileName,
+              createdAt,
+              data: inner ?? item.raw,
+              report: null,
+            });
+          } else {
+            failCount += 1;
+            newEntries.push({
+              type: 'error',
+              fileName: item.fileName,
+              createdAt,
+              message: item.message || 'Import failed for this file.',
+            });
+          }
+        }
+
+        setImportHistory((prev) => [...newEntries, ...prev]);
+        setFiles([]);
         clearMissingDataForm();
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
         }
+
+        const summaryParts = [];
+        if (successCount) summaryParts.push(`${successCount} imported`);
+        if (failCount) summaryParts.push(`${failCount} failed`);
+        if (skippedExt.length) summaryParts.push(`${skippedExt.length} skipped (bad extension)`);
+        setError(
+          failCount > 0 || skippedExt.length > 0
+            ? `Batch finished: ${summaryParts.join(', ')}. Details are in import attempts below.`
+            : null
+        );
         return;
       }
+
+      const r = interpreted.raw;
+      const fileName = uploadable[0].name;
+
+      if (r.status === 'success' || r.insertion_report) {
+        setImportHistory((prev) => [
+          ...pushSkippedExtensionEntries(),
+          {
+            type: 'success',
+            fileName,
+            createdAt,
+            data: r,
+            report: r.insertion_report,
+          },
+          ...prev,
+        ]);
+        setFiles([]);
+        clearMissingDataForm();
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        setError(skippedExt.length ? `Imported 1 file; ${skippedExt.length} skipped (bad extension). See below.` : null);
+        return;
+      }
+
       setError('Unexpected response from server.');
     } catch (err) {
       const message = err?.message || 'Import failed';
+      const primaryName = uploadable[0]?.name ?? files[0]?.name ?? 'unknown';
       const promptNotFoundMatch = message.match(/Prompt with id (\d+) not found/i);
       if (promptNotFoundMatch) {
         setMissingDataResponse({
@@ -406,9 +529,10 @@ export default function ImportExecution() {
         return;
       }
       setImportHistory((prev) => [
+        ...pushSkippedExtensionEntries(),
         {
           type: 'error',
-          fileName,
+          fileName: primaryName,
           createdAt,
           message,
         },
@@ -434,7 +558,7 @@ export default function ImportExecution() {
             Import execution from file
           </h2>
           <p className="text-muted">
-            Upload a JSON or BibTeX file (list of publications) exported from a manual run, or a .txt file for no-result executions (filename ending with <code>_na.txt</code>). The file name must follow the naming format so the system can extract execution metadata.
+            Upload one or more JSON or BibTeX files (publication lists) exported from a manual run, or <code>_na.txt</code> files for no-result runs. Each file name should follow the naming format so metadata can be resolved (single-file mode checks seed paper and prompt before import). For multiple files, the server processes each file and skips problematic ones; results appear under Import attempts.
           </p>
         </div>
       </div>
@@ -445,31 +569,48 @@ export default function ImportExecution() {
             <div className="card-header">
               <h5 className="mb-0">
                 <i className="fas fa-upload me-2"></i>
-                Upload file
+                Upload file(s)
               </h5>
             </div>
             <div className="card-body">
               <div className="mb-3">
-                <label className="form-label fw-bold">File (JSON, BibTeX, or .txt for no-result)</label>
+                <label className="form-label fw-bold">File(s) (JSON, BibTeX, or .txt for no-result)</label>
                 <input
                   ref={fileInputRef}
                   type="file"
                   className="form-control"
                   accept={ACCEPT_EXTENSIONS}
+                  multiple
                   onChange={handleFileChange}
                 />
-                {file && (
-                  <div className="mt-2 text-muted small">
-                    <i className="fas fa-file me-1"></i>
-                    {file.name} ({(file.size / 1024).toFixed(2)} KB)
-                    {isNaExecutionFile(file.name) && (
-                      <span className="d-block mt-1 text-info">No-result execution — will be stored with 0 publications; file content (if any) as execution comment.</span>
-                    )}
-                  </div>
+                {files.length > 0 && (
+                  <ul className="list-unstyled mt-2 mb-0 small text-muted">
+                    {files.map((f) => (
+                      <li key={`${f.name}-${f.size}-${f.lastModified}`} className="mb-1">
+                        <i className="fas fa-file me-1"></i>
+                        {f.name} ({(f.size / 1024).toFixed(2)} KB)
+                        {!hasImportExecutionExtension(f.name) && (
+                          <span className="text-warning ms-1">— not uploaded (use .json, .bib, or .txt)</span>
+                        )}
+                        {files.length === 1 && isNaExecutionFile(f.name) && (
+                          <span className="d-block mt-1 text-info">No-result execution — stored with 0 publications; file body (if any) as execution comment.</span>
+                        )}
+                        {isMultiFile && hasImportExecutionExtension(f.name) && !parseExecutionFilename(f.name) && (
+                          <span className="d-block mt-1 text-warning">Filename may not match the expected pattern — the server may reject or skip this file.</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </div>
 
-              {file && (
+              {isMultiFile && files.length > 0 && (
+                <div className="alert alert-info small mb-3">
+                  <strong>Multi-file import:</strong> all supported files are sent in one request. Problematic files are skipped on the server; see <strong>Import attempts</strong> for each outcome. The seed paper / prompt panels below apply only when exactly one file is selected.
+                </div>
+              )}
+
+              {files.length > 0 && !isMultiFile && (
                 <>
                   {checkLoading ? (
                     <div className="mb-3 text-muted small">
@@ -563,9 +704,21 @@ export default function ImportExecution() {
                   </>
                 )}
               </button>
-              {file && parsedMeta && !canAddToDb && !loading && (
+              {files.length > 0 && !canAddToDb && !loading && (
                 <p className="small text-muted mt-2 mb-0">
-                  {!parsedMeta ? 'Use a valid filename format.' : checkLoading ? 'Checking…' : !matchedSeedPaper ? 'Add the seed paper above first.' : !matchedPrompt ? 'Add the prompt above first.' : ''}
+                  {isMultiFile
+                    ? uploadableFiles.length === 0
+                      ? 'Select at least one .json, .bib, or .txt file.'
+                      : null
+                    : !parsedMeta
+                      ? 'Use a valid filename format.'
+                      : checkLoading
+                        ? 'Checking…'
+                        : !matchedSeedPaper
+                          ? 'Add the seed paper above first.'
+                          : !matchedPrompt
+                            ? 'Add the prompt above first.'
+                            : null}
                 </p>
               )}
             </div>

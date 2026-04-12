@@ -17,7 +17,7 @@ export default function ImportHistoryList({ importHistory, onClearHistory }) {
         )}
       </div>
       {importHistory.length === 0 ? (
-        <p className="text-muted">No import attempts yet. Upload a file and click &quot;Add to DB&quot;.</p>
+        <p className="text-muted">No import attempts yet. Choose one or more files and click &quot;Add to DB&quot;.</p>
       ) : (
         <div>
           {importHistory.map((entry, idx) =>
