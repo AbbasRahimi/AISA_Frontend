@@ -550,6 +550,19 @@ class ApiService {
     });
   }
 
+  /**
+   * Batch recalculate metrics for all executions under a seed paper.
+   * OpenAPI: POST /api/evaluation/seed-papers/{seed_paper_id}/executions/recalculate
+   * Body (SeedPaperExecutionsRecalculateRequest): same fields as execution recalculate,
+   * including skip_if_evaluation_exists.
+   */
+  async recalculateMetricsForSeedPaperExecutions(seedPaperId, payload = {}) {
+    return this.request(`/api/evaluation/seed-papers/${seedPaperId}/executions/recalculate`, {
+      method: 'POST',
+      body: JSON.stringify(payload || {}),
+    });
+  }
+
   async getMetricsExplanation() {
     return this.request('/api/evaluation/metrics-explanation');
   }

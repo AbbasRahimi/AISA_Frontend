@@ -5,6 +5,8 @@ import SelectedExecutionDetails from './SelectedExecutionDetails';
 import MetricsResults from './MetricsResults';
 import MetricsGuide from './MetricsGuide';
 import BatchEvaluation from './BatchEvaluation';
+import BatchEvaluationRecalculate from './BatchEvaluationRecalculate';
+import SeedPaperExecutionMetrics from './SeedPaperExecutionMetrics';
 
 const EvaluationMetricsGuide = () => {
   const [activeTab, setActiveTab] = useState('executions');
@@ -122,12 +124,32 @@ const EvaluationMetricsGuide = () => {
             </li>
             <li className="nav-item" role="presentation">
               <button
+                className={`nav-link ${activeTab === 'seedPaperMetrics' ? 'active' : ''}`}
+                onClick={() => setActiveTab('seedPaperMetrics')}
+                type="button"
+                role="tab"
+              >
+                <i className="fas fa-table"></i> Seed paper metrics
+              </button>
+            </li>
+            <li className="nav-item" role="presentation">
+              <button
                 className={`nav-link ${activeTab === 'batch' ? 'active' : ''}`}
                 onClick={() => setActiveTab('batch')}
                 type="button"
                 role="tab"
               >
                 <i className="fas fa-layer-group"></i> Batch Evaluation
+              </button>
+            </li>
+            <li className="nav-item" role="presentation">
+              <button
+                className={`nav-link ${activeTab === 'batchRecalculate' ? 'active' : ''}`}
+                onClick={() => setActiveTab('batchRecalculate')}
+                type="button"
+                role="tab"
+              >
+                <i className="fas fa-sync-alt"></i> Batch recalculate
               </button>
             </li>
             <li className="nav-item" role="presentation">
@@ -191,10 +213,22 @@ const EvaluationMetricsGuide = () => {
               </div>
             )}
 
+            {activeTab === 'seedPaperMetrics' && (
+              <div>
+                <SeedPaperExecutionMetrics />
+              </div>
+            )}
+
             {/* Batch Evaluation Tab */}
             {activeTab === 'batch' && (
               <div>
                 <BatchEvaluation />
+              </div>
+            )}
+
+            {activeTab === 'batchRecalculate' && (
+              <div>
+                <BatchEvaluationRecalculate />
               </div>
             )}
 

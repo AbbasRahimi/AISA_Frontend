@@ -171,12 +171,15 @@ const ConfigurationPanel = ({
                   ? 'No prompts available for this seed paper'
                   : 'Select a prompt...'}
             </option>
-            {filteredPrompts.map(prompt => (
-              <option key={prompt.id} value={prompt.id}>
-                {prompt.file_path}
-                {prompt.version ? ` (${prompt.version})` : ''}
-              </option>
-            ))}
+            {filteredPrompts.map(prompt => {
+              const label = prompt.alias?.trim() || prompt.file_path || `Prompt #${prompt.id}`;
+              return (
+                <option key={prompt.id} value={prompt.id}>
+                  {label}
+                  {prompt.version ? ` (${prompt.version})` : ''}
+                </option>
+              );
+            })}
           </select>
           <div className="mt-2">
             <button
