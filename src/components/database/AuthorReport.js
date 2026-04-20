@@ -300,9 +300,10 @@ function RefSection({
   const handleExportBibtex = useCallback(() => {
     if (!bibtexDownloadFilename || count === 0) return;
     const body = buildLiteratureRefsBibtex(normalizedRefs);
-    const header = '% Suggested related work for authors (exported from AISA author report)\n\n';
+    const safeTitle = title != null && String(title).trim() !== '' ? String(title).trim() : 'BibTeX export';
+    const header = `% Exported from AISA author report: ${safeTitle}\n\n`;
     downloadTextFile(header + body, bibtexDownloadFilename);
-  }, [bibtexDownloadFilename, count, normalizedRefs]);
+  }, [bibtexDownloadFilename, count, normalizedRefs, title]);
 
   if (count === 0) {
     return (
@@ -387,10 +388,7 @@ function AuthorReport() {
     setError(null);
     setNotice(null);
     try {
-      await apiService.request(
-        `/api/seed-papers/${id}/authoritative-metadata/enrich?force_refresh=true`,
-        { method: 'POST' },
-      );
+      await apiService.enrichAuthoritativeMetadataForSeedPaper(id, { force_refresh: true });
       setNotice('Citation metadata verification completed (authoritative metadata enriched).');
     } catch (err) {
       setError(err?.message || 'Citation metadata verification failed.');
@@ -520,6 +518,7 @@ function AuthorReport() {
             refs={report.gt_not_in_llm}
             defaultCollapsed={false}
             emptyMessage="All ground-truth papers were found by at least one LLM."
+            bibtexDownloadFilename={`author-report-gt-not-in-llm-seed-${selectedSeedPaperId}.bib`}
           />
           <RefSection
             title="Suggested related work for authors"

@@ -232,10 +232,37 @@ class ApiService {
   /**
    * Get author report for a seed paper (deduplicated LLM refs, GT not in LLM, LLM not in GT, GT found by LLM).
    * @param {number} seedPaperId
+   * @param {object} [options]
+   * @param {boolean} [options.enrich_llm_not_in_gt] - default true (backend)
+   * @param {boolean} [options.force_refresh] - default false (backend)
+   * @param {number|null} [options.max_enriched_items] - optional cap (backend)
    * @returns {Promise<AuthorReportResponse>}
    */
-  async getAuthorReport(seedPaperId) {
-    return this.request(`/api/seed-papers/${seedPaperId}/author-report`);
+  async getAuthorReport(seedPaperId, options = {}) {
+    const query = buildQueryParams({
+      enrich_llm_not_in_gt: options?.enrich_llm_not_in_gt,
+      force_refresh: options?.force_refresh,
+      max_enriched_items: options?.max_enriched_items,
+    });
+    return this.request(`/api/seed-papers/${seedPaperId}/author-report${query}`);
+  }
+
+  /**
+   * Compute/cache authoritative citation metadata + discrepancy checks for all deduplicated
+   * LLM references associated with a seed paper.
+   *
+   * OpenAPI: POST /api/seed-papers/{seed_paper_id}/authoritative-metadata/enrich
+   * Query: force_refresh (bool, default false), authors_threshold (number, default 1.0)
+   */
+  async enrichAuthoritativeMetadataForSeedPaper(seedPaperId, options = {}) {
+    const query = buildQueryParams({
+      force_refresh: options?.force_refresh,
+      authors_threshold: options?.authors_threshold,
+    });
+    return this.request(
+      `/api/seed-papers/${seedPaperId}/authoritative-metadata/enrich${query}`,
+      { method: 'POST' },
+    );
   }
 
   async addGroundTruthReferences(seedPaperId, file) {
