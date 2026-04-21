@@ -320,6 +320,22 @@ function MainDashboard() {
     }
   };
 
+  const handleDeleteGroundTruthReference = async (referenceId) => {
+    if (referenceId == null || !selectedSeedPaper) return;
+    const confirmed = window.confirm('Remove this ground truth reference from the seed paper?');
+    if (!confirmed) return;
+    try {
+      setLoading(true);
+      setError(null);
+      await apiService.deleteGroundTruthReference(referenceId);
+      await loadGroundTruthReferences(selectedSeedPaper.id);
+    } catch (err) {
+      setError('Failed to delete ground truth reference: ' + (err?.message || String(err)));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleFileUpload = async (type, file, options = {}) => {
     try {
       setLoading(true);
@@ -448,6 +464,7 @@ function MainDashboard() {
             selectedSeedPaper={selectedSeedPaper}
             setSelectedSeedPaper={setSelectedSeedPaper}
             groundTruthReferences={groundTruthReferences}
+            onDeleteGroundTruthReference={handleDeleteGroundTruthReference}
             prompts={prompts}
             selectedPrompt={selectedPrompt}
             setSelectedPrompt={setSelectedPrompt}

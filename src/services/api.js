@@ -35,6 +35,8 @@ function buildQueryParams(params) {
  * @property {number|null} year
  * @property {string|null} doi
  * @property {string|null} journal
+ * @property {Record<string, unknown>|null} [authoritative]
+ * @property {Record<string, unknown>|null} [discrepancies]
  */
 
 /**
@@ -309,7 +311,7 @@ class ApiService {
     if (hasFile) {
       formData.append('file', file);
     }
-    if (seedPaperId) {
+    if (seedPaperId != null && String(seedPaperId).trim() !== '') {
       formData.append('seed_paper_id', seedPaperId);
     }
     if (version != null && String(version).trim() !== '') {

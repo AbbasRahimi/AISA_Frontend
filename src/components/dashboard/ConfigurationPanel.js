@@ -11,6 +11,7 @@ const ConfigurationPanel = ({
   selectedSeedPaper,
   setSelectedSeedPaper,
   groundTruthReferences,
+  onDeleteGroundTruthReference,
   prompts,
   selectedPrompt,
   setSelectedPrompt,
@@ -130,9 +131,11 @@ const ConfigurationPanel = ({
                       {ref.title}
                     </small>
                     <button
+                      type="button"
                       className="btn btn-outline-danger btn-sm"
-                      onClick={() => {/* TODO: Implement delete */}}
-                      disabled={loading}
+                      onClick={() => onDeleteGroundTruthReference?.(ref.id)}
+                      disabled={loading || !onDeleteGroundTruthReference}
+                      aria-label={`Delete ground truth reference: ${ref.title}`}
                     >
                       <i className="fas fa-trash"></i>
                     </button>

@@ -37,6 +37,18 @@ export const GroundTruthResponse = {
   seed_paper_id: null
 };
 
+// Literature reference (author report / deduplication; OpenAPI: LiteratureRefResponse)
+export const LiteratureRefResponse = {
+  id: null,
+  title: '',
+  authors: null,
+  year: null,
+  doi: null,
+  journal: null,
+  authoritative: null,
+  discrepancies: null,
+};
+
 // Prompt Response Model
 export const PromptResponse = {
   id: null,
@@ -198,6 +210,7 @@ export const HTTPValidationError = {
 // Helper functions for creating model instances
 export const createSeedPaper = (data = {}) => ({ ...SeedPaperResponse, ...data });
 export const createGroundTruth = (data = {}) => ({ ...GroundTruthResponse, ...data });
+export const createLiteratureRef = (data = {}) => ({ ...LiteratureRefResponse, ...data });
 export const createPrompt = (data = {}) => ({ ...PromptResponse, ...data });
 export const createLLMModel = (data = {}) => ({ ...LLMModelResponse, ...data });
 export const createWorkflowRequest = (data = {}) => ({ ...WorkflowRequest, ...data });
