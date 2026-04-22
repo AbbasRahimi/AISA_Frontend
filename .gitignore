@@ -3,3 +3,5 @@ node_modules
 .dockerignore
 .gitignore
 .env
+docker.env.example
+

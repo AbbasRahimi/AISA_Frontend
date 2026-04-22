@@ -16,10 +16,23 @@ COPY . .
 # Accept build arguments
 ARG NODE_ENV=production
 ARG REACT_APP_API_URL=https://aisa.se.jku.at
+# Auth0 (required for the SPA bundle — set via compose build args or `docker build --build-arg ...`)
+ARG REACT_APP_AUTH0_DOMAIN
+ARG REACT_APP_AUTH0_CLIENT_ID
+ARG REACT_APP_AUTH0_AUDIENCE
 
 # Set environment variables for build
 ENV NODE_ENV=$NODE_ENV
 ENV REACT_APP_API_URL=$REACT_APP_API_URL
+ENV REACT_APP_AUTH0_DOMAIN=$REACT_APP_AUTH0_DOMAIN
+ENV REACT_APP_AUTH0_CLIENT_ID=$REACT_APP_AUTH0_CLIENT_ID
+ENV REACT_APP_AUTH0_AUDIENCE=$REACT_APP_AUTH0_AUDIENCE
+
+# Fail fast if Auth0 vars were not passed into the build stage
+RUN if [ -z "$REACT_APP_AUTH0_DOMAIN" ] || [ -z "$REACT_APP_AUTH0_CLIENT_ID" ]; then \
+      echo "Build error: set REACT_APP_AUTH0_DOMAIN and REACT_APP_AUTH0_CLIENT_ID as build-args (see docker-compose.yml / docker.env.example)."; \
+      exit 1; \
+    fi
 
 # Build the application
 RUN npm run build
