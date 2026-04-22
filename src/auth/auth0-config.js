@@ -23,7 +23,7 @@ export function getAuth0Config() {
     domain,
     clientId,
     authorizationParams: {
-      redirect_uri: window.location.origin,
+      redirect_uri: `${window.location.origin}/callback`,
       ...(audience ? { audience } : {}),
     },
     cacheLocation: 'localstorage',

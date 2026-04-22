@@ -81,6 +81,16 @@ function PublicProjectInfo() {
   );
 }
 
+function CallbackPage() {
+  return (
+    <div className="container mt-4">
+      <div className="alert alert-info" role="alert">
+        Finishing sign-in…
+      </div>
+    </div>
+  );
+}
+
 // Navigation Component
 function Navigation() {
   const location = useLocation();
@@ -534,6 +544,7 @@ function App() {
       <Navigation />
       <main>
         <Routes>
+          <Route path="/callback" element={<CallbackPage />} />
           <Route
             path="/"
             element={
