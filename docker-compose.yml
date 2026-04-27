@@ -24,6 +24,7 @@ services:
         - REACT_APP_AUTH0_DOMAIN=${REACT_APP_AUTH0_DOMAIN}
         - REACT_APP_AUTH0_CLIENT_ID=${REACT_APP_AUTH0_CLIENT_ID}
         - REACT_APP_AUTH0_AUDIENCE=${REACT_APP_AUTH0_AUDIENCE}
+        - AUTH0_ISSUER=${AUTH0_ISSUER}
     container_name: aisa-frontend
     ports:
       - "3000:80"
