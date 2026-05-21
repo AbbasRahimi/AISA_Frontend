@@ -1,12 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import apiService from '../../services/api';
 import ConfigurationPanel from './ComparerConfigPanel';
 import FileUploadSection from './FileUploadSection';
 import ResultsDisplay from './ResultsDisplay';
-import ValidityMetrics from '../evaluation/ValidityMetrics';
 import RelevanceMetrics from '../evaluation/RelevanceMetrics';
-import CombinedMetrics from '../evaluation/CombinedMetrics';
 import { downloadBlob } from '../../utils';
+import useComparisonProfiles from '../../hooks/useComparisonProfiles';
 
 const ReferenceComparer = () => {
   const [sourceFile, setSourceFile] = useState(null);
@@ -19,6 +18,19 @@ const ReferenceComparer = () => {
   const [sourceDragOver, setSourceDragOver] = useState(false);
   const [targetDragOver, setTargetDragOver] = useState(false);
   const [useStorage, setUseStorage] = useState(false);
+  const {
+    profiles: gtComparisonProfiles,
+    loading: profilesLoading,
+    defaultProfileId,
+  } = useComparisonProfiles('gt_comparison');
+  const [gtComparisonProfileId, setGtComparisonProfileId] = useState(null);
+  const [comparisonProfileIdUsed, setComparisonProfileIdUsed] = useState(null);
+
+  useEffect(() => {
+    if (defaultProfileId != null && gtComparisonProfileId == null) {
+      setGtComparisonProfileId(defaultProfileId);
+    }
+  }, [defaultProfileId, gtComparisonProfileId]);
 
   const calculateMetricsFromComparisonResults = (results) => {
     if (!results || !results.summary) {
@@ -116,12 +128,17 @@ const ReferenceComparer = () => {
       if (useStorage) {
         formData.append('execution_name', executionName.trim());
       }
+      if (gtComparisonProfileId != null) {
+        // OpenAPI: comparer endpoints accept comparison_profile_id (purpose=gt_comparison)
+        formData.append('comparison_profile_id', String(gtComparisonProfileId));
+      }
 
       const results = useStorage
         ? await apiService.comparePublicationsWithStorage(formData)
         : await apiService.comparePublications(formData);
       setComparisonResults(results);
-      
+      setComparisonProfileIdUsed(gtComparisonProfileId);
+
       // Calculate metrics from comparison results
       const metrics = calculateMetricsFromComparisonResults(results);
       setEvaluationMetrics(metrics);
@@ -149,6 +166,7 @@ const ReferenceComparer = () => {
     setSourceFile(null);
     setTargetFile(null);
     setComparisonResults(null);
+    setComparisonProfileIdUsed(null);
     setEvaluationMetrics(null);
     setError(null);
   };
@@ -177,6 +195,10 @@ const ReferenceComparer = () => {
         setUseStorage={setUseStorage}
         executionName={executionName}
         setExecutionName={setExecutionName}
+        gtComparisonProfiles={gtComparisonProfiles}
+        gtComparisonProfileId={gtComparisonProfileId}
+        setGtComparisonProfileId={setGtComparisonProfileId}
+        profilesLoading={profilesLoading}
       />
 
       {/* File Upload Section */}
@@ -223,7 +245,12 @@ const ReferenceComparer = () => {
       )}
 
       {/* Results Section */}
-      {comparisonResults && <ResultsDisplay comparisonResults={comparisonResults} />}
+      {comparisonResults && (
+        <ResultsDisplay
+          comparisonResults={comparisonResults}
+          comparisonProfileId={comparisonProfileIdUsed ?? gtComparisonProfileId}
+        />
+      )}
 
       {/* Metrics Section */}
       {evaluationMetrics && (
@@ -234,30 +261,11 @@ const ReferenceComparer = () => {
                 <h3><i className="fas fa-chart-line"></i> Evaluation Metrics</h3>
               </div>
               <div className="card-body">
-                {/* Validity Metrics */}
-                <ValidityMetrics 
-                  totalPublications={evaluationMetrics.validity_metrics.total_publications}
-                  foundInDatabase={
-                    evaluationMetrics.validity_metrics.found_in_database ??
-                    evaluationMetrics.validity_metrics.verified_publications ??
-                    0
-                  }
-                  validityMetrics={evaluationMetrics.validity_metrics}
-                />
-
                 {/* Relevance Metrics */}
                 <RelevanceMetrics 
                   evaluationMetrics={evaluationMetrics}
                   relevanceMetrics={evaluationMetrics.relevance_metrics}
                 />
-
-                {/* Combined Metrics */}
-                <CombinedMetrics combinedMetrics={evaluationMetrics.combined_metrics} />
-
-                {/* Note about Validity Metrics */}
-                <div className="alert alert-info">
-                  <i className="fas fa-info-circle"></i> <strong>Note:</strong> For file-based comparison, validity is inferred from matching against ground truth. Publications that match ground truth are considered valid, while those that don't match are considered invalid (potentially hallucinated).
-                </div>
               </div>
             </div>
           </div>

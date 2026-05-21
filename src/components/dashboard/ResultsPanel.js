@@ -10,6 +10,12 @@ import {
   getVerificationResultsArray,
   getComparisonResultsArray,
 } from './resultsDataAdapters';
+import {
+  getCitationValidityLabel,
+  getCitationValidityBadgeClass,
+  isCitationValidByTier,
+  getTierClassificationTier,
+} from '../../utils/tierClassification';
 
 const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
   const [activeTab, setActiveTab] = useState('llm');
@@ -102,27 +108,8 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
     const totalReferences =
       summaryData?.total_publications ?? results?.total_publications ?? verificationData.length;
 
-    // Derive validity from the same per-detail "found" logic we use in the table.
-    const foundReferences = verificationData.filter((ref) => {
-      const foundIn = ref?.found_in_database;
-      if (foundIn && foundIn !== 'Not Found') return true;
-
-      const dbResults = ref?.database_results;
-      if (!dbResults || typeof dbResults !== 'object') return false;
-      return Object.values(dbResults).some((r) => r?.found === true);
-    }).length;
-
-    const validReferences = foundReferences;
-    const invalidReferences = Math.max(0, totalReferences - foundReferences);
-
-    const isDetailFound = (detail) => {
-      const foundIn = detail?.found_in_database;
-      if (foundIn && foundIn !== 'Not Found') return true;
-
-      const dbResults = detail?.database_results;
-      if (!dbResults || typeof dbResults !== 'object') return false;
-      return Object.values(dbResults).some((r) => r?.found === true);
-    };
+    const validReferences = verificationData.filter((ref) => isCitationValidByTier(ref)).length;
+    const invalidReferences = Math.max(0, totalReferences - validReferences);
 
     const getDetailDatabaseName = (detail) => {
       const foundIn = detail?.found_in_database;
@@ -178,7 +165,7 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
                 <th>#</th>
                 <th>Title</th>
                 <th>Database</th>
-                <th>Status</th>
+                <th>Citation</th>
                 <th>Similarity</th>
                 <th>Method</th>
               </tr>
@@ -196,9 +183,14 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
                     </span>
                   </td>
                   <td>
-                    <span className={`badge bg-${isDetailFound(ref) ? 'success' : 'danger'}`}>
-                      {isDetailFound(ref) ? 'Found' : 'Not Found'}
+                    <span className={`badge ${getCitationValidityBadgeClass(ref)}`}>
+                      {getCitationValidityLabel(ref)}
                     </span>
+                    {getTierClassificationTier(ref) ? (
+                      <span className="badge bg-light text-dark border ms-1">
+                        {getTierClassificationTier(ref)}
+                      </span>
+                    ) : null}
                   </td>
                   <td>
                     {ref.best_match_similarity !== undefined && ref.best_match_similarity !== null
@@ -225,17 +217,27 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
       return <div className="text-muted">No comparison results available</div>;
     }
 
-    // Calculate summary from progressive data
+    // Prefer backend-provided summary when available (new payload uses comparison_summary)
+    const backendSummary = rawComparison?.comparison_summary || rawComparison?.summary || null;
+
+    // Fallback: calculate summary from array if summary is missing
     const totalMatches = comparisonArray.length;
-    const exactMatches = comparisonArray.filter(
+    const computedExactMatches = comparisonArray.filter(
       (m) => m?.is_exact_match === true || m?.match_status === 'exact'
     ).length;
-    const partialMatches = comparisonArray.filter(
+    const computedPartialMatches = comparisonArray.filter(
       (m) => m?.is_partial_match === true || m?.match_status === 'partial'
     ).length;
     // Prefer explicit no-match flag; otherwise keep the counts consistent with total.
     const explicitNoMatches = comparisonArray.filter((m) => m?.is_no_match === true).length;
-    const noMatches = explicitNoMatches > 0 ? explicitNoMatches : totalMatches - exactMatches - partialMatches;
+    const computedNoMatches =
+      explicitNoMatches > 0
+        ? explicitNoMatches
+        : totalMatches - computedExactMatches - computedPartialMatches;
+
+    const exactMatches = backendSummary?.exact_count ?? computedExactMatches;
+    const partialMatches = backendSummary?.partial_count ?? computedPartialMatches;
+    const noMatches = backendSummary?.no_match_count ?? computedNoMatches;
 
     const formatSimilarity = (value) => {
       if (value === null || value === undefined) return '-';
@@ -248,10 +250,13 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
     };
 
     const getMatchStatus = (m) => {
+      const tier = getTierClassificationTier(m);
+      if (tier === 'FULL') return 'exact';
+      if (tier === 'PARTIAL') return 'partial';
+      if (tier === 'NO_MATCH') return 'no match';
       if (m?.is_exact_match === true) return 'exact';
       if (m?.is_partial_match === true) return 'partial';
       if (m?.is_no_match === true) return 'no match';
-      // Fallbacks for legacy shapes
       if (m?.match_status === 'exact' || m?.match_type === 'exact') return 'exact';
       if (m?.match_status === 'partial' || m?.match_type === 'partial') return 'partial';
       return 'no match';
@@ -283,6 +288,7 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
                 <th>Generated Publication</th>
                 <th>Ground Truth Reference</th>
                 <th>Match Status</th>
+                <th>Citation</th>
                 <th>Similarity</th>
                 <th>Interpretation</th>
                 <th>Rule</th>
@@ -291,8 +297,18 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
             </thead>
             <tbody>
               {comparisonArray.map((match, index) => {
-                const generatedTitle = match.generated_title || match.llm_title || match.title || '-';
-                const groundTruthTitle = match.ground_truth_title || match.gt_title || match.reference_title || '-';
+                const generatedTitle =
+                  match.generated_title ||
+                  match.llm_title ||
+                  match.title ||
+                  match.generated_publication?.title ||
+                  '-';
+                const groundTruthTitle =
+                  match.ground_truth_title ||
+                  match.gt_title ||
+                  match.reference_title ||
+                  match.ground_truth_publication?.title ||
+                  '-';
                 const matchStatus = getMatchStatus(match);
                 const similarity = formatSimilarity(match.similarity_percentage ?? match.similarity);
                 // `interpretation` is the human-readable explanation; `match_type` is the matching method ("title", "authors_year", ...).
@@ -315,6 +331,11 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
                         matchStatus === 'partial' ? 'warning' : 'danger'
                       }`}>
                         {matchStatus}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`badge ${getCitationValidityBadgeClass(match)}`}>
+                        {getCitationValidityLabel(match)}
                       </span>
                     </td>
                     <td>{similarity}</td>

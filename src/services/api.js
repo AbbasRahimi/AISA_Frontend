@@ -1,7 +1,17 @@
-// Use environment variable or default to relative URL
-// In production with nginx proxy, use relative URLs
-// The proxy will be set at build time or use the current origin
-export const API_BASE_URL = process.env.REACT_APP_API_URL || (
+function normalizeApiBaseUrl(input) {
+  const raw = input != null ? String(input).trim() : '';
+  if (!raw) return '';
+  // Some deployments set REACT_APP_API_URL to ".../api" but this client already prefixes "/api/...".
+  // Normalize to the origin/root to avoid ".../api/api/..." double-prefix bugs.
+  const withoutTrailingSlashes = raw.replace(/\/+$/, '');
+  const withoutApiSuffix = withoutTrailingSlashes.replace(/\/api$/i, '');
+  return withoutApiSuffix;
+}
+
+// Use environment variable or default to relative URL.
+// In production with nginx proxy, use relative URLs.
+// The proxy will be set at build time or use the current origin.
+export const API_BASE_URL = normalizeApiBaseUrl(process.env.REACT_APP_API_URL) || (
   process.env.NODE_ENV === 'production'
     ? '' // Use relative URLs in production (nginx will proxy)
     : `${window.location.protocol}//${window.location.hostname}:8000` // Use server IP/hostname in development
@@ -358,7 +368,14 @@ class ApiService {
   }
 
   // Publication Verifier
-  async verifyPublications(formData) {
+  /**
+   * Publication verifier (OpenAPI: Body_verify_publications_api_publication_verifier_verify_post).
+   * Accepts either a ready FormData or a plain object payload:
+   * { file, email?, api_key?, enrich_doi?, authoritative_verification_mode? }.
+   * @param {FormData | {file: File, email?: string, api_key?: string, enrich_doi?: boolean, authoritative_verification_mode?: string}} payload
+   */
+  async verifyPublications(payload) {
+    const formData = payload instanceof FormData ? payload : this._buildPublicationVerifierFormData(payload);
     return this.request('/api/publication-verifier/verify', {
       method: 'POST',
       headers: {}, // Let browser set Content-Type for FormData
@@ -366,12 +383,75 @@ class ApiService {
     });
   }
 
-  async verifyPublicationsWithStorage(formData) {
+  /**
+   * Publication verifier (with storage) (OpenAPI: Body_verify_publications_with_storage_api_publication_verifier_verify_with_storage_post).
+   * Accepts either a ready FormData or a plain object payload:
+   * { file, execution_name, email?, api_key?, enrich_doi?, authoritative_verification_mode? }.
+   * @param {FormData | {file: File, execution_name: string, email?: string, api_key?: string, enrich_doi?: boolean, authoritative_verification_mode?: string}} payload
+   */
+  async verifyPublicationsWithStorage(payload) {
+    const formData = payload instanceof FormData ? payload : this._buildPublicationVerifierFormData(payload, { requireExecutionName: true });
     return this.request('/api/publication-verifier/verify-with-storage', {
       method: 'POST',
       headers: {}, // Let browser set Content-Type for FormData
       body: formData,
     });
+  }
+
+  /**
+   * Build multipart/form-data for publication verifier endpoints.
+   * @param {object} payload
+   * @param {object} [options]
+   * @param {boolean} [options.requireExecutionName]
+   * @returns {FormData}
+   */
+  _buildPublicationVerifierFormData(payload = {}, options = {}) {
+    const requireExecutionName = !!options.requireExecutionName;
+    const {
+      file,
+      email,
+      api_key,
+      enrich_doi,
+      execution_name,
+      comparison_profile_id,
+      existence_check_mode,
+      authoritative_verification_mode,
+    } = payload || {};
+
+    if (!(file instanceof File)) {
+      throw new Error('Publication verifier: `file` is required and must be a File.');
+    }
+    if (requireExecutionName && (!execution_name || String(execution_name).trim() === '')) {
+      throw new Error('Publication verifier (with storage): `execution_name` is required.');
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    if (email != null && String(email).trim() !== '') {
+      formData.append('email', String(email).trim());
+    }
+    if (api_key != null && String(api_key).trim() !== '') {
+      formData.append('api_key', String(api_key).trim());
+    }
+    if (enrich_doi !== undefined && enrich_doi !== null) {
+      // FastAPI Form(bool) works reliably with "true"/"false" strings
+      formData.append('enrich_doi', enrich_doi ? 'true' : 'false');
+    }
+    if (authoritative_verification_mode != null && String(authoritative_verification_mode).trim() !== '') {
+      formData.append('authoritative_verification_mode', String(authoritative_verification_mode).trim());
+    }
+    if (comparison_profile_id != null && String(comparison_profile_id).trim() !== '') {
+      formData.append('comparison_profile_id', String(comparison_profile_id).trim());
+    }
+    if (existence_check_mode != null && String(existence_check_mode).trim() !== '') {
+      formData.append('existence_check_mode', String(existence_check_mode).trim());
+    }
+    if (requireExecutionName) {
+      formData.append('execution_name', String(execution_name).trim());
+    }
+
+    return formData;
   }
 
   async exportVerificationResults(results, format = 'text') {
@@ -476,6 +556,12 @@ class ApiService {
     }
     if (options.execution_comment != null && String(options.execution_comment).trim() !== '') {
       formData.append('execution_comment', String(options.execution_comment).trim());
+    }
+    if (options.existence_check_mode != null && String(options.existence_check_mode).trim() !== '') {
+      formData.append('existence_check_mode', String(options.existence_check_mode).trim());
+    }
+    if (options.authoritative_verification_mode != null && String(options.authoritative_verification_mode).trim() !== '') {
+      formData.append('authoritative_verification_mode', String(options.authoritative_verification_mode).trim());
     }
   }
 
@@ -666,6 +752,70 @@ class ApiService {
       method: 'POST',
       body: JSON.stringify(requestBody),
     });
+  }
+
+  // Comparison profiles
+  async listComparisonProfiles(purpose = null) {
+    const query = purpose != null && purpose !== '' ? buildQueryParams({ purpose }) : '';
+    return this.request(`/api/comparison-profiles${query}`);
+  }
+
+  async getComparisonProfile(profileId) {
+    return this.request(`/api/comparison-profiles/${profileId}`);
+  }
+
+  async createComparisonProfile(body) {
+    return this.request('/api/comparison-profiles', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async updateComparisonProfile(profileId, body) {
+    return this.request(`/api/comparison-profiles/${profileId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async deleteComparisonProfile(profileId) {
+    return this.request(`/api/comparison-profiles/${profileId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async replaceComparisonProfileRules(profileId, rules) {
+    return this.request(`/api/comparison-profiles/${profileId}/rules`, {
+      method: 'PUT',
+      body: JSON.stringify(rules),
+    });
+  }
+
+  async validateComparisonProfileSample(profileId, body) {
+    return this.request(`/api/comparison-profiles/${profileId}/validate`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async reclassifyGt(executionId, body) {
+    return this.request(
+      `/api/comparison-profiles/executions/${executionId}/reclassify-gt`,
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }
+    );
+  }
+
+  async reclassifyVerification(executionId, body) {
+    return this.request(
+      `/api/comparison-profiles/executions/${executionId}/reclassify-verification`,
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }
+    );
   }
 
   // Server-Sent Events Support for Workflow Events

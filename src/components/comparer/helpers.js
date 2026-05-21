@@ -1,5 +1,7 @@
 // Helper functions for reference comparison
 
+import { getTierClassificationTier } from '../../utils/tierClassification';
+
 export const isValidFile = (file) => {
   const validExtensions = ['.json', '.bib'];
   const fileName = file.name.toLowerCase();
@@ -28,15 +30,38 @@ export const getMethodBadgeClass = (matchType) => {
   return 'bg-secondary';
 };
 
-export const getRowClass = (result) => {
-  if (result.is_exact_match) {
-    return 'match-exact';
-  } else if (result.is_partial_match) {
-    return 'match-partial';
-  } else {
-    return 'match-none';
+export function getDetailMatchTier(result) {
+  const tier = getTierClassificationTier(result);
+  if (tier === 'FULL' || tier === 'PARTIAL' || tier === 'NO_MATCH') {
+    return tier;
   }
+  if (result?.is_exact_match) return 'FULL';
+  if (result?.is_partial_match) return 'PARTIAL';
+  return 'NO_MATCH';
+}
+
+export const getRowClass = (result) => {
+  const tier = getDetailMatchTier(result);
+  if (tier === 'FULL') return 'match-exact';
+  if (tier === 'PARTIAL') return 'match-partial';
+  return 'match-none';
 };
+
+export function getMatchingStatusLabel(result) {
+  const tier = getDetailMatchTier(result);
+  if (tier === 'FULL') return 'Full Match';
+  if (tier === 'PARTIAL') return 'Partial Match';
+  return 'No Match';
+}
+
+export function getMatchingStatusBadgeClass(result) {
+  const tier = getDetailMatchTier(result);
+  if (tier === 'FULL') return 'bg-success';
+  if (tier === 'PARTIAL') return 'bg-warning';
+  return 'bg-danger';
+}
+
+export { getTierClassificationTier } from '../../utils/tierClassification';
 
 // Cascade matching system helpers
 export const RULE_DESCRIPTIONS = {

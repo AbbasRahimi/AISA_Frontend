@@ -585,3 +585,65 @@ footer a:hover {
 main {
   flex: 1;
 }
+
+/* Comparison profile scoring rules matrix */
+.scoring-rules-table-wrap {
+  max-height: 520px;
+  overflow: auto;
+}
+
+.scoring-rules-table .scoring-tier-badge {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8rem;
+  min-width: 2.25rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.scoring-rules-table .scoring-tier-badge.scoring-tier-2,
+.scoring-rules-table .scoring-tier-select.scoring-tier-2 {
+  background-color: #d1e7dd;
+  color: #0a3622;
+  border-color: #a3cfbb;
+}
+
+.scoring-rules-table .scoring-tier-badge.scoring-tier-0,
+.scoring-rules-table .scoring-tier-select.scoring-tier-0 {
+  background-color: #f8d7da;
+  color: #58151c;
+  border-color: #f1aeb5;
+}
+
+.scoring-rules-table .scoring-tier-badge.scoring-tier-1,
+.scoring-rules-table .scoring-tier-select.scoring-tier-1 {
+  background-color: #fff3cd;
+  color: #664d03;
+  border-color: #ffe69c;
+}
+
+.scoring-rules-table .scoring-tier-badge.scoring-tier-empty,
+.scoring-rules-table .scoring-tier-select.scoring-tier-empty {
+  background-color: #e9ecef;
+  color: #495057;
+  border-color: #ced4da;
+}
+
+.scoring-rules-table .scoring-tier-select,
+.scoring-rules-table .scoring-class-select {
+  width: 100%;
+  max-width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding-left: 0.35rem;
+  padding-right: 1.75rem;
+}
+
+.scoring-rules-table .scoring-class-select {
+  font-family: inherit;
+  font-weight: 400;
+}
+
+.scoring-rules-table td {
+  vertical-align: middle;
+}

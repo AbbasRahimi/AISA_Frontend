@@ -10,14 +10,19 @@ import ReferenceComparer from './components/comparer/ReferenceComparer';
 import EvaluationMetricsGuide from './components/evaluation/EvaluationMetrics';
 import ImportExecution from './components/import/ImportExecution';
 import DatabaseView from './components/database/DatabaseView';
+import ComparisonProfilesPage from './components/comparisonProfiles/ComparisonProfilesPage';
 import Footer from './components/layout/Footer';
 import apiService, { buildApiUrl } from './services/api';
-import { createWorkflowRequest, LLMProvider } from './models';
+import { AuthoritativeVerificationMode, createWorkflowRequest, LLMProvider } from './models';
+import {
+  normalizeProfileList,
+  pickDefaultProfileId,
+} from './components/comparisonProfiles/profileFieldMeta';
 import { useExecutionPolling } from './hooks/useExecutionPolling';
 import { downloadBlob } from './utils';
 import { useAuth0 } from '@auth0/auth0-react';
 import { useAuthz } from './auth/AuthzContext';
-import { RequireAuth, RequirePermission } from './auth/guards';
+import { RequireAuth, RequireAnyPermission, RequirePermission } from './auth/guards';
 
 function PublicProjectInfo() {
   const { isAuthenticated, isLoading } = useAuth0();
@@ -103,7 +108,7 @@ function Navigation() {
     if (isAdmin) return true;
     return permissions.has(permissionName);
   };
-  
+
   return (
     <nav className="navbar navbar-expand-lg navbar-dark bg-primary">
       <div className="container-fluid">
@@ -205,10 +210,25 @@ function Navigation() {
               )}
               {!isLoading && isAuthenticated && (
                 <div className="d-flex align-items-center gap-2">
-                  <span className="navbar-text small text-white-50 d-none d-lg-inline">
-                    {me?.email || me?.username || me?.name || 'Signed in'}
-                    {isAdmin ? ' (Admin)' : ''}
-                  </span>
+                  {isAdmin ? (
+                    <Link
+                      className={`navbar-text small text-decoration-none d-none d-lg-inline ${
+                        location.pathname === '/comparison-profiles'
+                          ? 'text-white fw-semibold'
+                          : 'text-white-50'
+                      }`}
+                      to="/comparison-profiles"
+                      onClick={handleNavClick}
+                      title="Comparison Profiles"
+                    >
+                      {me?.email || me?.username || me?.name || 'Signed in'}
+                      {' '}(Admin)
+                    </Link>
+                  ) : (
+                    <span className="navbar-text small text-white-50 d-none d-lg-inline">
+                      {me?.email || me?.username || me?.name || 'Signed in'}
+                    </span>
+                  )}
                   <button
                     className="btn btn-sm btn-outline-light"
                     onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
@@ -237,6 +257,16 @@ function MainDashboard() {
   const [selectedLlmModel, setSelectedLlmModel] = useState('');
   const [email, setEmail] = useState('');
   const [comment, setComment] = useState('');
+  const [authoritativeVerificationMode, setAuthoritativeVerificationMode] = useState(
+    AuthoritativeVerificationMode.CASCADE
+  );
+  /** When null, omit `existence_check_mode` so the API falls back to authoritative_verification_mode. */
+  const [existenceCheckMode, setExistenceCheckMode] = useState(null);
+  const [verificationProfiles, setVerificationProfiles] = useState([]);
+  const [gtComparisonProfiles, setGtComparisonProfiles] = useState([]);
+  const [verificationProfileId, setVerificationProfileId] = useState(null);
+  const [gtComparisonProfileId, setGtComparisonProfileId] = useState(null);
+  const [profilesLoading, setProfilesLoading] = useState(false);
   const [executionId, setExecutionId] = useState(null);
   const [executionStatus, setExecutionStatus] = useState(null);
   const [results, setResults] = useState(null);
@@ -295,12 +325,23 @@ function MainDashboard() {
   const loadInitialData = async () => {
     try {
       setLoading(true);
-      const [seedPapersData, promptsData, llmModelsData] = await Promise.all([
-        apiService.getSeedPapers(),
-        apiService.getPrompts(),
-        apiService.getLLMModels()
-      ]);
-      
+      setProfilesLoading(true);
+      const [seedPapersData, promptsData, llmModelsData, verProfilesRaw, gtProfilesRaw] =
+        await Promise.all([
+          apiService.getSeedPapers(),
+          apiService.getPrompts(),
+          apiService.getLLMModels(),
+          apiService.listComparisonProfiles('verification').catch(() => []),
+          apiService.listComparisonProfiles('gt_comparison').catch(() => []),
+        ]);
+
+      const verList = normalizeProfileList(verProfilesRaw);
+      const gtList = normalizeProfileList(gtProfilesRaw);
+      setVerificationProfiles(verList);
+      setGtComparisonProfiles(gtList);
+      setVerificationProfileId((prev) => prev ?? pickDefaultProfileId(verList));
+      setGtComparisonProfileId((prev) => prev ?? pickDefaultProfileId(gtList));
+
       setSeedPapers(seedPapersData);
       setPrompts(promptsData);
       setLlmModels(llmModelsData);
@@ -308,6 +349,7 @@ function MainDashboard() {
       setError('Failed to load initial data: ' + error.message);
     } finally {
       setLoading(false);
+      setProfilesLoading(false);
     }
   };
 
@@ -387,8 +429,15 @@ function MainDashboard() {
         seed_paper_id: selectedSeedPaper.id,
         llm_provider: selectedLlmProvider,
         model_name: selectedLlmModel,
-        comment: comment ? comment : null
+        comment: comment ? comment : null,
+        authoritative_verification_mode: authoritativeVerificationMode,
+        existence_check_mode: existenceCheckMode,
+        verification_profile_id: verificationProfileId,
+        gt_comparison_profile_id: gtComparisonProfileId,
       });
+      if (workflowRequest.existence_check_mode == null) {
+        delete workflowRequest.existence_check_mode;
+      }
 
       const response = await apiService.executeWorkflow(workflowRequest);
 
@@ -458,8 +507,19 @@ function MainDashboard() {
           <ConfigurationPanel
             email={email}
             setEmail={setEmail}
-          comment={comment}
-          setComment={setComment}
+            comment={comment}
+            setComment={setComment}
+            authoritativeVerificationMode={authoritativeVerificationMode}
+            setAuthoritativeVerificationMode={setAuthoritativeVerificationMode}
+            existenceCheckMode={existenceCheckMode}
+            setExistenceCheckMode={setExistenceCheckMode}
+            verificationProfiles={verificationProfiles}
+            gtComparisonProfiles={gtComparisonProfiles}
+            verificationProfileId={verificationProfileId}
+            setVerificationProfileId={setVerificationProfileId}
+            gtComparisonProfileId={gtComparisonProfileId}
+            setGtComparisonProfileId={setGtComparisonProfileId}
+            profilesLoading={profilesLoading}
             seedPapers={seedPapers}
             selectedSeedPaper={selectedSeedPaper}
             setSelectedSeedPaper={setSelectedSeedPaper}
@@ -594,6 +654,18 @@ function App() {
                 <RequirePermission permission="literature">
                   <DatabaseView />
                 </RequirePermission>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/comparison-profiles"
+            element={
+              <RequireAuth>
+                <RequireAnyPermission
+                  permissions={['workflow', 'reference_comparer', 'publication_verifier']}
+                >
+                  <ComparisonProfilesPage />
+                </RequireAnyPermission>
               </RequireAuth>
             }
           />

@@ -2,8 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import apiService from '../../services/api';
 import ReferenceMetadataModal from './ReferenceMetadataModal';
 import './AuthorReport.css';
-import GtFoundByLlmSection from './authorReport/GtFoundByLlmSection';
-import RefSection from './authorReport/RefSection';
+import GtCoverageSection from './authorReport/GtCoverageSection';
+import LlmRefsSection from './authorReport/LlmRefsSection';
 
 /*
  * Author report types (match backend):
@@ -168,32 +168,21 @@ function AuthorReport() {
 
       {selectedSeedPaperId && !loadingReport && report && (
         <div className="author-report-sections">
-          <GtFoundByLlmSection
-            entries={report.gt_found_by_llm}
+          <GtCoverageSection
+            gtFoundByLlmEntries={report.gt_found_by_llm}
+            gtNotFoundByAnyLlmRefs={report.gt_not_in_llm}
             defaultCollapsed={false}
             onOpenMetadata={handleOpenMetadata}
+            exportBaseFilename={`author-report-gt-coverage-seed-${selectedSeedPaperId}`}
           />
-          <RefSection
-            title="GT not found by any LLM (Missed by systems)"
-            refs={report.gt_not_in_llm}
+          <LlmRefsSection
+            title="LLM refs"
+            deduplicatedRefs={report.deduplicated_llm_refs}
+            suggestedRefs={report.llm_not_in_gt}
             defaultCollapsed={false}
-            emptyMessage="All ground-truth papers were found by at least one LLM."
-            bibtexDownloadFilename={`author-report-gt-not-in-llm-seed-${selectedSeedPaperId}.bib`}
-            onOpenMetadata={handleOpenMetadata}
-          />
-          <RefSection
-            title="Suggested related work for authors"
-            refs={report.llm_not_in_gt}
-            defaultCollapsed={false}
-            emptyMessage="No LLM-only suggestions (all LLM refs are in ground truth)."
-            bibtexDownloadFilename={`author-report-suggested-related-seed-${selectedSeedPaperId}.bib`}
-            onOpenMetadata={handleOpenMetadata}
-          />
-          <RefSection
-            title="All deduplicated LLM refs"
-            refs={report.deduplicated_llm_refs}
-            defaultCollapsed={true}
             emptyMessage="No LLM references for this seed paper."
+            bibtexDownloadFilename={`author-report-llm-refs-seed-${selectedSeedPaperId}.bib`}
+            exportBaseFilename={`author-report-llm-refs-seed-${selectedSeedPaperId}`}
             headerActions={(
               <button
                 type="button"

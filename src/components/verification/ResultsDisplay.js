@@ -2,19 +2,64 @@ import React, { useState } from 'react';
 import apiService from '../../services/api';
 import {
   formatDatabaseResults,
+  getFoundInDatabaseLabel,
   getDatabaseBadgeClass,
   getSimilarityBadgeClass,
   renderCitationMultiSearchResult,
 } from './helpers';
+import {
+  getCitationValidityGroup,
+  getCitationValidityBadgeClass,
+  getCitationValidityLabel,
+  getTierClassificationTier,
+} from '../../utils/tierClassification';
+
+/** Per-source “found” counts from OpenAPI `VerificationResult` / `VerificationSummary`. */
+const VERIFICATION_FOUND_COUNT_KEYS = [
+  'found_in_openalex',
+  'found_in_crossref',
+  'found_in_doi',
+  'found_in_pubmed',
+  'found_in_arxiv',
+  'found_in_semantic_scholar',
+];
+
+const VERIFICATION_SUMMARY_ROWS = [
+  { key: 'found_in_openalex', label: 'OpenAlex' },
+  { key: 'found_in_crossref', label: 'Crossref' },
+  { key: 'found_in_doi', label: 'DOI API' },
+  { key: 'found_in_pubmed', label: 'PubMed' },
+  { key: 'found_in_arxiv', label: 'ArXiv' },
+  { key: 'found_in_semantic_scholar', label: 'Semantic Scholar' },
+  { key: 'not_found', label: 'Not Found' },
+];
+
+function sumVerificationFoundCounts(vr) {
+  if (!vr) return 0;
+  return VERIFICATION_FOUND_COUNT_KEYS.reduce((acc, k) => acc + (Number(vr[k]) || 0), 0);
+}
+
+function getVerificationCount(vr, key) {
+  if (!vr) return 0;
+  return Number(vr[key]) || 0;
+}
+
+/** Summary rows: databases with at least one find, plus aggregate Not Found. */
+function getVisibleVerificationSummaryRows(vr) {
+  return VERIFICATION_SUMMARY_ROWS.filter(
+    ({ key }) => key === 'not_found' || getVerificationCount(vr, key) > 0
+  );
+}
+
+function countDatabasesWithFinds(vr) {
+  return VERIFICATION_FOUND_COUNT_KEYS.filter((key) => getVerificationCount(vr, key) > 0).length;
+}
 
 const ResultsDisplay = ({ verificationResults, email, apiKey }) => {
   const [activeTab, setActiveTab] = useState('summary');
   const [citationLookup, setCitationLookup] = useState({});
 
-  const totalFound = verificationResults ? 
-    verificationResults.found_in_openalex + verificationResults.found_in_crossref + 
-    verificationResults.found_in_doi + verificationResults.found_in_arxiv + 
-    verificationResults.found_in_semantic_scholar : 0;
+  const totalFound = sumVerificationFoundCounts(verificationResults);
 
   const successRate = verificationResults && verificationResults.total_publications > 0 ? 
     ((totalFound / verificationResults.total_publications) * 100).toFixed(1) : 0;
@@ -90,14 +135,10 @@ const ResultsDisplay = ({ verificationResults, email, apiKey }) => {
   const renderSummaryTab = () => {
     if (!verificationResults) return null;
 
-    const databases = [
-      { name: 'OpenAlex', count: verificationResults.found_in_openalex },
-      { name: 'Crossref', count: verificationResults.found_in_crossref },
-      { name: 'DOI API', count: verificationResults.found_in_doi },
-      { name: 'ArXiv', count: verificationResults.found_in_arxiv },
-      { name: 'Semantic Scholar', count: verificationResults.found_in_semantic_scholar },
-      { name: 'Not Found', count: verificationResults.not_found }
-    ];
+    const databases = getVisibleVerificationSummaryRows(verificationResults).map(({ key, label }) => ({
+      name: label,
+      count: getVerificationCount(verificationResults, key),
+    }));
 
     return (
       <div className="row">
@@ -181,36 +222,42 @@ const ResultsDisplay = ({ verificationResults, email, apiKey }) => {
       return <span className="badge bg-secondary">Unknown</span>;
     };
 
+    const renderCitationValidityBadge = (result) => (
+      <span className={`badge ${getCitationValidityBadgeClass(result)}`}>
+        {getCitationValidityLabel(result)}
+      </span>
+    );
+
     const databaseGroups = {};
     verificationResults.detailed_results.forEach((result, index) => {
-      const foundIn = result.found_in_database || 'Not Found';
-      if (!databaseGroups[foundIn]) {
-        databaseGroups[foundIn] = [];
+      const statusGroup = getCitationValidityGroup(result);
+      if (!databaseGroups[statusGroup]) {
+        databaseGroups[statusGroup] = [];
       }
-      databaseGroups[foundIn].push({...result, index: index + 1});
+      databaseGroups[statusGroup].push({ ...result, index: index + 1 });
     });
 
     return (
       <div className="accordion" id="detailsAccordion">
-        {Object.keys(databaseGroups).map((database, idx) => {
-          const results = databaseGroups[database];
+        {Object.keys(databaseGroups).map((groupName, idx) => {
+          const results = databaseGroups[groupName];
           const isActive = idx === 0;
           
           return (
-            <div key={database} className="accordion-item">
-              <h2 className="accordion-header" id={`heading${database.replace(/\s+/g, '')}`}>
+            <div key={groupName} className="accordion-item">
+              <h2 className="accordion-header" id={`heading${groupName.replace(/\s+/g, '')}`}>
                 <button 
                   className={`accordion-button ${isActive ? '' : 'collapsed'}`}
                   type="button" 
                   data-bs-toggle="collapse" 
-                  data-bs-target={`#collapse${database.replace(/\s+/g, '')}`}
+                  data-bs-target={`#collapse${groupName.replace(/\s+/g, '')}`}
                 >
                   <i className="fas fa-database me-2"></i>
-                  {database} ({results.length} publications)
+                  {groupName} ({results.length} publications)
                 </button>
               </h2>
               <div 
-                id={`collapse${database.replace(/\s+/g, '')}`} 
+                id={`collapse${groupName.replace(/\s+/g, '')}`} 
                 className={`accordion-collapse collapse ${isActive ? 'show' : ''}`}
                 data-bs-parent="#detailsAccordion"
               >
@@ -219,7 +266,7 @@ const ResultsDisplay = ({ verificationResults, email, apiKey }) => {
                     {results.map(result => {
                       const similarity = result.best_match_similarity ? 
                         (result.best_match_similarity * 100).toFixed(1) + '%' : 'N/A';
-                      const pubCollapseId = `pub_${safeId(database)}_${result.index}`;
+                      const pubCollapseId = `pub_${safeId(groupName)}_${result.index}`;
                       
                       return (
                         <div key={result.index} className="list-group-item">
@@ -229,11 +276,13 @@ const ResultsDisplay = ({ verificationResults, email, apiKey }) => {
                           </div>
                           <div className="mb-2">
                             <div className="d-flex flex-wrap gap-2 align-items-center">
-                              <span className={`badge ${getDatabaseBadgeClass(result.found_in_database)}`}>
-                                {result.found_in_database || 'Not Found'}
+                              <span
+                                className={`badge ${getDatabaseBadgeClass(getFoundInDatabaseLabel(result))}`}
+                              >
+                                {getFoundInDatabaseLabel(result) || 'Not Found'}
                               </span>
-                              {renderDoiValidityBadge(result.doi_valid)}
-                              {result.doi_valid == null ? (
+                              {renderCitationValidityBadge(result)}
+                              {getTierClassificationTier(result) == null && result.doi_valid == null ? (
                                 <button
                                   type="button"
                                   className="btn btn-sm btn-outline-primary"
@@ -281,10 +330,22 @@ const ResultsDisplay = ({ verificationResults, email, apiKey }) => {
                                   </div>
                                 </div>
                                 <div className="col-md-6">
+                                  <h6 className="mb-2">Tier classification</h6>
+                                  <div className="small">
+                                    <div className="d-flex align-items-center gap-2">
+                                      <strong>Citation:</strong> {renderCitationValidityBadge(result)}
+                                    </div>
+                                    <div>
+                                      <strong>Tier:</strong>{' '}
+                                      {getTierClassificationTier(result) || '—'}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="col-md-6">
                                   <h6 className="mb-2">DOI validation</h6>
                                   <div className="small">
                                     <div className="d-flex align-items-center gap-2">
-                                      <strong>Status:</strong> {renderDoiValidityBadge(result.doi_valid)}
+                                      <strong>DOI status:</strong> {renderDoiValidityBadge(result.doi_valid)}
                                     </div>
                                     <div><strong>Resolved DOI:</strong> {result.resolved_doi || '—'}</div>
                                     <div><strong>Source:</strong> {result.doi_validation_source || '—'}</div>
@@ -310,7 +371,21 @@ const ResultsDisplay = ({ verificationResults, email, apiKey }) => {
                                   {renderMaybeJson(result.doi_validation_diffs)}
                                 </div>
 
-                                {result.doi_valid == null ? (
+                                {result.citation_pair_similarities != null ? (
+                                  <div className="col-12">
+                                    <h6 className="mb-2">Citation pair similarities</h6>
+                                    {renderMaybeJson(result.citation_pair_similarities)}
+                                  </div>
+                                ) : null}
+
+                                {result.existence_pair_similarities != null ? (
+                                  <div className="col-12">
+                                    <h6 className="mb-2">Existence pair similarities</h6>
+                                    {renderMaybeJson(result.existence_pair_similarities)}
+                                  </div>
+                                ) : null}
+
+                                {getTierClassificationTier(result) == null && result.doi_valid == null ? (
                                   <div className="col-12">
                                     <h6 className="mb-2">Citation multi-search result</h6>
                                     {citationLookup[result.index]?.loading ? (
@@ -356,7 +431,7 @@ const ResultsDisplay = ({ verificationResults, email, apiKey }) => {
               <th>Title</th>
               <th>DOI</th>
               <th>Resolved DOI</th>
-              <th>DOI Valid</th>
+              <th>Citation</th>
               <th>Found In</th>
               <th>Similarity</th>
               <th>Best Match Title</th>
@@ -376,13 +451,16 @@ const ResultsDisplay = ({ verificationResults, email, apiKey }) => {
                   <td className="text-truncate" style={{ maxWidth: 160 }}>{result.doi || '—'}</td>
                   <td className="text-truncate" style={{ maxWidth: 160 }}>{result.resolved_doi || '—'}</td>
                   <td>
-                    {result.doi_valid === true ? (
-                      <span className="badge bg-success">Valid</span>
-                    ) : result.doi_valid === false ? (
-                      <span className="badge bg-danger">Invalid</span>
-                    ) : (
-                      <div className="d-flex align-items-center gap-2 flex-wrap">
-                        <span className="badge bg-secondary">Unknown</span>
+                    <div className="d-flex align-items-center gap-2 flex-wrap">
+                      <span className={`badge ${getCitationValidityBadgeClass(result)}`}>
+                        {getCitationValidityLabel(result)}
+                      </span>
+                      {getTierClassificationTier(result) ? (
+                        <span className="badge bg-light text-dark border">
+                          {getTierClassificationTier(result)}
+                        </span>
+                      ) : null}
+                      {getTierClassificationTier(result) == null && result.doi_valid == null ? (
                         <button
                           type="button"
                           className="btn btn-sm btn-outline-primary"
@@ -391,15 +469,12 @@ const ResultsDisplay = ({ verificationResults, email, apiKey }) => {
                         >
                           {citationLookup[index + 1]?.loading ? 'Looking up...' : 'Lookup citation'}
                         </button>
-                        {citationLookup[index + 1]?.response ? (
-                          <span className="badge bg-success">Lookup done</span>
-                        ) : null}
-                      </div>
-                    )}
+                      ) : null}
+                    </div>
                   </td>
                   <td>
-                    <span className={`badge ${getDatabaseBadgeClass(result.found_in_database)}`}>
-                      {result.found_in_database || 'Not Found'}
+                    <span className={`badge ${getDatabaseBadgeClass(getFoundInDatabaseLabel(result))}`}>
+                      {getFoundInDatabaseLabel(result) || 'Not Found'}
                     </span>
                   </td>
                   <td>
@@ -458,8 +533,8 @@ const ResultsDisplay = ({ verificationResults, email, apiKey }) => {
             </div>
             <div className="col-md-2">
               <div className="stat-item">
-                <div className="stat-number">5</div>
-                <div className="stat-label">Databases Used</div>
+                <div className="stat-number">{countDatabasesWithFinds(verificationResults)}</div>
+                <div className="stat-label">Databases With Finds</div>
               </div>
             </div>
             <div className="col-md-2">
@@ -472,24 +547,21 @@ const ResultsDisplay = ({ verificationResults, email, apiKey }) => {
         </div>
 
         {/* Database Results Cards */}
-        <div className="row mb-4">
-          {['OpenAlex', 'Crossref', 'DOI API', 'ArXiv', 'Semantic Scholar', 'Not Found'].map((dbName, index) => {
-            const count = index === 0 ? verificationResults.found_in_openalex :
-                          index === 1 ? verificationResults.found_in_crossref :
-                          index === 2 ? verificationResults.found_in_doi :
-                          index === 3 ? verificationResults.found_in_arxiv :
-                          index === 4 ? verificationResults.found_in_semantic_scholar :
-                          verificationResults.not_found;
-            
+        <div className="row row-cols-2 row-cols-md-3 row-cols-xl-4 g-2 mb-4">
+          {getVisibleVerificationSummaryRows(verificationResults).map(({ key, label }) => {
+            const count = getVerificationCount(verificationResults, key);
+            const isNotFound = key === 'not_found';
+
             return (
-              <div key={dbName} className="col-md-2">
-                <div className="card database-card">
+              <div key={key} className="col">
+                <div className="card database-card h-100">
                   <div className="card-body text-center">
-                    <h5 className="card-title">{dbName}</h5>
-                    <div className={`${index === 5 ? 'not-found-count' : 'found-count'}`}>{count}</div>
+                    <h5 className="card-title small">{label}</h5>
+                    <div className={isNotFound ? 'not-found-count' : 'found-count'}>{count}</div>
                     <div className="success-rate">
-                      {verificationResults.total_publications > 0 ? 
-                        ((count / verificationResults.total_publications) * 100).toFixed(1) + '%' : '0%'}
+                      {verificationResults.total_publications > 0
+                        ? ((count / verificationResults.total_publications) * 100).toFixed(1) + '%'
+                        : '0%'}
                     </div>
                   </div>
                 </div>

@@ -1,12 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { LLMProvider } from '../../models';
+import { AuthoritativeVerificationMode, ComparisonProfilePurpose, LLMProvider } from '../../models';
 import { TEXT_PREVIEW_WORD_COUNT } from '../../utils';
+import ProfileSelect from '../comparisonProfiles/ProfileSelect';
 
 const ConfigurationPanel = ({
   email,
   setEmail,
   comment,
   setComment,
+  authoritativeVerificationMode,
+  setAuthoritativeVerificationMode,
+  existenceCheckMode,
+  setExistenceCheckMode,
+  verificationProfiles,
+  gtComparisonProfiles,
+  verificationProfileId,
+  setVerificationProfileId,
+  gtComparisonProfileId,
+  setGtComparisonProfileId,
+  profilesLoading,
   seedPapers,
   selectedSeedPaper,
   setSelectedSeedPaper,
@@ -248,6 +260,80 @@ const ConfigurationPanel = ({
             </div>
           </div>
         </div>
+
+        {/* Verification Mode */}
+        <div className="mb-3">
+          <label className="form-label">
+            <i className="fas fa-check-circle"></i> Authoritative verification mode
+          </label>
+          <select
+            className="form-select"
+            value={authoritativeVerificationMode}
+            onChange={(e) => setAuthoritativeVerificationMode(e.target.value)}
+            disabled={loading}
+          >
+            <option value={AuthoritativeVerificationMode.CASCADE}>
+              Cascade (Crossref → DOI.org → PubMed → OpenAlex → Semantic Scholar)
+            </option>
+            <option value={AuthoritativeVerificationMode.MULTI}>
+              Multi (query all databases)
+            </option>
+          </select>
+          <div className="form-text">
+            Controls DOI validation and authoritative metadata selection for this workflow run.
+          </div>
+        </div>
+
+        <div className="mb-3">
+          <label className="form-label">
+            <i className="fas fa-search"></i> Existence check mode (optional)
+          </label>
+          <select
+            className="form-select"
+            value={existenceCheckMode ?? ''}
+            onChange={(e) => {
+              const v = e.target.value;
+              setExistenceCheckMode(v === '' ? null : v);
+            }}
+            disabled={loading}
+          >
+            <option value="">Default (same as authoritative mode)</option>
+            <option value={AuthoritativeVerificationMode.CASCADE}>
+              Cascade (short-circuit on first database hit)
+            </option>
+            <option value={AuthoritativeVerificationMode.MULTI}>
+              Multi (query all databases for existence)
+            </option>
+          </select>
+          <div className="form-text">
+            When set, sent as <code>existence_check_mode</code> on <code>POST /api/workflow/execute</code>.
+            When left as default, the field is omitted so the server falls back to authoritative mode.
+          </div>
+        </div>
+
+        <ProfileSelect
+          id="verificationProfile"
+          label="Verification profile"
+          profiles={verificationProfiles || []}
+          value={verificationProfileId}
+          onChange={setVerificationProfileId}
+          loading={profilesLoading}
+          disabled={loading}
+          helperText="LLM vs authoritative metadata validation during workflow."
+          manageLinkPurpose={ComparisonProfilePurpose.VERIFICATION}
+        />
+
+        <ProfileSelect
+          id="gtComparisonProfile"
+          label="GT comparison profile"
+          profiles={gtComparisonProfiles || []}
+          value={gtComparisonProfileId}
+          onChange={setGtComparisonProfileId}
+          loading={profilesLoading}
+          disabled={loading}
+          helperText="LLM vs ground truth reference matching during workflow."
+          manageLinkPurpose={ComparisonProfilePurpose.GT_COMPARISON}
+        />
 
         {/* Optional Comment */}
         <div className="mb-3">

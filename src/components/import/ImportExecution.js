@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import apiService from '../../services/api';
+import { AuthoritativeVerificationMode } from '../../models';
 import {
   ACCEPT_EXTENSIONS,
   FILENAME_PATTERN,
@@ -23,6 +24,12 @@ export default function ImportExecution() {
   const [importHistory, setImportHistory] = useState([]);
   const [missingDataResponse, setMissingDataResponse] = useState(null);
   const fileInputRef = useRef(null);
+
+  const [authoritativeVerificationMode, setAuthoritativeVerificationMode] = useState(
+    AuthoritativeVerificationMode.CASCADE
+  );
+  /** When null, omit existence_check_mode (API falls back to authoritative_verification_mode). */
+  const [existenceCheckMode, setExistenceCheckMode] = useState(null);
 
   const [parsedMeta, setParsedMeta] = useState(null);
   const [checkLoading, setCheckLoading] = useState(false);
@@ -380,6 +387,10 @@ export default function ImportExecution() {
 
     try {
       const options = {};
+      options.authoritative_verification_mode = authoritativeVerificationMode;
+      if (existenceCheckMode != null && String(existenceCheckMode).trim() !== '') {
+        options.existence_check_mode = String(existenceCheckMode).trim();
+      }
       if (uploadable.length === 1 && isNaExecutionFile(uploadable[0].name)) {
         try {
           const fileContent = await readFileAsText(uploadable[0]);
@@ -602,6 +613,46 @@ export default function ImportExecution() {
                     ))}
                   </ul>
                 )}
+              </div>
+
+              <div className="mb-3">
+                <label className="form-label fw-bold">Authoritative verification mode</label>
+                <select
+                  className="form-select"
+                  value={authoritativeVerificationMode}
+                  onChange={(e) => setAuthoritativeVerificationMode(e.target.value)}
+                  disabled={loading}
+                >
+                  <option value={AuthoritativeVerificationMode.CASCADE}>
+                    Cascade (Crossref → DOI.org → PubMed → OpenAlex → Semantic Scholar)
+                  </option>
+                  <option value={AuthoritativeVerificationMode.MULTI}>
+                    Multi (query all databases)
+                  </option>
+                </select>
+                <div className="form-text">
+                  Sent as <code>authoritative_verification_mode</code> with the import request.
+                </div>
+              </div>
+
+              <div className="mb-3">
+                <label className="form-label fw-bold">Existence check mode (optional)</label>
+                <select
+                  className="form-select"
+                  value={existenceCheckMode ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setExistenceCheckMode(v === '' ? null : v);
+                  }}
+                  disabled={loading}
+                >
+                  <option value="">Default (same as authoritative mode)</option>
+                  <option value={AuthoritativeVerificationMode.CASCADE}>Cascade (short-circuit on first hit)</option>
+                  <option value={AuthoritativeVerificationMode.MULTI}>Multi (query all databases)</option>
+                </select>
+                <div className="form-text">
+                  When set, sent as <code>existence_check_mode</code>. Otherwise omitted so the API falls back to authoritative mode.
+                </div>
               </div>
 
               {isMultiFile && files.length > 0 && (

@@ -81,6 +81,17 @@ export function RequirePermission({ permission, children, fallback = null }) {
   return fallback ?? <Navigate to="/unauthorized" replace />;
 }
 
+export function RequireAnyPermission({ permissions: required, children, fallback = null }) {
+  const { permissions, meLoading, isAdmin } = useAuthz();
+
+  if (meLoading) return null;
+  if (isAdmin) return children;
+  if (!required?.length) return children;
+  if (required.some((p) => permissions.has(p))) return children;
+
+  return fallback ?? <Navigate to="/unauthorized" replace />;
+}
+
 export function RequireAdmin({ children, fallback = null }) {
   const { isAdmin, meLoading } = useAuthz();
   if (meLoading) return null;

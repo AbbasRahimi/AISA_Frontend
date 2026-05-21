@@ -1,5 +1,7 @@
 import React from 'react';
 import StorageConfig from '../shared/StorageConfig';
+import { AuthoritativeVerificationMode, ComparisonProfilePurpose } from '../../models';
+import ProfileSelect from '../comparisonProfiles/ProfileSelect';
 
 const ConfigurationPanel = ({
   email,
@@ -8,10 +10,18 @@ const ConfigurationPanel = ({
   setApiKey,
   enrichDoi,
   setEnrichDoi,
+  authoritativeVerificationMode,
+  setAuthoritativeVerificationMode,
+  existenceCheckMode,
+  setExistenceCheckMode,
   useStorage,
   setUseStorage,
   executionName,
   setExecutionName,
+  verificationProfiles,
+  verificationProfileId,
+  setVerificationProfileId,
+  profilesLoading,
 }) => {
   return (
     <div className="row mb-4">
@@ -69,6 +79,63 @@ const ConfigurationPanel = ({
                 <div className="form-text">
                   When enabled, the backend validates/enriches DOI metadata and returns detailed DOI validation fields per publication.
                 </div>
+              </div>
+            </div>
+
+            <div className="row mt-3">
+              <div className="col-12">
+                <label className="form-label fw-bold">Authoritative verification mode</label>
+                <select
+                  className="form-select"
+                  value={authoritativeVerificationMode}
+                  onChange={(e) => setAuthoritativeVerificationMode(e.target.value)}
+                >
+                  <option value={AuthoritativeVerificationMode.CASCADE}>
+                    Cascade (Crossref → DOI.org → PubMed → OpenAlex → Semantic Scholar)
+                  </option>
+                  <option value={AuthoritativeVerificationMode.MULTI}>
+                    Multi (query all databases)
+                  </option>
+                </select>
+                <div className="form-text">
+                  DOI validation and authoritative metadata selection (<code>authoritative_verification_mode</code>).
+                </div>
+              </div>
+            </div>
+
+            <div className="row mt-3">
+              <div className="col-12">
+                <label className="form-label fw-bold">Existence check mode (optional)</label>
+                <select
+                  className="form-select"
+                  value={existenceCheckMode ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setExistenceCheckMode(v === '' ? null : v);
+                  }}
+                >
+                  <option value="">Default (same as authoritative mode)</option>
+                  <option value={AuthoritativeVerificationMode.CASCADE}>Cascade (short-circuit on first hit)</option>
+                  <option value={AuthoritativeVerificationMode.MULTI}>Multi (query all databases)</option>
+                </select>
+                <div className="form-text">
+                  When set, sent as <code>existence_check_mode</code>. Otherwise omitted so the API falls back to authoritative mode.
+                </div>
+              </div>
+            </div>
+
+            <div className="row mt-3">
+              <div className="col-12">
+                <ProfileSelect
+                  id="verifierVerificationProfile"
+                  label="Comparison profile (verification)"
+                  profiles={verificationProfiles || []}
+                  value={verificationProfileId}
+                  onChange={setVerificationProfileId}
+                  loading={profilesLoading}
+                  helperText="Optional. Sent as comparison_profile_id (purpose=verification)."
+                  manageLinkPurpose={ComparisonProfilePurpose.VERIFICATION}
+                />
               </div>
             </div>
             
