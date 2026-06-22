@@ -1,5 +1,6 @@
 import React from 'react';
 import { formatDate } from './helpers';
+import { formatLlmSystemLabel, parseLlmSystemFromExecution } from '../../utils/llmSystem';
 
 const generateEvaluationReport = (evaluationMetrics, selectedExecution) => {
   if (!evaluationMetrics || !selectedExecution) return 'No evaluation data available';
@@ -26,7 +27,7 @@ const generateEvaluationReport = (evaluationMetrics, selectedExecution) => {
   report += '--- Execution Information ---\n';
   report += `Execution ID: ${selectedExecution.id}\n`;
   report += `Seed Paper: ${selectedExecution.seed_paper?.title || selectedExecution.seed_paper_title || 'N/A'}\n`;
-  report += `LLM: ${selectedExecution.llm_system?.name || selectedExecution.llm_provider || 'N/A'} (${selectedExecution.llm_system?.version || selectedExecution.model_name || 'N/A'})\n`;
+  report += `LLM: ${formatLlmSystemLabel(parseLlmSystemFromExecution(selectedExecution))}\n`;
   report += `Execution Date: ${formatDate(selectedExecution.execution_date || selectedExecution.created_at)}\n\n`;
   
   // Validity Metrics (Hallucination Detection)

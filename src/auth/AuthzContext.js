@@ -67,7 +67,29 @@ export function AuthzProvider({ children }) {
       setMeLoading(true);
       setMeError(null);
       try {
-        const data = await apiService.getMe();
+        let token = null;
+        try {
+          token = await getAccessTokenSilently({
+            authorizationParams: {
+              ...(audience ? { audience } : {}),
+            },
+          });
+        } catch (tokenError) {
+          if (!cancelled) {
+            setMe(null);
+            setMeError(tokenError);
+          }
+          return;
+        }
+        if (!token) {
+          if (!cancelled) {
+            setMe(null);
+            setMeError(new Error('No access token available'));
+          }
+          return;
+        }
+
+        const data = await apiService.getMe({ silentErrors: true });
         if (!cancelled) setMe(data);
       } catch (e) {
         // If backend returns 401 here, it means the API token is missing or rejected.
@@ -84,7 +106,7 @@ export function AuthzProvider({ children }) {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, isLoading]);
+  }, [isAuthenticated, isLoading, getAccessTokenSilently, audience]);
 
   const permissions = useMemo(() => {
     // Backend can return permissions under different keys.
@@ -106,16 +128,26 @@ export function AuthzProvider({ children }) {
     return Boolean(fromRoles || fromFlag);
   }, [me]);
 
+  const authFailed = Boolean(isAuthenticated && !meLoading && meError);
+  // Include the gap after Auth0 restores the session but before /me is fetched (e.g. on refresh).
+  const sessionPending = Boolean(
+    isAuthenticated && (meLoading || (me === null && !meError))
+  );
+  const sessionValid = Boolean(isAuthenticated && !sessionPending && me && !meError);
+
   const value = useMemo(
     () => ({
       me,
       meLoading,
       meError,
+      authFailed,
+      sessionPending,
+      sessionValid,
       permissions,
       isAdmin,
       auth0User: user,
     }),
-    [me, meLoading, meError, permissions, isAdmin, user]
+    [me, meLoading, meError, authFailed, sessionPending, sessionValid, permissions, isAdmin, user]
   );
 
   return <AuthzContext.Provider value={value}>{children}</AuthzContext.Provider>;

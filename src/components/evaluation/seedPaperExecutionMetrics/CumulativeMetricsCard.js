@@ -57,14 +57,11 @@ function CumulativeMetricsCard({ cumulative, validityBySystem, uniqueTpCount }) 
                         {validityBySystem.map((s, index) => (
                           <tr
                             key={
-                              s.system_id != null ? `id:${s.system_id}` : `nv:${s.system_name}|||${s.system_version}`
+                              s.system_id != null ? `id:${s.system_id}` : `nv:${s.system_label || s.system_name}`
                             }
                           >
                             <td className="text-end text-muted">{index + 1}</td>
-                            <td>
-                              {s.system_name}
-                              {s.system_version && s.system_version !== '—' ? ` (${s.system_version})` : ''}
-                            </td>
+                            <td>{s.system_label || s.system_name}</td>
                             <td className="text-end">{formatInt(s.executions)}</td>
                             <td className="text-end">{formatPercent(s.existence_precision, 2)}</td>
                           </tr>

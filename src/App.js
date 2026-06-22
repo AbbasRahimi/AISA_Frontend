@@ -15,10 +15,19 @@ import Footer from './components/layout/Footer';
 import apiService, { buildApiUrl } from './services/api';
 import { AuthoritativeVerificationMode, createWorkflowRequest, LLMProvider } from './models';
 import {
+  DEFAULT_LLM_FUNCTION,
+  DEFAULT_LLM_SUBSCRIPTION_STATUS,
+} from './utils/llmSystem';
+import {
   normalizeProfileList,
   pickDefaultProfileId,
 } from './components/comparisonProfiles/profileFieldMeta';
-import { useExecutionPolling } from './hooks/useExecutionPolling';
+import { useWorkflowLiveStatus } from './hooks/useWorkflowLiveStatus';
+import {
+  INITIAL_WORKFLOW_PROGRESS,
+  hasLiveWorkflowData,
+  shouldShowWorkflowConsole,
+} from './utils/workflowStatus';
 import { downloadBlob } from './utils';
 import { useAuth0 } from '@auth0/auth0-react';
 import { useAuthz } from './auth/AuthzContext';
@@ -26,6 +35,8 @@ import { RequireAuth, RequireAnyPermission, RequirePermission } from './auth/gua
 
 function PublicProjectInfo() {
   const { isAuthenticated, isLoading } = useAuth0();
+  const { authFailed } = useAuthz();
+  const showAsSignedIn = isAuthenticated && !authFailed;
 
   return (
     <div className="container mt-4">
@@ -72,7 +83,7 @@ function PublicProjectInfo() {
         </div>
 
         <div className="col-lg-4 mt-3 mt-lg-0">
-          {!isLoading && !isAuthenticated ? (
+          {!isLoading && !showAsSignedIn ? (
             <div className="alert alert-info" role="alert">
               <div className="fw-bold mb-1">Sign in to continue</div>
               <div className="small">
@@ -90,7 +101,8 @@ function PublicProjectInfo() {
 function Navigation() {
   const location = useLocation();
   const { isAuthenticated, isLoading, loginWithRedirect, logout } = useAuth0();
-  const { me, meLoading, isAdmin, permissions } = useAuthz();
+  const { me, meLoading, isAdmin, permissions, authFailed } = useAuthz();
+  const showAsSignedIn = isAuthenticated && !authFailed;
   
   const handleNavClick = () => {
     // Close the mobile menu when a link is clicked
@@ -102,7 +114,7 @@ function Navigation() {
   };
 
   const canSee = (permissionName) => {
-    if (!isAuthenticated) return false;
+    if (!showAsSignedIn) return false;
     if (!permissionName) return true;
     if (meLoading) return false;
     if (isAdmin) return true;
@@ -200,7 +212,7 @@ function Navigation() {
             </a>
 
             <div className="nav-item d-flex align-items-center ms-lg-2">
-              {!isLoading && !isAuthenticated && (
+              {!isLoading && !showAsSignedIn && (
                 <button
                   className="btn btn-sm btn-light"
                   onClick={() => loginWithRedirect({ appState: { returnTo: location.pathname } })}
@@ -208,7 +220,7 @@ function Navigation() {
                   Log in
                 </button>
               )}
-              {!isLoading && isAuthenticated && (
+              {!isLoading && showAsSignedIn && (
                 <div className="d-flex align-items-center gap-2">
                   {isAdmin ? (
                     <Link
@@ -255,6 +267,8 @@ function MainDashboard() {
   const [selectedPrompt, setSelectedPrompt] = useState(null);
   const [selectedLlmProvider, setSelectedLlmProvider] = useState(LLMProvider.CHATGPT);
   const [selectedLlmModel, setSelectedLlmModel] = useState('');
+  const [selectedLlmFunction, setSelectedLlmFunction] = useState(DEFAULT_LLM_FUNCTION);
+  const [selectedLlmSubscription, setSelectedLlmSubscription] = useState(DEFAULT_LLM_SUBSCRIPTION_STATUS);
   const [email, setEmail] = useState('');
   const [comment, setComment] = useState('');
   const [authoritativeVerificationMode, setAuthoritativeVerificationMode] = useState(
@@ -273,24 +287,28 @@ function MainDashboard() {
   const [showModal, setShowModal] = useState({ type: null, isOpen: false });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [workflowProgress, setWorkflowProgress] = useState({
-    stage: null,
-    llmPublications: null,
-    verificationResults: [],
-    verificationProgress: { completed: 0, total: 0 },
-    comparisonResults: [],
-    comparisonProgress: { completed: 0, total: 0 },
-    lastUpdate: null,
-  });
-  const pollCleanupRef = useRef(null);
+  const [workflowProgress, setWorkflowProgress] = useState(INITIAL_WORKFLOW_PROGRESS);
+  const [connectionMode, setConnectionMode] = useState(null);
+  const [workflowRunning, setWorkflowRunning] = useState(false);
+  const [submittingWorkflow, setSubmittingWorkflow] = useState(false);
+  const liveStatusCleanupRef = useRef(null);
 
-  const startPolling = useExecutionPolling({
+  const startLiveStatus = useWorkflowLiveStatus({
     onStatus: setExecutionStatus,
     onProgress: setWorkflowProgress,
-    onResults: (results) => setResults(results),
-    onFailed: (msg) => setError('Workflow execution failed: ' + msg),
-    onPollError: (err) =>
-      setError(err?.message ? err.message : 'Failed to poll execution status'),
+    onResults: (finalResults) => {
+      setResults(finalResults);
+      setWorkflowRunning(false);
+    },
+    onFailed: (msg) => {
+      setError('Workflow execution failed: ' + msg);
+      setWorkflowRunning(false);
+    },
+    onPollError: (err) => {
+      setError(err?.message ? err.message : 'Failed to receive workflow status');
+      setWorkflowRunning(false);
+    },
+    onConnectionMode: setConnectionMode,
   });
 
   // Load initial data
@@ -420,15 +438,38 @@ function MainDashboard() {
     }
 
     try {
-      setLoading(true);
+      setSubmittingWorkflow(true);
+      setWorkflowRunning(true);
       setError(null);
-      
+      setResults(null);
+      setExecutionId(null);
+      setExecutionStatus({
+        status: 'pending',
+        progress: 0,
+        message: 'Starting workflow…',
+        current_stage: 'pending',
+      });
+      setWorkflowProgress(INITIAL_WORKFLOW_PROGRESS);
+      setConnectionMode('connecting');
+      if (liveStatusCleanupRef.current) {
+        liveStatusCleanupRef.current();
+        liveStatusCleanupRef.current = null;
+      }
+
       const workflowRequest = createWorkflowRequest({
         email,
         prompt_id: selectedPrompt.id,
         seed_paper_id: selectedSeedPaper.id,
         llm_provider: selectedLlmProvider,
         model_name: selectedLlmModel,
+        function:
+          selectedLlmFunction && selectedLlmFunction !== DEFAULT_LLM_FUNCTION
+            ? selectedLlmFunction
+            : null,
+        subscription_status:
+          selectedLlmSubscription && selectedLlmSubscription !== DEFAULT_LLM_SUBSCRIPTION_STATUS
+            ? selectedLlmSubscription
+            : null,
         comment: comment ? comment : null,
         authoritative_verification_mode: authoritativeVerificationMode,
         existence_check_mode: existenceCheckMode,
@@ -438,6 +479,12 @@ function MainDashboard() {
       if (workflowRequest.existence_check_mode == null) {
         delete workflowRequest.existence_check_mode;
       }
+      if (workflowRequest.function == null) {
+        delete workflowRequest.function;
+      }
+      if (workflowRequest.subscription_status == null) {
+        delete workflowRequest.subscription_status;
+      }
 
       const response = await apiService.executeWorkflow(workflowRequest);
 
@@ -446,10 +493,16 @@ function MainDashboard() {
       }
 
       setExecutionId(response.execution_id);
-      setExecutionStatus(response);
-      if (pollCleanupRef.current) pollCleanupRef.current();
-      pollCleanupRef.current = startPolling(response.execution_id);
+      setExecutionStatus({
+        ...response,
+        progress: response.progress ?? 0,
+        message: response.message ?? 'Workflow started',
+        current_stage: response.current_stage ?? 'pending',
+      });
+      liveStatusCleanupRef.current = startLiveStatus(response.execution_id);
     } catch (error) {
+      setWorkflowRunning(false);
+      setConnectionMode(null);
       // Handle gateway timeout specifically
       if (error.message && error.message.includes('Gateway timeout')) {
         setError(
@@ -468,15 +521,19 @@ function MainDashboard() {
         setError('Failed to execute workflow: ' + error.message);
       }
     } finally {
-      setLoading(false);
+      setSubmittingWorkflow(false);
     }
   };
 
   useEffect(() => {
     return () => {
-      if (pollCleanupRef.current) pollCleanupRef.current();
+      if (liveStatusCleanupRef.current) liveStatusCleanupRef.current();
     };
   }, []);
+
+  const showWorkflowConsole = shouldShowWorkflowConsole(workflowRunning, executionStatus);
+  const showResultsPanel =
+    results != null || hasLiveWorkflowData(executionStatus, workflowProgress);
 
   const handleExportResults = async (format) => {
     if (!executionId) return;
@@ -490,7 +547,7 @@ function MainDashboard() {
   };
 
   const isExecuteButtonEnabled = () => {
-    return email && selectedSeedPaper && selectedPrompt && selectedLlmModel && !loading;
+    return email && selectedSeedPaper && selectedPrompt && selectedLlmModel && !submittingWorkflow;
   };
 
   return (
@@ -533,6 +590,10 @@ function MainDashboard() {
             setSelectedLlmProvider={setSelectedLlmProvider}
             selectedLlmModel={selectedLlmModel}
             setSelectedLlmModel={setSelectedLlmModel}
+            selectedLlmFunction={selectedLlmFunction}
+            setSelectedLlmFunction={setSelectedLlmFunction}
+            selectedLlmSubscription={selectedLlmSubscription}
+            setSelectedLlmSubscription={setSelectedLlmSubscription}
             onExecuteWorkflow={handleExecuteWorkflow}
             isExecuteButtonEnabled={isExecuteButtonEnabled()}
             onOpenModal={(type) => setShowModal({ type, isOpen: true })}
@@ -541,18 +602,21 @@ function MainDashboard() {
         </div>
 
         <div className="col-md-8">
-          {executionStatus && (
+          {showWorkflowConsole && (
             <ProgressPanel
               executionStatus={executionStatus}
               executionId={executionId}
               workflowProgress={workflowProgress}
+              connectionMode={connectionMode}
+              workflowRunning={workflowRunning}
             />
           )}
 
-          {results && (
+          {showResultsPanel && (
             <ResultsPanel
               results={results}
               workflowProgress={workflowProgress}
+              isLive={results == null}
               onExportResults={handleExportResults}
             />
           )}
@@ -567,15 +631,15 @@ function MainDashboard() {
         loading={loading}
       />
 
-      {loading && (
-        <div className="modal fade show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+      {submittingWorkflow && (
+        <div className="modal fade show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
           <div className="modal-dialog modal-sm">
             <div className="modal-content">
               <div className="modal-body text-center">
                 <div className="spinner-border text-primary" role="status">
                   <span className="visually-hidden">Loading...</span>
                 </div>
-                <div className="mt-2">Processing...</div>
+                <div className="mt-2">Starting workflow…</div>
               </div>
             </div>
           </div>
@@ -587,25 +651,25 @@ function MainDashboard() {
 
 function App() {
   const { isAuthenticated, isLoading } = useAuth0();
-  const { isAdmin, permissions, meLoading } = useAuthz();
+  const { isAdmin, permissions, authFailed, sessionPending, sessionValid } = useAuthz();
+
+  const homeElement = (() => {
+    if (isLoading || sessionPending) return null;
+    if (sessionValid && (isAdmin || permissions.has('workflow'))) {
+      return <MainDashboard />;
+    }
+    if (!isAuthenticated || authFailed) {
+      return <Navigate to="/about" replace />;
+    }
+    return <Navigate to="/unauthorized" replace />;
+  })();
 
   return (
     <div className="App">
       <Navigation />
       <main>
         <Routes>
-          <Route
-            path="/"
-            element={
-              isLoading ? null : isAuthenticated ? (
-                <RequirePermission permission="workflow">
-                  <MainDashboard />
-                </RequirePermission>
-              ) : (
-                <PublicProjectInfo />
-              )
-            }
-          />
+          <Route path="/" element={homeElement} />
           <Route path="/about" element={<PublicProjectInfo />} />
           <Route
             path="/publication-verifier"
@@ -672,7 +736,9 @@ function App() {
           <Route
             path="/unauthorized"
             element={
-              isAuthenticated && !meLoading && (isAdmin || permissions.size > 0) ? (
+              isLoading || sessionPending ? null : !isAuthenticated || authFailed ? (
+                <Navigate to="/about" replace />
+              ) : sessionValid && (isAdmin || permissions.size > 0) ? (
                 <Navigate to="/" replace />
               ) : (
                 <div className="container mt-4">

@@ -3,6 +3,12 @@ import apiService from '../../services/api';
 import BatchEvaluationResults from './BatchEvaluationResults';
 import LLMComparisonResults from './LLMComparisonResults';
 import { LLMProvider } from '../../models';
+import {
+  DEFAULT_LLM_FUNCTION,
+  DEFAULT_LLM_SUBSCRIPTION_STATUS,
+  LLM_SYSTEM_FUNCTIONS,
+  LLM_SUBSCRIPTION_STATUSES,
+} from '../../utils/llmSystem';
 
 const BatchEvaluation = () => {
   const [seedPapers, setSeedPapers] = useState([]);
@@ -12,6 +18,8 @@ const BatchEvaluation = () => {
   const [selectedPrompt, setSelectedPrompt] = useState(null);
   const [selectedLlmProvider, setSelectedLlmProvider] = useState(LLMProvider.CHATGPT);
   const [selectedLlmModel, setSelectedLlmModel] = useState('');
+  const [selectedLlmFunction, setSelectedLlmFunction] = useState(DEFAULT_LLM_FUNCTION);
+  const [selectedLlmSubscription, setSelectedLlmSubscription] = useState(DEFAULT_LLM_SUBSCRIPTION_STATUS);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [batchResults, setBatchResults] = useState(null);
@@ -41,7 +49,7 @@ const BatchEvaluation = () => {
       setSelectedSeedPaper(null);
       setSelectedPrompt(null);
     }
-  }, [selectedLlmProvider, selectedLlmModel]);
+  }, [selectedLlmProvider, selectedLlmModel, selectedLlmFunction, selectedLlmSubscription]);
 
   // Reset prompt when seed paper changes
   useEffect(() => {
@@ -110,7 +118,7 @@ const BatchEvaluation = () => {
       // Use the LLM system ID that was already fetched during seed paper filtering
       if (!llmSystemId) {
         console.error('[BatchEvaluation] No LLM system ID available!');
-        setError(`No LLM system found for ${selectedLlmProvider} - ${selectedLlmModel}. Please ensure this LLM system exists in the database.`);
+        setError(`No LLM system found for ${selectedLlmProvider} ${selectedLlmFunction} ${selectedLlmModel} (${selectedLlmSubscription}). Please ensure this LLM system exists in the database.`);
         setLoading(false);
         return;
       }
@@ -201,6 +209,8 @@ const BatchEvaluation = () => {
     } else {
       setSelectedLlmModel('');
     }
+    setSelectedLlmFunction(DEFAULT_LLM_FUNCTION);
+    setSelectedLlmSubscription(DEFAULT_LLM_SUBSCRIPTION_STATUS);
     setBatchResults(null);
     setLLMComparison(null);
     setError(null);
@@ -225,15 +235,25 @@ const BatchEvaluation = () => {
 
       try {
         // Get LLM system ID
-        const response = await apiService.getLLMSystems(selectedLlmProvider, selectedLlmModel);
+        const response = await apiService.getLLMSystems(
+          selectedLlmProvider,
+          selectedLlmFunction,
+          selectedLlmModel,
+          selectedLlmSubscription
+        );
 
         const systems = Array.isArray(response)
           ? response
           : (response?.llm_systems || response?.items || response?.data || []);
 
-        // Try to find the exact system match; otherwise fall back to first.
         const matchedSystem =
-          systems.find((s) => s?.name === selectedLlmProvider && s?.version === selectedLlmModel) ||
+          systems.find(
+            (s) =>
+              s?.name === selectedLlmProvider &&
+              (s?.function || DEFAULT_LLM_FUNCTION) === selectedLlmFunction &&
+              s?.model_version === selectedLlmModel &&
+              (s?.subscription_status || DEFAULT_LLM_SUBSCRIPTION_STATUS) === selectedLlmSubscription
+          ) ||
           systems[0] ||
           null;
 
@@ -279,7 +299,7 @@ const BatchEvaluation = () => {
     };
     
     filterSeedPapers();
-  }, [selectedLlmProvider, selectedLlmModel, seedPapers]);
+  }, [selectedLlmProvider, selectedLlmModel, selectedLlmFunction, selectedLlmSubscription, seedPapers]);
 
   // Filter prompts based on selected seed paper
   const filteredPrompts = selectedSeedPaper
@@ -353,7 +373,7 @@ const BatchEvaluation = () => {
                 </div>
                 <div className="col-md-6">
                   <label htmlFor="llmModelSelect" className="form-label">
-                    <i className="fas fa-microchip"></i> 2. LLM Model (Version) <span className="text-danger">*</span>
+                    <i className="fas fa-microchip"></i> 2. Model version <span className="text-danger">*</span>
                   </label>
                   <select
                     id="llmModelSelect"
@@ -362,11 +382,41 @@ const BatchEvaluation = () => {
                     onChange={(e) => setSelectedLlmModel(e.target.value)}
                     required
                   >
-                    <option value="">-- Select Model --</option>
+                    <option value="">-- Select model --</option>
                     {availableModels.map(model => (
                       <option key={model} value={model}>
                         {model}
                       </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-md-6">
+                  <label htmlFor="llmFunctionSelect" className="form-label">
+                    <i className="fas fa-code-branch"></i> 3. Function
+                  </label>
+                  <select
+                    id="llmFunctionSelect"
+                    className="form-select"
+                    value={selectedLlmFunction}
+                    onChange={(e) => setSelectedLlmFunction(e.target.value)}
+                  >
+                    {LLM_SYSTEM_FUNCTIONS.map((fn) => (
+                      <option key={fn} value={fn}>{fn}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-md-6">
+                  <label htmlFor="llmSubscriptionSelect" className="form-label">
+                    <i className="fas fa-id-badge"></i> 4. Subscription
+                  </label>
+                  <select
+                    id="llmSubscriptionSelect"
+                    className="form-select"
+                    value={selectedLlmSubscription}
+                    onChange={(e) => setSelectedLlmSubscription(e.target.value)}
+                  >
+                    {LLM_SUBSCRIPTION_STATUSES.map((status) => (
+                      <option key={status} value={status}>{status}</option>
                     ))}
                   </select>
                 </div>
@@ -376,7 +426,7 @@ const BatchEvaluation = () => {
             {/* Seed Paper Selection */}
             <div className="col-md-6">
               <label htmlFor="seedPaperSelect" className="form-label">
-                <i className="fas fa-file-alt"></i> {activeView === 'single' ? '3.' : '1.'} Seed Paper <span className="text-danger">*</span>
+                <i className="fas fa-file-alt"></i> {activeView === 'single' ? '5.' : '1.'} Seed Paper <span className="text-danger">*</span>
               </label>
               <select
                 id="seedPaperSelect"
@@ -407,7 +457,7 @@ const BatchEvaluation = () => {
             {/* Prompt Selection */}
             <div className="col-md-6">
               <label htmlFor="promptSelect" className="form-label">
-                <i className="fas fa-comment-dots"></i> {activeView === 'single' ? '4.' : '2.'} Prompt <span className="text-muted">(Optional)</span>
+                <i className="fas fa-comment-dots"></i> {activeView === 'single' ? '6.' : '2.'} Prompt <span className="text-muted">(Optional)</span>
               </label>
               <select
                 id="promptSelect"

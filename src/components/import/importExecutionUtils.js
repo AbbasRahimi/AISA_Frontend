@@ -7,8 +7,13 @@ export function hasImportExecutionExtension(filename) {
   return IMPORT_EXECUTION_EXT_REGEX.test(String(filename || '').trim());
 }
 
-export const FILENAME_PATTERN = 'systemName_seedpaperAlias_promptID_promptversion_YYMMDD_HHMMSS_comment';
-export const EXAMPLE_FILENAME = 'chatgpt.gpt4_test1_prompt1_v3_250729_131049_firstresults.json';
+export const FILENAME_PATTERN =
+  'name[.function]_modelversion_subscription_seedpaperID_promptID_promptversion_YYMMDD_HHMMSS[_comment]';
+export const EXAMPLE_FILENAME =
+  'chatgpt.consensus_gpt4_free_test1_prompt1_v3_250729_131049.json';
+export const INVALID_FILENAME_MESSAGE =
+  'Invalid filename format. Expected: name[.function]_modelversion_subscription_seedpaperID_promptID_promptversion_date_time_comment ' +
+  `(e.g. ${EXAMPLE_FILENAME} or chatgpt.consensus_gpt4_free_test1_prompt1_v3_250729_131049_na.txt)`;
 
 /** True if filename is an "_na" execution (no results; .txt with comment "na"). */
 export function isNaExecutionFile(filename) {
@@ -17,42 +22,104 @@ export function isNaExecutionFile(filename) {
 }
 
 /**
- * Parses execution filename: systemName_seedpaperAlias_promptID_promptversion_YYMMDD_HHMMSS_comment
+ * Parses execution filename:
+ * name[.function]_modelversion_subscription_seedpaperID_promptID_promptversion_YYMMDD_HHMMSS[_comment]
  * Supports .json, .bib, and .txt (including *_na.txt for no-result executions).
- * Returns { system_name, seed_paper_alias, prompt_id, prompt_version, date_str, time_str, comment } or null.
+ * Returns parsed fields or null when invalid.
  */
 export function parseExecutionFilename(filename) {
   if (!filename || typeof filename !== 'string') return null;
   const base = filename.replace(/\.(json|bib|txt)$/i, '').trim();
   const parts = base.split('_');
-  if (parts.length < 6) return null;
+  if (parts.length < 8) return null;
+
   const last = parts[parts.length - 1];
   const isTime = /^\d{6}$/.test(last);
-  let systemName, seed_paper_alias, prompt_id, prompt_version, date_str, time_str, comment;
+  let comment;
+  let time_str;
+  let date_str;
+  let prompt_version;
+  let prompt_id;
+  let seed_paper_alias;
+  let subscription_status;
+  let model_version;
+  let systemPart;
+
   if (isTime) {
-    time_str = parts[parts.length - 1];
-    date_str = parts[parts.length - 2];
-    prompt_version = parts[parts.length - 3];
-    prompt_id = parts[parts.length - 4];
-    seed_paper_alias = parts[parts.length - 5];
-    systemName = parts.slice(0, parts.length - 5).join('_');
+    if (parts.length !== 8) return null;
     comment = '';
+    time_str = parts[7];
+    date_str = parts[6];
+    prompt_version = parts[5];
+    prompt_id = parts[4];
+    seed_paper_alias = parts[3];
+    subscription_status = parts[2];
+    model_version = parts[1];
+    systemPart = parts[0];
   } else {
+    if (parts.length < 9) return null;
     comment = parts[parts.length - 1];
     time_str = parts[parts.length - 2];
     date_str = parts[parts.length - 3];
     prompt_version = parts[parts.length - 4];
     prompt_id = parts[parts.length - 5];
     seed_paper_alias = parts[parts.length - 6];
-    systemName = parts.slice(0, parts.length - 6).join('_');
+    subscription_status = parts[parts.length - 7];
+    model_version = parts[parts.length - 8];
+    systemPart = parts[parts.length - 9];
+    if (parts.length > 9) return null;
   }
+
   if (!/^\d{6}$/.test(date_str) || !/^\d{6}$/.test(time_str)) return null;
-  return { system_name: systemName || '', seed_paper_alias, prompt_id, prompt_version, date_str, time_str, comment: comment || '' };
+
+  const dotIdx = systemPart.indexOf('.');
+  let system_name;
+  let llm_function;
+  if (dotIdx >= 0) {
+    system_name = systemPart.slice(0, dotIdx);
+    llm_function = systemPart.slice(dotIdx + 1) || 'main';
+  } else {
+    system_name = systemPart;
+    llm_function = 'main';
+  }
+
+  return {
+    system_name: system_name || '',
+    function: llm_function,
+    model_version,
+    subscription_status,
+    seed_paper_alias,
+    prompt_id,
+    prompt_version,
+    date_str,
+    time_str,
+    comment: comment || '',
+  };
+}
+
+/**
+ * Client-side filename validation before upload.
+ * @param {string} filename
+ * @returns {{ valid: boolean, meta: ReturnType<typeof parseExecutionFilename>|null, message?: string }}
+ */
+export function validateExecutionFilename(filename) {
+  if (!hasImportExecutionExtension(filename)) {
+    return {
+      valid: false,
+      meta: null,
+      message: 'Unsupported extension (use .json, .bib, or .txt).',
+    };
+  }
+  const meta = parseExecutionFilename(filename);
+  if (!meta) {
+    return { valid: false, meta: null, message: INVALID_FILENAME_MESSAGE };
+  }
+  return { valid: true, meta };
 }
 
 /**
  * Formats parsed date_str (YYMMDD) and time_str (HHMMSS) for display.
- * @returns {string} e.g. "25 Nov 2025, 19:43:31" or raw "date_str / time_str" if invalid
+ * @returns {string} e.g. "25/11/2025, 19:43:31" or raw "date_str / time_str" if invalid
  */
 export function formatParsedDateTime(date_str, time_str) {
   if (!date_str || !time_str || date_str.length !== 6 || time_str.length !== 6) {

@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { buildReferenceMetadataPayload } from '../ReferenceMetadataModal';
 import { buildLiteratureRefsBibtex, downloadTextFile, normalizeToLiteratureRef } from './utils';
+import { formatLlmSystemLabel, llmSystemKeyFromFields } from '../../../utils/llmSystem';
 
 function downloadBlobFile(blob, filename) {
   const url = URL.createObjectURL(blob);
@@ -28,15 +29,18 @@ function FoundByBadges({ systems }) {
 
   return (
     <span className="author-report-found-by">
-      {list.map((s) => (
+      {list.map((s) => {
+        const label = formatLlmSystemLabel(s);
+        return (
         <span
-          key={`${s.name}-${s.version}`}
+          key={llmSystemKeyFromFields(s)}
           className="badge bg-secondary author-report-system-badge"
-          title={`${s.name} (${s.version})`}
+          title={label}
         >
-          {s.name} {s.version}
+          {label}
         </span>
-      ))}
+        );
+      })}
     </span>
   );
 }
@@ -141,7 +145,7 @@ export default function GtCoverageSection({
         if (!ref) return null;
         const systems = Array.isArray(row?.found_by_systems) ? row.found_by_systems : [];
         const foundBy = systems.length
-          ? systems.map((s) => `${s?.name ?? ''} ${s?.version ?? ''}`.trim()).filter(Boolean).join('; ')
+          ? systems.map((s) => formatLlmSystemLabel(s)).filter(Boolean).join('; ')
           : '';
 
         return {

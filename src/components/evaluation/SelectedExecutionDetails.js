@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { formatDate, getStatusBadgeClass } from './helpers';
+import { formatLlmSystemLabel, parseLlmSystemFromExecution } from '../../utils/llmSystem';
 
 const SelectedExecutionDetails = ({ selectedExecution, calculatingMetrics, onCalculateMetrics }) => {
   const [includePartial, setIncludePartial] = useState(true);
@@ -26,12 +27,7 @@ const SelectedExecutionDetails = ({ selectedExecution, calculatingMetrics, onCal
   const promptVersion = selectedExecution.prompt_version ?? 
                        selectedExecution.prompt?.version ?? 
                        'N/A';
-  const llmName = selectedExecution.llm_system?.name || 
-                 selectedExecution.llm_provider || 
-                 'N/A';
-  const llmVersion = selectedExecution.llm_system?.version || 
-                    selectedExecution.model_name || 
-                    'N/A';
+  const llmSystemLabel = formatLlmSystemLabel(parseLlmSystemFromExecution(selectedExecution));
   const executionDate = selectedExecution.execution_date || 
                        selectedExecution.created_at || 
                        'N/A';
@@ -52,8 +48,7 @@ const SelectedExecutionDetails = ({ selectedExecution, calculatingMetrics, onCal
             <p><strong>Seed Paper Title:</strong> {seedPaperTitle}</p>
             <p><strong>Prompt ID:</strong> {promptId}</p>
             <p><strong>Prompt Version:</strong> {promptVersion}</p>
-            <p><strong>LLM Name:</strong> {llmName}</p>
-            <p><strong>LLM Version:</strong> {llmVersion}</p>
+            <p><strong>LLM System:</strong> {llmSystemLabel}</p>
           </div>
           <div className="col-md-6">
             <p><strong>Status:</strong> <span className={`badge ${getStatusBadgeClass(selectedExecution.status)}`}>{selectedExecution.status || 'unknown'}</span></p>

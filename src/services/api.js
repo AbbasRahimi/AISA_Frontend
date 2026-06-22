@@ -1,3 +1,8 @@
+import { parseWorkflowStatusMessage, normalizeExecutionStatusResponse } from '../utils/workflowStatus';
+import { STATUS_POLL_TIMEOUT_MS } from '../utils/constants';
+
+export { parseWorkflowStatusMessage, normalizeExecutionStatusResponse };
+
 function normalizeApiBaseUrl(input) {
   const raw = input != null ? String(input).trim() : '';
   if (!raw) return '';
@@ -38,6 +43,18 @@ function buildQueryParams(params) {
 }
 
 /**
+ * Append JWT for WebSocket/SSE (EventSource cannot send Authorization header).
+ * @param {string} url
+ * @param {string|null|undefined} token
+ * @returns {string}
+ */
+export function appendWorkflowAuthQuery(url, token) {
+  if (!token) return url;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}token=${encodeURIComponent(token)}`;
+}
+
+/**
  * @typedef {Object} LiteratureRef
  * @property {number} id
  * @property {string} title
@@ -51,8 +68,10 @@ function buildQueryParams(params) {
 
 /**
  * @typedef {Object} LLMSystemRef
- * @property {string} name
- * @property {string} version
+ * @property {string|null} name
+ * @property {string|null} function
+ * @property {string|null} model_version
+ * @property {string|null} subscription_status
  */
 
 /**
@@ -83,6 +102,16 @@ class ApiService {
    */
   setAccessTokenGetter(getter) {
     this.accessTokenGetter = getter;
+  }
+
+  /** @returns {Promise<string|null>} */
+  async getAccessToken() {
+    if (!this.accessTokenGetter) return null;
+    try {
+      return (await this.accessTokenGetter()) || null;
+    } catch {
+      return null;
+    }
   }
 
   async request(endpoint, options = {}) {
@@ -167,7 +196,7 @@ class ApiService {
       // Skip logging for expected "missing data" 400 — import flow handles it and shows the form
       const isPromptNotFound = error.message && /Prompt with id \d+ not found/i.test(error.message);
       const isSeedPaperNotFound = error.message && (/Seed paper (?:with id )?\d* ?not found/i.test(error.message) || /Seed paper .* not found/i.test(error.message));
-      if (!isPromptNotFound && !isSeedPaperNotFound) {
+      if (!isPromptNotFound && !isSeedPaperNotFound && !options.silentErrors) {
         console.error('API request failed:', error);
       }
       throw error;
@@ -353,9 +382,10 @@ class ApiService {
   }
 
   async getExecutionStatus(executionId) {
-    // Status polling can be slow while the backend is still processing.
-    // Keep it aligned with the 10-minute workflow execution timeout.
-    return this.request(`/api/workflow/${executionId}/status`, { timeout: 600000 });
+    const raw = await this.request(`/api/workflow/${executionId}/status`, {
+      timeout: STATUS_POLL_TIMEOUT_MS,
+    });
+    return normalizeExecutionStatusResponse(raw) ?? raw;
   }
 
   async getExecutionResults(executionId) {
@@ -563,15 +593,22 @@ class ApiService {
     if (options.authoritative_verification_mode != null && String(options.authoritative_verification_mode).trim() !== '') {
       formData.append('authoritative_verification_mode', String(options.authoritative_verification_mode).trim());
     }
+    if (options.verification_profile_id != null) {
+      formData.append('verification_profile_id', String(options.verification_profile_id));
+    }
+    if (options.gt_comparison_profile_id != null) {
+      formData.append('gt_comparison_profile_id', String(options.gt_comparison_profile_id));
+    }
   }
 
   /**
    * Import execution from uploaded file (JSON, BibTeX, or .txt for _na no-result executions).
-   * Filename must follow: systemName_seedpaperID_promptID_promptversion_YYMMDD_HHMMSS_comment.json|.bib|.txt
-   * For *_na.txt files the backend creates an execution with total_publications_found=0 and optional execution_comment.
+   * Filename must follow: name[.function]_modelversion_subscription_seedpaperID_promptID_promptversion_YYMMDD_HHMMSS[_comment].json|.bib|.txt
+   * Example: chatgpt.consensus_gpt4_free_test1_prompt1_v3_250729_131049.json
    * Options (when server returns missing_data): seed_paper_id, seed_paper_content (BibTeX), seed_paper_alias,
    *   prompt_id, prompt_content so the server can create missing records and continue.
    * Options: execution_comment (for _na .txt imports – file body stored as execution comment).
+   *   verification_profile_id, gt_comparison_profile_id (omit for server defaults).
    * Returns { status: 'success', insertion_report, ... } or { status: 'missing_data', ... }.
    */
   async importExecutionFromFile(file, options = {}) {
@@ -687,8 +724,19 @@ class ApiService {
   }
 
   // LLM Systems
-  async getLLMSystems(name = null, version = null) {
-    const query = buildQueryParams({ name, version });
+  /**
+   * @param {string|null} [name]
+   * @param {string|null} [llmFunction] query param `function`
+   * @param {string|null} [modelVersion] query param `model_version`
+   * @param {string|null} [subscriptionStatus] query param `subscription_status`
+   */
+  async getLLMSystems(name = null, llmFunction = null, modelVersion = null, subscriptionStatus = null) {
+    const query = buildQueryParams({
+      name,
+      function: llmFunction,
+      model_version: modelVersion,
+      subscription_status: subscriptionStatus,
+    });
     return this.request(`/api/llm-systems${query}`);
   }
 
@@ -818,11 +866,22 @@ class ApiService {
     );
   }
 
-  // Server-Sent Events Support for Workflow Events
-  // Based on OpenAPI spec: GET /api/workflow/{execution_id}/events
-  connectWorkflowEvents(executionId, onMessage, onError) {
-    const eventSource = new EventSource(`${this.baseURL}/api/workflow/${executionId}/events`);
-    
+  _workflowStreamBaseUrl() {
+    if (this.baseURL) {
+      return this.baseURL.replace(/^http/i, 'ws');
+    }
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${window.location.host}`;
+  }
+
+  // SSE: GET /api/workflow/{execution_id}/events (polls store ~1s)
+  connectWorkflowEvents(executionId, onMessage, onError, token = null) {
+    const url = appendWorkflowAuthQuery(
+      `${this.baseURL}/api/workflow/${executionId}/events`,
+      token
+    );
+    const eventSource = new EventSource(url);
+
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
@@ -832,29 +891,27 @@ class ApiService {
         if (onError) onError(error);
       }
     };
-    
+
     eventSource.onerror = (error) => {
       console.error('SSE error:', error);
       if (onError) onError(error);
     };
-    
+
     return eventSource;
   }
 
-  // WebSocket Support for Real-time Updates (Alternative to SSE)
-  connectWorkflowStream(executionId, onMessage, onError, onClose) {
-    // Use wss:// for https, ws:// for http
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsBaseUrl = process.env.REACT_APP_API_URL 
-      ? process.env.REACT_APP_API_URL.replace(/^http/, 'ws')
-      : `${protocol}//${window.location.hostname}:8000`;
-    const wsUrl = `${wsBaseUrl}/api/workflow/${executionId}/events`;
+  // WebSocket: WS /api/workflow/{execution_id}/stream
+  connectWorkflowStream(executionId, onMessage, onError, onClose, token = null) {
+    const wsUrl = appendWorkflowAuthQuery(
+      `${this._workflowStreamBaseUrl()}/api/workflow/${executionId}/stream`,
+      token
+    );
     const ws = new WebSocket(wsUrl);
-    
+
     ws.onopen = () => {
       console.log('WebSocket connected for execution:', executionId);
     };
-    
+
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
@@ -864,17 +921,17 @@ class ApiService {
         if (onError) onError(error);
       }
     };
-    
+
     ws.onerror = (error) => {
       console.error('WebSocket error:', error);
       if (onError) onError(error);
     };
-    
+
     ws.onclose = (event) => {
       console.log('WebSocket closed:', event.code, event.reason);
       if (onClose) onClose(event);
     };
-    
+
     return ws;
   }
 }

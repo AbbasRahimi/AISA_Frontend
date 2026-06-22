@@ -1,5 +1,6 @@
 import React from 'react';
 import { formatDate } from './helpers';
+import { formatLlmSystemLabel, parseLlmSystemFromExecution } from '../../utils/llmSystem';
 
 const ExecutionsTable = ({ executions, loading, currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, selectedExecution, onSelectExecution }) => {
   // Calculate pagination
@@ -107,8 +108,7 @@ const ExecutionsTable = ({ executions, loading, currentPage, setCurrentPage, ite
               <th>Seed Paper Title</th>
               <th>Prompt ID</th>
               <th>Prompt Version</th>
-              <th>LLM Name</th>
-              <th>LLM Version</th>
+              <th>LLM System</th>
               <th>Execution Date</th>
               <th>Total Publications Found</th>
             </tr>
@@ -130,16 +130,7 @@ const ExecutionsTable = ({ executions, loading, currentPage, setCurrentPage, ite
                                    execution.prompt?.version ?? 
                                    '—';
               
-              // Handle nested llm_system object
-              const llmName = execution.llm_system?.name || 
-                             execution.llm_system?.llm_provider || 
-                             execution.llm_provider || 
-                             'N/A';
-              
-              const llmVersion = execution.llm_system?.version || 
-                                execution.llm_system?.model_name || 
-                                execution.model_name || 
-                                'N/A';
+              const llmSystemLabel = formatLlmSystemLabel(parseLlmSystemFromExecution(execution));
               
               const executionDate = execution.execution_date || 
                                    execution.created_at || 
@@ -170,8 +161,7 @@ const ExecutionsTable = ({ executions, loading, currentPage, setCurrentPage, ite
                   </td>
                   <td>{promptId}</td>
                   <td>{promptVersion}</td>
-                  <td>{llmName}</td>
-                  <td>{llmVersion}</td>
+                  <td>{llmSystemLabel}</td>
                   <td>{formatDate(executionDate)}</td>
                   <td>{totalPubs}</td>
                 </tr>

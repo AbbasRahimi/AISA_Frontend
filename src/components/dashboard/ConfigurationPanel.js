@@ -1,5 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { AuthoritativeVerificationMode, ComparisonProfilePurpose, LLMProvider } from '../../models';
+import {
+  DEFAULT_LLM_FUNCTION,
+  DEFAULT_LLM_SUBSCRIPTION_STATUS,
+  LLM_SYSTEM_FUNCTIONS,
+  LLM_SUBSCRIPTION_STATUSES,
+} from '../../utils/llmSystem';
 import { TEXT_PREVIEW_WORD_COUNT } from '../../utils';
 import ProfileSelect from '../comparisonProfiles/ProfileSelect';
 
@@ -32,6 +38,10 @@ const ConfigurationPanel = ({
   setSelectedLlmProvider,
   selectedLlmModel,
   setSelectedLlmModel,
+  selectedLlmFunction,
+  setSelectedLlmFunction,
+  selectedLlmSubscription,
+  setSelectedLlmSubscription,
   onExecuteWorkflow,
   isExecuteButtonEnabled,
   onOpenModal,
@@ -258,6 +268,45 @@ const ConfigurationPanel = ({
                 ))}
               </select>
             </div>
+          </div>
+          <div className="row mt-2">
+            <div className="col-6">
+              <label htmlFor="llmFunction" className="form-label small text-muted mb-1">
+                Function
+              </label>
+              <select
+                id="llmFunction"
+                className="form-select"
+                value={selectedLlmFunction ?? DEFAULT_LLM_FUNCTION}
+                onChange={(e) => setSelectedLlmFunction(e.target.value)}
+              >
+                {LLM_SYSTEM_FUNCTIONS.map((fn) => (
+                  <option key={fn} value={fn}>
+                    {fn}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="col-6">
+              <label htmlFor="llmSubscription" className="form-label small text-muted mb-1">
+                Subscription
+              </label>
+              <select
+                id="llmSubscription"
+                className="form-select"
+                value={selectedLlmSubscription ?? DEFAULT_LLM_SUBSCRIPTION_STATUS}
+                onChange={(e) => setSelectedLlmSubscription(e.target.value)}
+              >
+                {LLM_SUBSCRIPTION_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="form-text">
+            Optional workflow fields sent as <code>function</code> and <code>subscription_status</code> (defaults: main / unknown).
           </div>
         </div>
 

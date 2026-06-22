@@ -17,7 +17,7 @@ import {
   getTierClassificationTier,
 } from '../../utils/tierClassification';
 
-const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
+const ResultsPanel = ({ results, workflowProgress, onExportResults, isLive = false }) => {
   const [activeTab, setActiveTab] = useState('llm');
 
   const renderLLMResponse = () => {
@@ -384,18 +384,29 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults }) => {
           <button
             className="btn btn-outline-primary btn-sm"
             onClick={() => onExportResults('json')}
+            disabled={isLive}
+            title={isLive ? 'Available when the workflow completes' : undefined}
           >
             <i className="fas fa-download"></i> Export JSON
           </button>
           <button
             className="btn btn-outline-primary btn-sm"
             onClick={() => onExportResults('bibtex')}
+            disabled={isLive}
+            title={isLive ? 'Available when the workflow completes' : undefined}
           >
             <i className="fas fa-download"></i> Export BibTeX
           </button>
         </div>
       </div>
       <div className="card-body">
+        {isLive && (
+          <div className="alert alert-warning py-2 mb-3">
+            <i className="fas fa-sync fa-spin me-1"></i>
+            Live preview — verification and comparison update as they run. Export unlocks when
+            the workflow finishes.
+          </div>
+        )}
         {/* Results Tabs */}
         <ul className="nav nav-tabs" role="tablist">
           <li className="nav-item" role="presentation">

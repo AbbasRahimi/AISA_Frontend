@@ -66,6 +66,25 @@ export const LLMModelResponse = {
   gemini_models: []
 };
 
+// LLM System (OpenAPI: LlmSystem)
+export const LlmSystem = {
+  id: null,
+  name: '',
+  function: 'main',
+  model_version: '',
+  subscription_status: 'unknown',
+  created_at: null,
+  execution_count: null,
+};
+
+export const LlmSystemRef = {
+  id: null,
+  name: null,
+  function: null,
+  model_version: null,
+  subscription_status: null,
+};
+
 // Authoritative Verification Mode Enum (OpenAPI: AuthoritativeVerificationMode)
 export const AuthoritativeVerificationMode = {
   CASCADE: 'cascade',
@@ -96,6 +115,10 @@ export const WorkflowRequest = {
   seed_paper_id: null,
   llm_provider: LLMProvider.CHATGPT,
   model_name: '',
+  /** @type {string|null} e.g. "main", "consensus" — omitted from JSON when null (server default: main). */
+  function: null,
+  /** @type {string|null} e.g. "free", "premium", "unknown" — omitted when null (server default: unknown). */
+  subscription_status: null,
   comment: null,
   /** @type {'cascade'|'multi'|null} When null, omit from JSON so the server falls back to authoritative_verification_mode. */
   existence_check_mode: null,
@@ -154,18 +177,60 @@ export const WorkflowResponse = {
   message: ''
 };
 
-// Execution Status Response Model
+// Activity log line (OpenAPI: ActivityLogEntry)
+export const ActivityLogEntry = {
+  timestamp: '',
+  stage: '',
+  level: 'info',
+  message: '',
+  index: null,
+  total: null,
+  title: null,
+};
+
+// Progressive workflow payloads (OpenAPI: VerificationProgressData / ComparisonProgressData)
+export const VerificationProgressData = {
+  total: 0,
+  completed: 0,
+  results: [],
+  current_verifying: null,
+};
+
+export const ComparisonProgressResultEntry = {
+  gt_ref_id: null,
+  title: '',
+  found_by_llm: false,
+  match_type: null,
+  classification: null,
+  confidence_score: null,
+};
+
+export const ComparisonProgressData = {
+  total: 0,
+  completed: 0,
+  results: [],
+  current_comparing: null,
+};
+
+export const LLMResponseData = {
+  publications: [],
+  received_at: null,
+  total_count: 0,
+};
+
+// Execution Status Response Model (OpenAPI: ExecutionStatusResponse — GET /api/workflow/{id}/status)
 export const ExecutionStatusResponse = {
   execution_id: '',
   status: ExecutionStatus.PENDING,
-  progress: 0, // 0-100
+  progress: 0,
   message: '',
   current_stage: null,
   results: null,
   error: null,
   llm_response: null,
   verification_progress: null,
-  comparison_progress: null
+  comparison_progress: null,
+  activity_log: null,
 };
 
 // Verification Detail Model (OpenAPI: VerificationDetail)
@@ -292,6 +357,8 @@ export const createGroundTruth = (data = {}) => ({ ...GroundTruthResponse, ...da
 export const createLiteratureRef = (data = {}) => ({ ...LiteratureRefResponse, ...data });
 export const createPrompt = (data = {}) => ({ ...PromptResponse, ...data });
 export const createLLMModel = (data = {}) => ({ ...LLMModelResponse, ...data });
+export const createLlmSystem = (data = {}) => ({ ...LlmSystem, ...data });
+export const createLlmSystemRef = (data = {}) => ({ ...LlmSystemRef, ...data });
 export const createWorkflowRequest = (data = {}) => ({ ...WorkflowRequest, ...data });
 export const createComparisonProfileCreate = (data = {}) => ({ ...ComparisonProfileCreate, ...data });
 export const createComparisonProfileUpdate = (data = {}) => ({ ...ComparisonProfileUpdate, ...data });
@@ -299,6 +366,9 @@ export const createScoringRule = (data = {}) => ({ ...ScoringRule, ...data });
 export const createValidateSampleRequest = (data = {}) => ({ ...ValidateSampleRequest, ...data });
 export const createReclassifyRequest = (data = {}) => ({ ...ReclassifyRequest, ...data });
 export const createWorkflowResponse = (data = {}) => ({ ...WorkflowResponse, ...data });
+export const createActivityLogEntry = (data = {}) => ({ ...ActivityLogEntry, ...data });
+export const createVerificationProgressData = (data = {}) => ({ ...VerificationProgressData, ...data });
+export const createComparisonProgressData = (data = {}) => ({ ...ComparisonProgressData, ...data });
 export const createExecutionStatus = (data = {}) => ({ ...ExecutionStatusResponse, ...data });
 export const createVerificationDetail = (data = {}) => ({ ...VerificationDetail, ...data });
 export const createDatabaseResult = (data = {}) => ({ ...DatabaseResult, ...data });
