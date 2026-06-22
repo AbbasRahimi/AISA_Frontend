@@ -244,25 +244,100 @@ export const isValidFile = (file) => {
   return validExtensions.some(ext => fileName.endsWith(ext));
 };
 
-export const formatDatabaseResults = (databaseResults) => {
-  if (!databaseResults) return 'N/A';
+export function isDatabaseResultFound(dbResult) {
+  if (!dbResult || typeof dbResult !== 'object') return false;
+  return (
+    dbResult.found === true ||
+    dbResult.exact_match_found === true ||
+    (typeof dbResult.best_similarity === 'number' && dbResult.best_similarity > 0)
+  );
+}
 
-  const results = [];
-  Object.keys(databaseResults).forEach((db) => {
-    const result = databaseResults[db];
-    if (result.exact_match_found) {
-      results.push(`${db}: ✅`);
-    } else if (result.best_similarity > 0) {
-      results.push(`${db}: ⚠️ ${(result.best_similarity * 100).toFixed(1)}%`);
-    } else if (result.found) {
-      results.push(`${db}: ✓`);
+function formatFoundDatabaseEntry(db, result) {
+  if (result.exact_match_found) {
+    return `${db}: ✅`;
+  }
+  if (result.best_similarity > 0) {
+    return `${db}: ⚠️ ${(result.best_similarity * 100).toFixed(1)}%`;
+  }
+  return `${db}: ✓`;
+}
+
+/** Per-citation database breakdown: only sources that found a match, plus not-found total. */
+export const formatDatabaseResults = (databaseResults) => {
+  if (!databaseResults || typeof databaseResults !== 'object') return 'N/A';
+
+  const foundEntries = [];
+  let notFoundCount = 0;
+
+  Object.entries(databaseResults).forEach(([db, result]) => {
+    if (isDatabaseResultFound(result)) {
+      foundEntries.push(formatFoundDatabaseEntry(db, result));
     } else {
-      results.push(`${db}: ❌`);
+      notFoundCount += 1;
     }
   });
 
-  return results.join(' | ');
+  const parts = [...foundEntries];
+  if (notFoundCount > 0) {
+    parts.push(`Not found: ${notFoundCount}`);
+  }
+
+  return parts.length > 0 ? parts.join(' | ') : 'N/A';
 };
+
+function normalizeDbDisplayName(dbKey) {
+  const key = String(dbKey || '').trim();
+  const lower = key.toLowerCase();
+  if (!lower) return null;
+  if (lower.includes('openalex')) return 'OpenAlex';
+  if (lower.includes('crossref')) return 'Crossref';
+  if (lower === 'doi' || lower.includes('doi')) return 'DOI API';
+  if (lower.includes('arxiv')) return 'ArXiv';
+  if (lower.includes('semantic')) return 'Semantic Scholar';
+  return key;
+}
+
+/**
+ * Best-effort "found in" label for a verification detail row.
+ * Some backend versions omit `found_in_database` and only expose per-db flags in `database_results`.
+ */
+export function getFoundInDatabaseLabel(detail) {
+  const explicit = detail?.found_in_database != null ? String(detail.found_in_database).trim() : '';
+  if (explicit) return explicit;
+
+  const dbResults = detail?.database_results;
+  if (!dbResults || typeof dbResults !== 'object') return null;
+
+  const entries = Object.entries(dbResults)
+    .map(([k, v]) => ({ key: k, value: v }))
+    .filter(({ value }) => value && typeof value === 'object');
+
+  if (entries.length === 0) return null;
+
+  const priority = ['doi', 'doi api', 'crossref', 'openalex', 'semantic', 'semantic scholar', 'arxiv'];
+
+  const score = (entry) => {
+    const v = entry.value || {};
+    const keyLower = String(entry.key || '').toLowerCase();
+    const display = normalizeDbDisplayName(entry.key);
+    const displayLower = String(display || '').toLowerCase();
+    const pIndex =
+      priority.findIndex((p) => keyLower.includes(p) || displayLower.includes(p));
+    const p = pIndex >= 0 ? (priority.length - pIndex) : 0;
+    const exact = v.exact_match_found ? 1000 : 0;
+    const found = v.found ? 100 : 0;
+    const sim = typeof v.best_similarity === 'number' ? Math.round(v.best_similarity * 100) : 0;
+    return exact + found + sim + p;
+  };
+
+  const foundEntries = entries.filter(({ value }) => value.found || value.exact_match_found);
+  const candidates = foundEntries.length ? foundEntries : entries;
+  candidates.sort((a, b) => score(b) - score(a));
+
+  const best = candidates[0];
+  return normalizeDbDisplayName(best?.key) || null;
+}
 
 export const getDatabaseBadgeClass = (database) => {
   if (!database) return 'bg-danger';

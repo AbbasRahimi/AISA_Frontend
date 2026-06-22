@@ -5,12 +5,14 @@ import { useAuthz } from './AuthzContext';
 
 export function RequireAuth({ children }) {
   const { isAuthenticated, isLoading, loginWithRedirect, error } = useAuth0();
+  const { authFailed, sessionPending } = useAuthz();
   const location = useLocation();
   const redirectingRef = useRef(false);
+  const needsAuth = !isAuthenticated || authFailed;
 
   useEffect(() => {
-    if (isLoading) return;
-    if (isAuthenticated) return;
+    if (isLoading || sessionPending) return;
+    if (!needsAuth) return;
     if (error) return;
     // If Auth0 redirected back with an error, don't auto-loop into another redirect.
     // Show the error state instead.
@@ -27,10 +29,10 @@ export function RequireAuth({ children }) {
       // Allow retry if redirect fails for some reason
       redirectingRef.current = false;
     });
-  }, [isAuthenticated, isLoading, loginWithRedirect, error, location.hash, location.pathname, location.search]);
+  }, [needsAuth, isLoading, sessionPending, loginWithRedirect, error, location.hash, location.pathname, location.search]);
 
-  if (isLoading) return null;
-  if (!isAuthenticated) {
+  if (isLoading || sessionPending) return null;
+  if (needsAuth) {
     const params = new URLSearchParams(location.search || '');
     // While Auth0 is returning to the app (code/state present), show a stable "signing in" state.
     if (params.get('code') && params.get('state')) {
@@ -71,9 +73,9 @@ export function RequireAuth({ children }) {
 }
 
 export function RequirePermission({ permission, children, fallback = null }) {
-  const { permissions, meLoading, isAdmin } = useAuthz();
+  const { permissions, sessionPending, isAdmin } = useAuthz();
 
-  if (meLoading) return null;
+  if (sessionPending) return null;
   if (!permission) return children;
   if (isAdmin) return children;
   if (permissions.has(permission)) return children;
@@ -81,9 +83,20 @@ export function RequirePermission({ permission, children, fallback = null }) {
   return fallback ?? <Navigate to="/unauthorized" replace />;
 }
 
+export function RequireAnyPermission({ permissions: required, children, fallback = null }) {
+  const { permissions, sessionPending, isAdmin } = useAuthz();
+
+  if (sessionPending) return null;
+  if (isAdmin) return children;
+  if (!required?.length) return children;
+  if (required.some((p) => permissions.has(p))) return children;
+
+  return fallback ?? <Navigate to="/unauthorized" replace />;
+}
+
 export function RequireAdmin({ children, fallback = null }) {
-  const { isAdmin, meLoading } = useAuthz();
-  if (meLoading) return null;
+  const { isAdmin, sessionPending } = useAuthz();
+  if (sessionPending) return null;
   if (isAdmin) return children;
   return fallback ?? <Navigate to="/unauthorized" replace />;
 }

@@ -1,10 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react';
 import apiService from '../../services/api';
+import { AuthoritativeVerificationMode, ComparisonProfilePurpose } from '../../models';
+import ProfileSelect from '../comparisonProfiles/ProfileSelect';
+import {
+  normalizeProfileList,
+  pickDefaultProfileId,
+} from '../comparisonProfiles/profileFieldMeta';
 import {
   ACCEPT_EXTENSIONS,
   FILENAME_PATTERN,
   EXAMPLE_FILENAME,
+  INVALID_FILENAME_MESSAGE,
   parseExecutionFilename,
+  validateExecutionFilename,
   readFileAsText,
   isNaExecutionFile,
   hasImportExecutionExtension,
@@ -23,6 +31,17 @@ export default function ImportExecution() {
   const [importHistory, setImportHistory] = useState([]);
   const [missingDataResponse, setMissingDataResponse] = useState(null);
   const fileInputRef = useRef(null);
+
+  const [authoritativeVerificationMode, setAuthoritativeVerificationMode] = useState(
+    AuthoritativeVerificationMode.CASCADE
+  );
+  /** When null, omit existence_check_mode (API falls back to authoritative_verification_mode). */
+  const [existenceCheckMode, setExistenceCheckMode] = useState(null);
+  const [verificationProfiles, setVerificationProfiles] = useState([]);
+  const [gtComparisonProfiles, setGtComparisonProfiles] = useState([]);
+  const [verificationProfileId, setVerificationProfileId] = useState(null);
+  const [gtComparisonProfileId, setGtComparisonProfileId] = useState(null);
+  const [profilesLoading, setProfilesLoading] = useState(false);
 
   const [parsedMeta, setParsedMeta] = useState(null);
   const [checkLoading, setCheckLoading] = useState(false);
@@ -48,6 +67,30 @@ export default function ImportExecution() {
 
   const primaryFile = files[0] ?? null;
   const isMultiFile = files.length > 1;
+
+  useEffect(() => {
+    let cancelled = false;
+    setProfilesLoading(true);
+    Promise.all([
+      apiService.listComparisonProfiles('verification').catch(() => []),
+      apiService.listComparisonProfiles('gt_comparison').catch(() => []),
+    ])
+      .then(([verRaw, gtRaw]) => {
+        if (cancelled) return;
+        const verList = normalizeProfileList(verRaw);
+        const gtList = normalizeProfileList(gtRaw);
+        setVerificationProfiles(verList);
+        setGtComparisonProfiles(gtList);
+        setVerificationProfileId((prev) => prev ?? pickDefaultProfileId(verList));
+        setGtComparisonProfileId((prev) => prev ?? pickDefaultProfileId(gtList));
+      })
+      .finally(() => {
+        if (!cancelled) setProfilesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // When selected file(s) change, parse first file for metadata cards (single-file flow)
   useEffect(() => {
@@ -359,6 +402,15 @@ export default function ImportExecution() {
       return;
     }
 
+    const invalidNames = uploadable
+      .map((f) => ({ file: f, result: validateExecutionFilename(f.name) }))
+      .filter(({ result }) => !result.valid);
+    if (invalidNames.length > 0) {
+      const first = invalidNames[0];
+      setError(first.result.message || INVALID_FILENAME_MESSAGE);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setMissingDataResponse(null);
@@ -380,6 +432,16 @@ export default function ImportExecution() {
 
     try {
       const options = {};
+      options.authoritative_verification_mode = authoritativeVerificationMode;
+      if (existenceCheckMode != null && String(existenceCheckMode).trim() !== '') {
+        options.existence_check_mode = String(existenceCheckMode).trim();
+      }
+      if (verificationProfileId != null) {
+        options.verification_profile_id = verificationProfileId;
+      }
+      if (gtComparisonProfileId != null) {
+        options.gt_comparison_profile_id = gtComparisonProfileId;
+      }
       if (uploadable.length === 1 && isNaExecutionFile(uploadable[0].name)) {
         try {
           const fileContent = await readFileAsText(uploadable[0]);
@@ -595,14 +657,78 @@ export default function ImportExecution() {
                         {files.length === 1 && isNaExecutionFile(f.name) && (
                           <span className="d-block mt-1 text-info">No-result execution — stored with 0 publications; file body (if any) as execution comment.</span>
                         )}
-                        {isMultiFile && hasImportExecutionExtension(f.name) && !parseExecutionFilename(f.name) && (
-                          <span className="d-block mt-1 text-warning">Filename may not match the expected pattern — the server may reject or skip this file.</span>
+                        {isMultiFile && hasImportExecutionExtension(f.name) && !validateExecutionFilename(f.name).valid && (
+                          <span className="d-block mt-1 text-warning">{INVALID_FILENAME_MESSAGE}</span>
                         )}
                       </li>
                     ))}
                   </ul>
                 )}
               </div>
+
+              <div className="mb-3">
+                <label className="form-label fw-bold">Authoritative verification mode</label>
+                <select
+                  className="form-select"
+                  value={authoritativeVerificationMode}
+                  onChange={(e) => setAuthoritativeVerificationMode(e.target.value)}
+                  disabled={loading}
+                >
+                  <option value={AuthoritativeVerificationMode.CASCADE}>
+                    Cascade (Crossref → DOI.org → PubMed → OpenAlex → Semantic Scholar)
+                  </option>
+                  <option value={AuthoritativeVerificationMode.MULTI}>
+                    Multi (query all databases)
+                  </option>
+                </select>
+                <div className="form-text">
+                  Sent as <code>authoritative_verification_mode</code> with the import request.
+                </div>
+              </div>
+
+              <div className="mb-3">
+                <label className="form-label fw-bold">Existence check mode (optional)</label>
+                <select
+                  className="form-select"
+                  value={existenceCheckMode ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setExistenceCheckMode(v === '' ? null : v);
+                  }}
+                  disabled={loading}
+                >
+                  <option value="">Default (same as authoritative mode)</option>
+                  <option value={AuthoritativeVerificationMode.CASCADE}>Cascade (short-circuit on first hit)</option>
+                  <option value={AuthoritativeVerificationMode.MULTI}>Multi (query all databases)</option>
+                </select>
+                <div className="form-text">
+                  When set, sent as <code>existence_check_mode</code>. Otherwise omitted so the API falls back to authoritative mode.
+                </div>
+              </div>
+
+              <ProfileSelect
+                id="importVerificationProfile"
+                label="Verification profile"
+                profiles={verificationProfiles}
+                value={verificationProfileId}
+                onChange={setVerificationProfileId}
+                loading={profilesLoading}
+                disabled={loading}
+                helperText="LLM vs authoritative metadata validation during import. Sent as verification_profile_id."
+                manageLinkPurpose={ComparisonProfilePurpose.VERIFICATION}
+              />
+
+              <ProfileSelect
+                id="importGtComparisonProfile"
+                label="GT comparison profile"
+                profiles={gtComparisonProfiles}
+                value={gtComparisonProfileId}
+                onChange={setGtComparisonProfileId}
+                loading={profilesLoading}
+                disabled={loading}
+                helperText="LLM vs ground truth reference matching during import. Sent as gt_comparison_profile_id."
+                manageLinkPurpose={ComparisonProfilePurpose.GT_COMPARISON}
+              />
 
               {isMultiFile && files.length > 0 && (
                 <div className="alert alert-info small mb-3">
@@ -627,7 +753,7 @@ export default function ImportExecution() {
                     />
                   ) : (
                     <div className="alert alert-warning small mb-3">
-                      Invalid filename format. Expected: <code>{FILENAME_PATTERN}</code>
+                      {INVALID_FILENAME_MESSAGE}
                     </div>
                   )}
 

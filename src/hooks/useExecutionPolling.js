@@ -2,7 +2,7 @@ import { useCallback, useRef } from 'react';
 import apiService from '../services/api';
 import { ExecutionStatus } from '../models';
 import { POLL_INITIAL_DELAY_MS, POLL_INTERVAL_MS, POLL_404_GRACE_PERIOD_MS, WORKFLOW_MAX_WAIT_MS } from '../utils';
-import { getPublicationsFromLlmData } from '../components/dashboard/resultsDataAdapters';
+import { buildWorkflowProgressFromStatus } from '../utils/workflowStatus';
 
 /**
  * Custom hook to poll execution status and update workflow progress.
@@ -29,43 +29,7 @@ export function useExecutionPolling({
     const startTime = Date.now();
 
     const updateProgress = (status) => {
-      onProgress((prev) => {
-        const newProgress = {
-          ...prev,
-          stage: status.current_stage || prev.stage,
-          lastUpdate: new Date().toISOString(),
-        };
-
-        // Normalize backend llm_response into an array so the UI can safely render it.
-        // Different backend implementations may return shapes like:
-        // - Array (publications)
-        // - { publications: [...] }
-        // - { results: [...] }
-        const pubs = getPublicationsFromLlmData(status.llm_response);
-        newProgress.llmPublications = pubs;
-
-        if (status.verification_progress) {
-          newProgress.verificationProgress = {
-            completed: status.verification_progress.completed ?? 0,
-            total: status.verification_progress.total ?? 0,
-          };
-          if (status.verification_progress.results) {
-            newProgress.verificationResults = status.verification_progress.results;
-          }
-        }
-
-        if (status.comparison_progress) {
-          newProgress.comparisonProgress = {
-            completed: status.comparison_progress.completed ?? 0,
-            total: status.comparison_progress.total ?? 0,
-          };
-          if (status.comparison_progress.results) {
-            newProgress.comparisonResults = status.comparison_progress.results;
-          }
-        }
-
-        return newProgress;
-      });
+      onProgress((prev) => buildWorkflowProgressFromStatus(status, prev));
     };
 
     const poll = async () => {

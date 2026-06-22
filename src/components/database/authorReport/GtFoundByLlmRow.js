@@ -1,6 +1,7 @@
 import React from 'react';
 import { buildReferenceMetadataPayload } from '../ReferenceMetadataModal';
 import { normalizeToLiteratureRef } from './utils';
+import { formatLlmSystemLabel, llmSystemKeyFromFields } from '../../../utils/llmSystem';
 
 export default function GtFoundByLlmRow({ entry, onOpenMetadata }) {
   if (!entry || !entry.reference) return null;
@@ -47,15 +48,18 @@ export default function GtFoundByLlmRow({ entry, onOpenMetadata }) {
         ) : (
           <span className="author-report-found-by">
             Found by:{' '}
-            {systems.map((s) => (
+            {systems.map((s) => {
+              const label = formatLlmSystemLabel(s);
+              return (
               <span
-                key={`${s.name}-${s.version}`}
+                key={llmSystemKeyFromFields(s)}
                 className="badge bg-secondary author-report-system-badge"
-                title={`${s.name} (${s.version})`}
+                title={label}
               >
-                {s.name} {s.version}
+                {label}
               </span>
-            ))}
+              );
+            })}
           </span>
         )}
       </td>

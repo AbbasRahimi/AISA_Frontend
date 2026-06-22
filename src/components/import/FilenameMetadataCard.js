@@ -1,5 +1,6 @@
 import React from 'react';
 import { formatParsedDateTime } from './importExecutionUtils';
+import { formatLlmSystemLabel } from '../../utils/llmSystem';
 
 export default function FilenameMetadataCard({
   parsedMeta,
@@ -9,6 +10,13 @@ export default function FilenameMetadataCard({
   onRefresh,
 }) {
   if (!parsedMeta) return null;
+
+  const systemLabel = formatLlmSystemLabel({
+    name: parsedMeta.system_name,
+    function: parsedMeta.function,
+    model_version: parsedMeta.model_version,
+    subscription_status: parsedMeta.subscription_status,
+  });
 
   return (
     <div className="card mb-3 bg-light">
@@ -27,8 +35,14 @@ export default function FilenameMetadataCard({
           </button>
         </div>
         <dl className="row small mb-0">
-          <dt className="col-sm-3">System</dt>
-          <dd className="col-sm-9">{parsedMeta.system_name}</dd>
+          <dt className="col-sm-3">LLM system</dt>
+          <dd className="col-sm-9">{systemLabel}</dd>
+          <dt className="col-sm-3">Function</dt>
+          <dd className="col-sm-9">{parsedMeta.function || 'main'}</dd>
+          <dt className="col-sm-3">Model version</dt>
+          <dd className="col-sm-9">{parsedMeta.model_version}</dd>
+          <dt className="col-sm-3">Subscription</dt>
+          <dd className="col-sm-9">{parsedMeta.subscription_status}</dd>
           <dt className="col-sm-3">Seed paper alias</dt>
           <dd className="col-sm-9">{parsedMeta.seed_paper_alias}</dd>
           <dt className="col-sm-3">Prompt ID</dt>

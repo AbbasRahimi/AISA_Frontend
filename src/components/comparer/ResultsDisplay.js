@@ -3,15 +3,14 @@ import {
   getSimilarityBadgeClass, 
   getMethodBadgeClass, 
   getRowClass,
+  getDetailMatchTier,
   getRuleDescription,
   getRuleBadgeClass,
   getConfidenceBadgeClass,
-  RULE_DESCRIPTIONS
+  getMatchingStatusLabel,
+  getMatchingStatusBadgeClass,
 } from './helpers';
-
-const FULL_RULES = Array.from({ length: 11 }, (_, index) => index + 1); // 1-11
-const PARTIAL_RULES = Array.from({ length: 93 }, (_, index) => index + 12); // 12-104
-const NO_MATCH_RULES = Array.from({ length: 88 }, (_, index) => index + 105); // 105-192
+import CascadeRulesReferencePanel from './CascadeRulesReferencePanel';
 
 const getRuleAccentColor = (ruleNumber) => {
   if (ruleNumber >= 1 && ruleNumber <= 11) return '#28a745';
@@ -20,7 +19,7 @@ const getRuleAccentColor = (ruleNumber) => {
   return '#6c757d';
 };
 
-const ResultsDisplay = ({ comparisonResults }) => {
+const ResultsDisplay = ({ comparisonResults, comparisonProfileId }) => {
   // Comprehensive logging of comparison results
   console.log('========================================');
   console.log('[ResultsDisplay] ===== COMPARISON RESULTS =====');
@@ -108,13 +107,13 @@ const ResultsDisplay = ({ comparisonResults }) => {
       filtered = filtered.filter(r => r.rule_number === filterRule);
     }
     
-    // Filter by match type
+    // Filter by tier (fallback to legacy match flags when tier is absent)
     if (filterMatchType === 'exact') {
-      filtered = filtered.filter(r => r.is_exact_match);
+      filtered = filtered.filter((r) => getDetailMatchTier(r) === 'FULL');
     } else if (filterMatchType === 'partial') {
-      filtered = filtered.filter(r => r.is_partial_match);
+      filtered = filtered.filter((r) => getDetailMatchTier(r) === 'PARTIAL');
     } else if (filterMatchType === 'no_match') {
-      filtered = filtered.filter(r => r.is_no_match);
+      filtered = filtered.filter((r) => getDetailMatchTier(r) === 'NO_MATCH');
     }
     
     return filtered;
@@ -279,6 +278,7 @@ const ResultsDisplay = ({ comparisonResults }) => {
                     <th>Title Similarity %</th>
                     <th>Confidence</th>
                     <th>Match Type</th>
+                    <th>Status</th>
                     <th>Rule</th>
                   </tr>
                 </thead>
@@ -352,6 +352,11 @@ const ResultsDisplay = ({ comparisonResults }) => {
                             }
                           >
                             {matchTypeLabel}
+                          </span>
+                        </td>
+                        <td>
+                          <span className={`badge ${getMatchingStatusBadgeClass(result)}`}>
+                            {getMatchingStatusLabel(result)}
                           </span>
                         </td>
                         <td>
@@ -466,41 +471,7 @@ const ResultsDisplay = ({ comparisonResults }) => {
           </div>
           {!isRulesReferenceCollapsed && (
             <div className="card-body">
-            <div className="row">
-              <div className="col-md-4">
-                <h6 className="text-success">Full Matches (Rules 1-11)</h6>
-                <ul className="list-unstyled">
-                  {FULL_RULES.map(ruleNum => (
-                    <li key={ruleNum} className="mb-2">
-                      <span className="badge bg-success me-2">Rule {ruleNum}</span>
-                      <small>{RULE_DESCRIPTIONS[ruleNum]}</small>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div className="col-md-4">
-                <h6 className="text-warning">Partial Matches (Rules 12-104)</h6>
-                <ul className="list-unstyled">
-                  {PARTIAL_RULES.map(ruleNum => (
-                    <li key={ruleNum} className="mb-2">
-                      <span className="badge bg-warning me-2">Rule {ruleNum}</span>
-                      <small>{RULE_DESCRIPTIONS[ruleNum]}</small>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div className="col-md-4">
-                <h6 className="text-danger">No Matches (Rules 105-192)</h6>
-                <ul className="list-unstyled">
-                  {NO_MATCH_RULES.map(ruleNum => (
-                    <li key={ruleNum} className="mb-2">
-                      <span className="badge bg-danger me-2">Rule {ruleNum}</span>
-                      <small>{RULE_DESCRIPTIONS[ruleNum]}</small>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
+              <CascadeRulesReferencePanel profileId={comparisonProfileId} />
             </div>
           )}
         </div>

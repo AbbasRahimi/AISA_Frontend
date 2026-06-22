@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { formatLlmSystemLabel } from '../../utils/llmSystem';
 
 const LLMComparisonResults = ({ results }) => {
   const [sortBy, setSortBy] = useState('combined_quality_score'); // Default sort by combined quality score
@@ -14,6 +15,16 @@ const LLMComparisonResults = ({ results }) => {
   }
 
   const { llm_comparisons } = results;
+
+  const getLlmComparisonLabel = (llm) => {
+    if (llm?.label) return llm.label;
+    return formatLlmSystemLabel({
+      name: llm?.llm_provider ?? llm?.name,
+      function: llm?.function,
+      model_version: llm?.model_version ?? llm?.model_name,
+      subscription_status: llm?.subscription_status,
+    });
+  };
 
   // Helper to format percentage
   const formatPercent = (value) => {
@@ -125,7 +136,7 @@ const LLMComparisonResults = ({ results }) => {
           <h5><i className="fas fa-trophy"></i> Best Performing LLM System</h5>
         </div>
         <div className="card-body">
-          <h4>{bestLLM.llm_provider} - {bestLLM.model_name}</h4>
+          <h4>{getLlmComparisonLabel(bestLLM)}</h4>
           <div className="row mt-3">
             <div className="col-md-3">
               <div className="text-center p-3 bg-light rounded">
@@ -236,9 +247,7 @@ const LLMComparisonResults = ({ results }) => {
                         {index + 1}
                       </td>
                       <td>
-                        <strong>{llm.llm_provider}</strong>
-                        <br />
-                        <small className="text-muted">{llm.model_name}</small>
+                        <strong>{getLlmComparisonLabel(llm)}</strong>
                       </td>
                       <td>{llm.execution_count}</td>
                       <td>
@@ -293,7 +302,7 @@ const LLMComparisonResults = ({ results }) => {
                 aria-expanded="false"
                 aria-controls={`collapse${index}`}
               >
-                <strong>{llm.llm_provider} - {llm.model_name}</strong>
+                <strong>{getLlmComparisonLabel(llm)}</strong>
                 <span className="ms-2 text-muted">({llm.execution_count} executions)</span>
               </button>
             </h2>

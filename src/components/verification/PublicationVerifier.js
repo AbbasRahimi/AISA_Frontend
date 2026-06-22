@@ -1,21 +1,40 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import apiService from '../../services/api';
 import ConfigurationPanel from './VerificationConfigPanel';
 import FileUploadSection from './FileUploadSection';
 import ResultsDisplay from './ResultsDisplay';
 import { downloadBlob } from '../../utils';
+import { AuthoritativeVerificationMode } from '../../models';
+import useComparisonProfiles from '../../hooks/useComparisonProfiles';
 
 const PublicationVerifier = () => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [email, setEmail] = useState('abbas.rahimi@jku.at');
   const [apiKey, setApiKey] = useState('');
   const [enrichDoi, setEnrichDoi] = useState(true);
+  const [authoritativeVerificationMode, setAuthoritativeVerificationMode] = useState(
+    AuthoritativeVerificationMode.CASCADE
+  );
+  /** When null, omit existence_check_mode (API falls back to authoritative_verification_mode). */
+  const [existenceCheckMode, setExistenceCheckMode] = useState(null);
   const [executionName, setExecutionName] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationResults, setVerificationResults] = useState(null);
   const [error, setError] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const [useStorage, setUseStorage] = useState(false);
+  const {
+    profiles: verificationProfiles,
+    loading: profilesLoading,
+    defaultProfileId,
+  } = useComparisonProfiles('verification');
+  const [verificationProfileId, setVerificationProfileId] = useState(null);
+
+  useEffect(() => {
+    if (defaultProfileId != null && verificationProfileId == null) {
+      setVerificationProfileId(defaultProfileId);
+    }
+  }, [defaultProfileId, verificationProfileId]);
 
   const startVerification = async () => {
     if (!selectedFile || isVerifying) {
@@ -36,6 +55,11 @@ const PublicationVerifier = () => {
       // Critical: backend expects enrich_doi as multipart form field.
       // Send as string for FormData compatibility with FastAPI Form(bool).
       formData.append('enrich_doi', enrichDoi ? 'true' : 'false');
+      // New OpenAPI: authoritiative DB verification strategy (cascade|multi)
+      formData.append('authoritative_verification_mode', authoritativeVerificationMode);
+      if (existenceCheckMode != null && String(existenceCheckMode).trim() !== '') {
+        formData.append('existence_check_mode', String(existenceCheckMode).trim());
+      }
 
       const emailTrimmed = (email || '').trim();
       const apiKeyTrimmed = (apiKey || '').trim();
@@ -44,6 +68,10 @@ const PublicationVerifier = () => {
       
       if (useStorage) {
         formData.append('execution_name', executionName.trim());
+      }
+      if (verificationProfileId != null) {
+        // OpenAPI: verifier endpoints accept comparison_profile_id (purpose=verification)
+        formData.append('comparison_profile_id', String(verificationProfileId));
       }
 
       const results = useStorage 
@@ -83,7 +111,6 @@ const PublicationVerifier = () => {
         <div className="col-12">
           <h1 className="mb-4">
             <i className="fas fa-search"></i> Publication Verifier
-            <small className="text-muted">Multi-Database Search</small>
           </h1>
         </div>
       </div>
@@ -103,10 +130,18 @@ const PublicationVerifier = () => {
         setApiKey={setApiKey}
         enrichDoi={enrichDoi}
         setEnrichDoi={setEnrichDoi}
+        authoritativeVerificationMode={authoritativeVerificationMode}
+        setAuthoritativeVerificationMode={setAuthoritativeVerificationMode}
+        existenceCheckMode={existenceCheckMode}
+        setExistenceCheckMode={setExistenceCheckMode}
         useStorage={useStorage}
         setUseStorage={setUseStorage}
         executionName={executionName}
         setExecutionName={setExecutionName}
+        verificationProfiles={verificationProfiles}
+        verificationProfileId={verificationProfileId}
+        setVerificationProfileId={setVerificationProfileId}
+        profilesLoading={profilesLoading}
       />
 
       {/* File Upload Section */}

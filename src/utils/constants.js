@@ -4,7 +4,12 @@
 
 // Execution polling (MainDashboard)
 export const POLL_INITIAL_DELAY_MS = 800;
-export const POLL_INTERVAL_MS = 2000;
+/** Status poll interval (REST fallback / parallel with WebSocket). */
+export const POLL_INTERVAL_MS = 1000;
+/** REST /status fallback timeout (push channels handle long runs). */
+export const STATUS_POLL_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+/** Wait before falling back from WebSocket to SSE/poll. */
+export const WORKFLOW_WS_CONNECT_TIMEOUT_MS = 5000;
 // Max time the UI should wait for a workflow to progress to completion.
 export const WORKFLOW_MAX_WAIT_MS = 10 * 60 * 1000; // 10 minutes
 

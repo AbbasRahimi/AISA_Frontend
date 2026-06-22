@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { formatLlmSystemLabel } from '../../utils/llmSystem';
 
 export default function InsertionReport({ report, fileName, createdAt }) {
   const [showItems, setShowItems] = useState(false);
@@ -31,7 +32,7 @@ export default function InsertionReport({ report, fileName, createdAt }) {
           {llm_system && (
             <div className="col-12 col-md-6">
               <span className="badge bg-primary me-1">LLM System</span>
-              {llm_system.name} ({llm_system.version}) – {llm_system.action}
+              {formatLlmSystemLabel(llm_system)} – {llm_system.action}
             </div>
           )}
           {seed_paper && (

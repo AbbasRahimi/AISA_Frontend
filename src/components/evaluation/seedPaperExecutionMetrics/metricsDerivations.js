@@ -1,4 +1,10 @@
 import { safeNumber } from './formatters';
+import {
+  formatLlmSystemLabel,
+  llmSystemKeyFromFields,
+  parseLlmSystemFromExecution,
+  parseLlmSystemFromRow,
+} from '../../../utils/llmSystem';
 
 export function parseIndividualMetricRows(batchPayload) {
   const itemsNew = batchPayload?.individual_metrics;
@@ -145,33 +151,42 @@ export function computeValidityBySystem(rows, executionsIndex) {
     if (executionId == null) return null;
     const ex = executionsIndex[String(executionId)] || null;
     if (!ex) return null;
-
-    const name = ex?.llm_system?.name ?? ex?.llm_system_name ?? ex?.llm_provider ?? null;
-    const version = ex?.llm_system?.version ?? ex?.llm_system_version ?? ex?.model_name ?? null;
-    const sysId = ex?.llm_system_id ?? ex?.llm_system?.id ?? null;
-    return { sysId, name, version };
+    const parsed = parseLlmSystemFromExecution(ex);
+    return {
+      sysId: parsed?.id ?? ex.llm_system_id ?? ex.llm_system?.id ?? null,
+      ...parsed,
+    };
   };
 
   const normalizeSystem = (row) => {
     const fromExec = getSystemFromExecution(row?.execution_id);
-    const name = fromExec?.name ?? row?.llm_system_name ?? row?.llm_provider ?? 'Unknown';
-    const version = fromExec?.version ?? row?.llm_system_version ?? row?.model_name ?? '—';
-    const sysId = fromExec?.sysId ?? row?.llm_system_id ?? null;
+    const parsed = fromExec ?? parseLlmSystemFromRow(row) ?? {
+      name: 'Unknown',
+      function: null,
+      model_version: null,
+      subscription_status: null,
+    };
     return {
-      sysId,
-      name: String(name),
-      version: version == null ? '—' : String(version),
+      sysId: fromExec?.sysId ?? row?.llm_system_id ?? parsed?.id ?? null,
+      name: parsed.name != null ? String(parsed.name) : 'Unknown',
+      function: parsed.function,
+      model_version: parsed.model_version,
+      subscription_status: parsed.subscription_status,
     };
   };
 
   for (const r of rows) {
     const sys = normalizeSystem(r);
-    const key = sys.sysId != null ? `id:${sys.sysId}` : `nv:${sys.name}|||${sys.version}`;
+    const key =
+      sys.sysId != null
+        ? `id:${sys.sysId}`
+        : `nv:${llmSystemKeyFromFields(sys)}`;
+    const systemLabel = formatLlmSystemLabel(sys);
     const g =
       groups.get(key) || {
         system_id: sys.sysId,
         system_name: sys.name,
-        system_version: sys.version,
+        system_label: systemLabel,
         executions: 0,
         total_publications: 0,
         verified_estimate: 0,
@@ -208,11 +223,13 @@ export function computeValidityBySystem(rows, executionsIndex) {
   out.sort((a, b) => {
     const av = a.existence_precision;
     const bv = b.existence_precision;
-    if (av == null && bv == null) return (a.system_name || '').localeCompare(b.system_name || '');
+    if (av == null && bv == null) {
+      return (a.system_label || a.system_name || '').localeCompare(b.system_label || b.system_name || '');
+    }
     if (av == null) return 1;
     if (bv == null) return -1;
     if (bv !== av) return bv - av;
-    return (a.system_name || '').localeCompare(b.system_name || '');
+    return (a.system_label || a.system_name || '').localeCompare(b.system_label || b.system_name || '');
   });
 
   return out;
