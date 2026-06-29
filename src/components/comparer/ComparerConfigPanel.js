@@ -2,8 +2,10 @@ import React from 'react';
 import StorageConfig from '../shared/StorageConfig';
 import { ComparisonProfilePurpose } from '../../models';
 import ProfileSelect from '../comparisonProfiles/ProfileSelect';
+import BatchPersistConfig from './BatchPersistConfig';
 
 const ConfigurationPanel = ({
+  activeTab = 'single',
   useStorage,
   setUseStorage,
   executionName,
@@ -12,6 +14,14 @@ const ConfigurationPanel = ({
   gtComparisonProfileId,
   setGtComparisonProfileId,
   profilesLoading,
+  persistBatchResults,
+  setPersistBatchResults,
+  includePartial,
+  setIncludePartial,
+  batchSeedPaperId,
+  setBatchSeedPaperId,
+  seedPapers = [],
+  loadingSeedPapers = false,
 }) => {
   return (
     <div className="row mb-4">
@@ -33,13 +43,27 @@ const ConfigurationPanel = ({
               helperText="Optional. Sent as comparison_profile_id (purpose=gt_comparison)."
               manageLinkPurpose={ComparisonProfilePurpose.GT_COMPARISON}
             />
-            <StorageConfig
-              useStorage={useStorage}
-              setUseStorage={setUseStorage}
-              executionName={executionName}
-              setExecutionName={setExecutionName}
-              description="Enable to store comparison results in the database for later analysis."
-            />
+            {activeTab === 'single' && (
+              <StorageConfig
+                useStorage={useStorage}
+                setUseStorage={setUseStorage}
+                executionName={executionName}
+                setExecutionName={setExecutionName}
+                description="Enable to store comparison results in the database for later analysis."
+              />
+            )}
+            {activeTab === 'batch' && (
+              <BatchPersistConfig
+                persistBatchResults={persistBatchResults}
+                setPersistBatchResults={setPersistBatchResults}
+                includePartial={includePartial}
+                setIncludePartial={setIncludePartial}
+                batchSeedPaperId={batchSeedPaperId}
+                setBatchSeedPaperId={setBatchSeedPaperId}
+                seedPapers={seedPapers}
+                loadingSeedPapers={loadingSeedPapers}
+              />
+            )}
           </div>
         </div>
       </div>

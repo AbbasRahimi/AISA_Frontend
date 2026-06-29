@@ -526,6 +526,176 @@ class ApiService {
     });
   }
 
+  /**
+   * Batch GT comparison: LLM files vs uploaded BibTeX or seed paper GT from DB.
+   * Provide exactly one of groundTruthFile or seedPaperId.
+   * OpenAPI: POST /api/reference-comparer/compare-batch
+   * @param {{
+   *   groundTruthFile?: File|null,
+   *   llmFiles: File[],
+   *   comparisonProfileId?: number|null,
+   *   persistResults?: boolean,
+   *   includePartial?: boolean,
+   *   seedPaperId?: number|null,
+   * }} payload
+   */
+  async compareBatchPublications({
+    groundTruthFile = null,
+    llmFiles,
+    comparisonProfileId,
+    persistResults = false,
+    includePartial = true,
+    seedPaperId = null,
+  }) {
+    const list = Array.isArray(llmFiles) ? llmFiles : [];
+    const resolvedSeedPaperId =
+      seedPaperId != null && seedPaperId !== '' ? Number(seedPaperId) : null;
+    const useSeedPaper =
+      Number.isInteger(resolvedSeedPaperId) && resolvedSeedPaperId > 0;
+    const useUploadedFile = !useSeedPaper && groundTruthFile instanceof File;
+
+    if (!useSeedPaper && !useUploadedFile) {
+      throw new Error('Ground truth file or seed paper is required.');
+    }
+    if (list.length === 0) {
+      throw new Error('At least one LLM file is required.');
+    }
+
+    const formData = new FormData();
+    if (useSeedPaper) {
+      formData.append('seed_paper_id', String(resolvedSeedPaperId));
+    } else {
+      formData.append('ground_truth_file', groundTruthFile);
+    }
+    for (const f of list) {
+      formData.append('llm_files', f);
+    }
+    if (comparisonProfileId != null) {
+      formData.append('comparison_profile_id', String(comparisonProfileId));
+    }
+    formData.append('persist_results', String(Boolean(persistResults)));
+    formData.append('include_partial', String(includePartial !== false));
+    return this.request('/api/reference-comparer/compare-batch', {
+      method: 'POST',
+      headers: {},
+      body: formData,
+    });
+  }
+
+  /**
+   * @typedef {Object} BatchComparisonResultRow
+   * @property {number} id
+   * @property {number} run_id
+   * @property {number} seed_paper_id
+   * @property {string|null} prompt_alias
+   * @property {number|null} comparison_profile_id
+   * @property {string|null} system_key
+   * @property {number|null} precision
+   * @property {number|null} recall
+   * @property {number|null} f1_score
+   * @property {number|null} true_positives
+   * @property {number|null} false_positives
+   * @property {number|null} false_negatives
+   * @property {string|null} created_at
+   */
+
+  /**
+   * Distinct prompt_alias values stored for a seed paper in batch_comparison_results.
+   * @param {number} seedPaperId
+   * @returns {Promise<string[]|{ prompt_aliases: string[] }>}
+   */
+  async listBatchComparisonPromptAliases(seedPaperId) {
+    if (seedPaperId == null) {
+      throw new Error('Seed paper is required.');
+    }
+    const query = buildQueryParams({ seed_paper_id: seedPaperId });
+    return this.request(`/api/reference-comparer/batch-results/prompt-aliases${query}`);
+  }
+
+  /**
+   * List stored batch comparison results.
+   * @param {{
+   *   seedPaperId?: number|null,
+   *   seedPaperIds?: number[]|null,
+   *   promptAlias?: string|null,
+   *   promptAliases?: string[]|null,
+   *   comparisonProfileId?: number|null,
+   *   runId?: number|null,
+   *   latestOnly?: boolean,
+   * }} filters
+   */
+  async listBatchComparisonResults({
+    seedPaperId = null,
+    seedPaperIds = null,
+    promptAlias = null,
+    promptAliases = null,
+    comparisonProfileId = null,
+    runId = null,
+    latestOnly = true,
+  } = {}) {
+    const aliasesParam = promptAliases?.length
+      ? promptAliases.join(',')
+      : promptAlias != null && String(promptAlias).trim() !== ''
+        ? String(promptAlias).trim()
+        : null;
+    const query = buildQueryParams({
+      seed_paper_id: seedPaperId != null && !seedPaperIds?.length ? seedPaperId : null,
+      seed_paper_ids: seedPaperIds?.length ? seedPaperIds.join(',') : null,
+      prompt_alias: aliasesParam && !promptAliases?.length ? aliasesParam : null,
+      prompt_aliases: promptAliases?.length ? aliasesParam : null,
+      comparison_profile_id: comparisonProfileId,
+      run_id: runId,
+      latest_only: latestOnly,
+    });
+    return this.request(`/api/reference-comparer/batch-results${query}`);
+  }
+
+  /**
+   * Compare stored batch results across seed papers and/or prompts.
+   * @param {{
+   *   seedPaperIds: number[],
+   *   promptIds?: number[]|null,
+   *   promptAliases?: string[]|null,
+   *   comparisonProfileId?: number|null,
+   *   systemKey?: string|null,
+   *   latestOnly?: boolean,
+   * }} filters
+   */
+  async compareBatchComparisonResults({
+    seedPaperIds,
+    promptIds = null,
+    promptAliases = null,
+    comparisonProfileId = null,
+    systemKey = null,
+    latestOnly = false,
+  }) {
+    const ids = Array.isArray(seedPaperIds) ? seedPaperIds : [];
+    if (ids.length === 0) {
+      throw new Error('At least one seed paper is required.');
+    }
+    const aliasesParam = promptAliases?.length
+      ? promptAliases.join(',')
+      : null;
+    const query = buildQueryParams({
+      seed_paper_ids: ids.join(','),
+      prompt_ids: promptIds?.length ? promptIds.join(',') : null,
+      prompt_aliases: aliasesParam,
+      comparison_profile_id: comparisonProfileId,
+      system_key: systemKey?.trim() || null,
+      latest_only: latestOnly,
+    });
+    return this.request(`/api/reference-comparer/batch-results/compare${query}`);
+  }
+
+  /**
+   * Paginated history of batch comparison upload runs.
+   * @param {{ limit?: number, offset?: number }} params
+   */
+  async listBatchComparisonRuns({ limit = 50, offset = 0 } = {}) {
+    const query = buildQueryParams({ limit, offset });
+    return this.request(`/api/reference-comparer/batch-results/runs${query}`);
+  }
+
   async exportComparisonResults(results, format = 'json') {
     return this.request(`/api/reference-comparer/export?format=${format}`, {
       method: 'POST',

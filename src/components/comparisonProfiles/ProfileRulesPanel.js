@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ComparisonProfilePurpose } from '../../models';
-import { RULE_DESCRIPTIONS } from '../comparer/helpers';
 import {
   RULE_CLASSIFICATIONS,
   formatTierOptionLabel,
@@ -106,7 +105,7 @@ const ProfileRulesPanel = ({
     return sortedRules.filter((r) => {
       if (classFilter && r.classification !== classFilter) return false;
       if (!q) return true;
-      const hint = RULE_DESCRIPTIONS[r.rule_number] || r.context || '';
+      const hint = r.context || '';
       const hay = [
         r.rule_number,
         r.classification,
@@ -158,7 +157,7 @@ const ProfileRulesPanel = ({
   };
 
   const contextDisplay = (r) =>
-    r.context || RULE_DESCRIPTIONS[r.rule_number] || '—';
+    r.context || '—';
 
   return (
     <div className="card mb-3">
@@ -312,7 +311,7 @@ const ProfileRulesPanel = ({
                             type="text"
                             className="form-control form-control-sm"
                             value={r.context || ''}
-                            placeholder={RULE_DESCRIPTIONS[r.rule_number] || 'Context'}
+                            placeholder="Context"
                             onChange={(e) =>
                               patchRule(r.rule_number, (row) => ({
                                 ...row,

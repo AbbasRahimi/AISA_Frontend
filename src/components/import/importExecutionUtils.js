@@ -8,12 +8,15 @@ export function hasImportExecutionExtension(filename) {
 }
 
 export const FILENAME_PATTERN =
-  'name[.function]_modelversion_subscription_seedpaperID_promptID_promptversion_YYMMDD_HHMMSS[_comment]';
+  'Format 1: systemID.function_modelversion_subscription_seedpaperID_promptID_promptversion_YYMMDD_HHMMSS[_comment] ' +
+  '| Format 2: systemID.modelversion_seedpaperID_promptID_promptversion_YYMMDD_HHMMSS[_comment]';
 export const EXAMPLE_FILENAME =
   'chatgpt.consensus_gpt4_free_test1_prompt1_v3_250729_131049.json';
+export const EXAMPLE_FILENAME_FORMAT2 =
+  'zendy.zaia.pro.2606_soci4_prompt01_v3_260603_151257_na.txt';
 export const INVALID_FILENAME_MESSAGE =
-  'Invalid filename format. Expected: name[.function]_modelversion_subscription_seedpaperID_promptID_promptversion_date_time_comment ' +
-  `(e.g. ${EXAMPLE_FILENAME} or chatgpt.consensus_gpt4_free_test1_prompt1_v3_250729_131049_na.txt)`;
+  'Invalid filename format. Expected Format 1 (systemID.function with subscription) or Format 2 (model in first segment, no subscription). ' +
+  `(e.g. ${EXAMPLE_FILENAME} or ${EXAMPLE_FILENAME_FORMAT2})`;
 
 /** True if filename is an "_na" execution (no results; .txt with comment "na"). */
 export function isNaExecutionFile(filename) {
@@ -22,8 +25,49 @@ export function isNaExecutionFile(filename) {
 }
 
 /**
- * Parses execution filename:
- * name[.function]_modelversion_subscription_seedpaperID_promptID_promptversion_YYMMDD_HHMMSS[_comment]
+ * Derive system_key from parsed system_name and function.
+ * @param {string} systemName
+ * @param {string} llmFunction
+ */
+export function deriveSystemKey(systemName, llmFunction) {
+  const name = String(systemName || '').trim();
+  const fn = String(llmFunction || 'main').trim() || 'main';
+  return fn !== 'main' ? `${name}.${fn}` : name;
+}
+
+/**
+ * Find index of YYMMDD token where next token is HHMMSS.
+ * @param {string[]} parts
+ * @returns {number|null}
+ */
+function findDateTimeIndex(parts) {
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (/^\d{6}$/.test(parts[i]) && /^\d{6}$/.test(parts[i + 1])) {
+      return i;
+    }
+  }
+  return null;
+}
+
+/**
+ * Parse system_name and function from first segment (may contain dots).
+ * @param {string} systemPart
+ */
+function parseSystemPart(systemPart) {
+  const dotIdx = systemPart.indexOf('.');
+  if (dotIdx >= 0) {
+    return {
+      system_name: systemPart.slice(0, dotIdx) || '',
+      function: systemPart.slice(dotIdx + 1) || 'main',
+    };
+  }
+  return { system_name: systemPart || '', function: 'main' };
+}
+
+/**
+ * Parses execution filename (Format 1 or Format 2).
+ * Format 1: systemID.function_modelversion_subscription_seedpaperID_promptID_promptversion_date_time[_comment]
+ * Format 2: systemID.modelversion_seedpaperID_promptID_promptversion_date_time[_comment]
  * Supports .json, .bib, and .txt (including *_na.txt for no-result executions).
  * Returns parsed fields or null when invalid.
  */
@@ -31,62 +75,65 @@ export function parseExecutionFilename(filename) {
   if (!filename || typeof filename !== 'string') return null;
   const base = filename.replace(/\.(json|bib|txt)$/i, '').trim();
   const parts = base.split('_');
-  if (parts.length < 8) return null;
+  if (parts.length < 6) return null;
 
-  const last = parts[parts.length - 1];
-  const isTime = /^\d{6}$/.test(last);
-  let comment;
-  let time_str;
-  let date_str;
-  let prompt_version;
-  let prompt_id;
-  let seed_paper_alias;
-  let subscription_status;
-  let model_version;
-  let systemPart;
+  const dateIdx = findDateTimeIndex(parts);
+  if (dateIdx == null) return null;
 
-  if (isTime) {
-    if (parts.length !== 8) return null;
-    comment = '';
-    time_str = parts[7];
-    date_str = parts[6];
-    prompt_version = parts[5];
-    prompt_id = parts[4];
-    seed_paper_alias = parts[3];
-    subscription_status = parts[2];
-    model_version = parts[1];
-    systemPart = parts[0];
-  } else {
-    if (parts.length < 9) return null;
-    comment = parts[parts.length - 1];
-    time_str = parts[parts.length - 2];
-    date_str = parts[parts.length - 3];
-    prompt_version = parts[parts.length - 4];
-    prompt_id = parts[parts.length - 5];
-    seed_paper_alias = parts[parts.length - 6];
-    subscription_status = parts[parts.length - 7];
-    model_version = parts[parts.length - 8];
-    systemPart = parts[parts.length - 9];
-    if (parts.length > 9) return null;
-  }
-
+  const date_str = parts[dateIdx];
+  const time_str = parts[dateIdx + 1];
   if (!/^\d{6}$/.test(date_str) || !/^\d{6}$/.test(time_str)) return null;
 
-  const dotIdx = systemPart.indexOf('.');
-  let system_name;
-  let llm_function;
-  if (dotIdx >= 0) {
-    system_name = systemPart.slice(0, dotIdx);
-    llm_function = systemPart.slice(dotIdx + 1) || 'main';
+  let model_version;
+  let subscription_status;
+  let seed_paper_alias;
+  let prompt_id;
+  let prompt_version;
+  let systemPart;
+  let comment;
+
+  if (dateIdx === 6) {
+    // Format 1: need at least 8 parts (no comment) or 9+ (with comment)
+    if (parts.length < 8) return null;
+    model_version = parts[1];
+    subscription_status = parts[2];
+    seed_paper_alias = parts[3];
+    prompt_id = parts[4];
+    prompt_version = parts[5];
+    systemPart = parts[0];
+    if (parts.length === 8) {
+      comment = '';
+    } else if (parts.length === 9) {
+      comment = parts[8];
+    } else {
+      return null;
+    }
+  } else if (dateIdx === 4) {
+    // Format 2: need at least 6 parts (no comment) or 7 (with comment)
+    if (parts.length < 6) return null;
+    model_version = null; // embedded in first segment
+    subscription_status = null;
+    seed_paper_alias = parts[1];
+    prompt_id = parts[2];
+    prompt_version = parts[3];
+    systemPart = parts[0];
+    if (parts.length === 6) {
+      comment = '';
+    } else if (parts.length === 7) {
+      comment = parts[6];
+    } else {
+      return null;
+    }
   } else {
-    system_name = systemPart;
-    llm_function = 'main';
+    return null;
   }
+
+  const { system_name, function: llm_function } = parseSystemPart(systemPart);
 
   return {
     system_name: system_name || '',
     function: llm_function,
-    model_version,
+    model_version: model_version ?? systemPart,
     subscription_status,
     seed_paper_alias,
     prompt_id,
@@ -94,6 +141,7 @@ export function parseExecutionFilename(filename) {
     date_str,
     time_str,
     comment: comment || '',
+    system_key: deriveSystemKey(system_name, llm_function),
   };
 }
 

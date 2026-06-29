@@ -96,48 +96,7 @@ const FileUploadSection = ({
           </div>
           <div className="card-body">
             <div className="row">
-              {/* Source File (LLM Output) */}
-              <div className="col-md-6 mb-3">
-                <label className="form-label fw-bold">Source File (LLM Output)</label>
-                <div 
-                  className={`file-drop-zone ${sourceDragOver ? 'dragover' : ''}`}
-                  onClick={() => sourceFileInputRef.current?.click()}
-                  onDragOver={(e) => handleDragOver(e, 'source')}
-                  onDragLeave={(e) => handleDragLeave(e, 'source')}
-                  onDrop={(e) => handleDrop(e, 'source')}
-                  style={{
-                    border: '2px dashed #dee2e6',
-                    borderRadius: '8px',
-                    padding: '2rem',
-                    textAlign: 'center',
-                    cursor: 'pointer',
-                    transition: 'all 0.3s ease',
-                    backgroundColor: sourceDragOver ? '#e3f2fd' : 'transparent',
-                    borderColor: sourceDragOver ? '#007bff' : '#dee2e6'
-                  }}
-                >
-                  <i className="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
-                  <p className="mb-2">Drop your LLM output file here or click to browse</p>
-                  <p className="text-muted small">Supported formats: JSON (.json), BibTeX (.bib)</p>
-                  <input 
-                    type="file" 
-                    ref={sourceFileInputRef}
-                    className="d-none" 
-                    accept=".json,.bib"
-                    onChange={(e) => handleFileSelect(e, 'source')}
-                  />
-                  {sourceFile && (
-                    <div className="mt-2">
-                      <div className="alert alert-success alert-sm">
-                        <i className="fas fa-file"></i> <strong>{sourceFile.name}</strong><br />
-                        <small>Size: {(sourceFile.size / 1024).toFixed(2)} KB</small>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Target File (Ground Truth) */}
+              {/* Target File (Ground Truth) — left, matches batch compare layout */}
               <div className="col-md-6 mb-3">
                 <label className="form-label fw-bold">Target File (Ground Truth)</label>
                 <div 
@@ -172,6 +131,47 @@ const FileUploadSection = ({
                       <div className="alert alert-success alert-sm">
                         <i className="fas fa-file"></i> <strong>{targetFile.name}</strong><br />
                         <small>Size: {(targetFile.size / 1024).toFixed(2)} KB</small>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Source File (LLM Output) — right, matches batch compare layout */}
+              <div className="col-md-6 mb-3">
+                <label className="form-label fw-bold">Source File (LLM Output)</label>
+                <div 
+                  className={`file-drop-zone ${sourceDragOver ? 'dragover' : ''}`}
+                  onClick={() => sourceFileInputRef.current?.click()}
+                  onDragOver={(e) => handleDragOver(e, 'source')}
+                  onDragLeave={(e) => handleDragLeave(e, 'source')}
+                  onDrop={(e) => handleDrop(e, 'source')}
+                  style={{
+                    border: '2px dashed #dee2e6',
+                    borderRadius: '8px',
+                    padding: '2rem',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s ease',
+                    backgroundColor: sourceDragOver ? '#e3f2fd' : 'transparent',
+                    borderColor: sourceDragOver ? '#007bff' : '#dee2e6'
+                  }}
+                >
+                  <i className="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
+                  <p className="mb-2">Drop your LLM output file here or click to browse</p>
+                  <p className="text-muted small">Supported formats: JSON (.json), BibTeX (.bib)</p>
+                  <input 
+                    type="file" 
+                    ref={sourceFileInputRef}
+                    className="d-none" 
+                    accept=".json,.bib"
+                    onChange={(e) => handleFileSelect(e, 'source')}
+                  />
+                  {sourceFile && (
+                    <div className="mt-2">
+                      <div className="alert alert-success alert-sm">
+                        <i className="fas fa-file"></i> <strong>{sourceFile.name}</strong><br />
+                        <small>Size: {(sourceFile.size / 1024).toFixed(2)} KB</small>
                       </div>
                     </div>
                   )}

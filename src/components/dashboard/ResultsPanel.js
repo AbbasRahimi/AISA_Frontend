@@ -5,6 +5,7 @@ import {
   getInterpretationDisplay,
   getConfidenceBadgeClass,
 } from '../comparer/helpers';
+import useComparisonProfileRuleDescriptions from '../../hooks/useComparisonProfileRuleDescriptions';
 import {
   getPublicationsFromLlmData,
   getVerificationResultsArray,
@@ -17,8 +18,9 @@ import {
   getTierClassificationTier,
 } from '../../utils/tierClassification';
 
-const ResultsPanel = ({ results, workflowProgress, onExportResults, isLive = false }) => {
+const ResultsPanel = ({ results, workflowProgress, onExportResults, isLive = false, comparisonProfileId = null }) => {
   const [activeTab, setActiveTab] = useState('llm');
+  const { descriptionMap: ruleDescriptionMap } = useComparisonProfileRuleDescriptions(comparisonProfileId);
 
   const renderLLMResponse = () => {
     const llmData =
@@ -314,7 +316,7 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults, isLive = fal
                 // `interpretation` is the human-readable explanation; `match_type` is the matching method ("title", "authors_year", ...).
                 const interpretation = match.interpretation ?? getInterpretationDisplay(match);
                 const ruleNumber = match.rule_number ?? null;
-                const ruleDescription = ruleNumber ? getRuleDescription(ruleNumber) : null;
+                const ruleDescription = ruleNumber ? getRuleDescription(ruleNumber, ruleDescriptionMap) : null;
                 const confidence = match.confidence_score;
 
                 return (

@@ -628,6 +628,7 @@ function MainDashboard() {
               workflowProgress={workflowProgress}
               isLive={results == null}
               onExportResults={handleExportResults}
+              comparisonProfileId={gtComparisonProfileId}
             />
           )}
         </div>

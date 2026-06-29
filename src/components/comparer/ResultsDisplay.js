@@ -9,8 +9,13 @@ import {
   getConfidenceBadgeClass,
   getMatchingStatusLabel,
   getMatchingStatusBadgeClass,
+  resolveComparisonSummary,
 } from './helpers';
 import CascadeRulesReferencePanel from './CascadeRulesReferencePanel';
+import {
+  ComparisonSummaryCards,
+  ComparisonClassCountsCard,
+} from './ComparisonSummaryCards';
 
 const getRuleAccentColor = (ruleNumber) => {
   if (ruleNumber >= 1 && ruleNumber <= 11) return '#28a745';
@@ -19,7 +24,7 @@ const getRuleAccentColor = (ruleNumber) => {
   return '#6c757d';
 };
 
-const ResultsDisplay = ({ comparisonResults, comparisonProfileId }) => {
+const ResultsDisplay = ({ comparisonResults, comparisonProfileId, ruleDescriptionMap, showSummaryCards = true }) => {
   // Comprehensive logging of comparison results
   console.log('========================================');
   console.log('[ResultsDisplay] ===== COMPARISON RESULTS =====');
@@ -85,7 +90,7 @@ const ResultsDisplay = ({ comparisonResults, comparisonProfileId }) => {
             interpretation:
               result.interpretation ||
               result.ruleDescription ||
-              getRuleDescription(ruleNum) ||
+              getRuleDescription(ruleNum, ruleDescriptionMap) ||
               `Rule ${ruleNum}`,
             ruleNumber: ruleNum
           };
@@ -94,7 +99,7 @@ const ResultsDisplay = ({ comparisonResults, comparisonProfileId }) => {
       }
     });
     return stats;
-  }, [comparisonResults]);
+  }, [comparisonResults, ruleDescriptionMap]);
 
   // Filter results based on selected filters - must be declared before any conditional returns
   const filteredResults = useMemo(() => {
@@ -122,66 +127,17 @@ const ResultsDisplay = ({ comparisonResults, comparisonProfileId }) => {
   // Early return after all hooks are declared
   if (!comparisonResults) return null;
 
+  const summary = resolveComparisonSummary(comparisonResults);
+
   return (
     <div className="row">
       <div className="col-12">
-        {/* Summary Cards */}
-        <div className="row mb-4">
-          <div className="col-md-3">
-            <div className="card" style={{borderLeft: '4px solid #007bff'}}>
-              <div className="card-body text-center">
-                <h3 className="text-primary">{comparisonResults.summary.total_llm_papers}</h3>
-                <p className="mb-0">Source Publications</p>
-              </div>
-            </div>
-          </div>
-          <div className="col-md-3">
-            <div className="card" style={{borderLeft: '4px solid #007bff'}}>
-              <div className="card-body text-center">
-                <h3 className="text-info">{comparisonResults.summary.total_gt_papers}</h3>
-                <p className="mb-0">Target Publications</p>
-              </div>
-            </div>
-          </div>
-          <div className="col-md-3">
-            <div className="card" style={{borderLeft: '4px solid #007bff'}}>
-              <div className="card-body text-center">
-                <h3 className="text-success">{comparisonResults.summary.exact_count}</h3>
-                <p className="mb-0">Exact Matches</p>
-              </div>
-            </div>
-          </div>
-          <div className="col-md-3">
-            <div className="card" style={{borderLeft: '4px solid #007bff'}}>
-              <div className="card-body text-center">
-                <h3 className="text-warning">{comparisonResults.summary.partial_count}</h3>
-                <p className="mb-0">Partial Matches</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {comparisonResults.summary.class_counts &&
-          typeof comparisonResults.summary.class_counts === 'object' &&
-          Object.keys(comparisonResults.summary.class_counts).length > 0 && (
-            <div className="card mb-4">
-              <div className="card-header">
-                <h5 className="mb-0">
-                  <i className="fas fa-layer-group"></i> Class counts
-                </h5>
-              </div>
-              <div className="card-body">
-                <div className="row">
-                  {Object.entries(comparisonResults.summary.class_counts).map(([key, value]) => (
-                    <div key={key} className="col-md-3 col-6 mb-2">
-                      <span className="text-muted small d-block">{key}</span>
-                      <span className="fw-semibold">{value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
+        {showSummaryCards && (
+          <>
+            <ComparisonSummaryCards summary={summary} />
+            <ComparisonClassCountsCard summary={summary} />
+          </>
+        )}
 
         {/* Cascade Rules Breakdown */}
         {Object.keys(ruleStats).length > 0 && (
@@ -303,7 +259,7 @@ const ResultsDisplay = ({ comparisonResults, comparisonProfileId }) => {
                     const ruleNumber = result.rule_number ?? null;
                     const ruleDescription =
                       result.ruleDescription ||
-                      (ruleNumber ? getRuleDescription(ruleNumber) : null);
+                      (ruleNumber ? getRuleDescription(ruleNumber, ruleDescriptionMap) : null);
 
                     const matchTypeLabel =
                       (result.matchTypeDisplay && String(result.matchTypeDisplay).trim()) ||

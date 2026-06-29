@@ -366,6 +366,28 @@ export function normalizeRulesFromApi(rules) {
   return rules.map(normalizeRuleFromApi).filter(Boolean);
 }
 
+/**
+ * Build rule_number → context map from a comparison profile or rules array (API/DB).
+ * @param {object|Array|null|undefined} profileOrRules
+ * @returns {Record<number, string>}
+ */
+export function buildRuleDescriptionMap(profileOrRules) {
+  const rules = Array.isArray(profileOrRules)
+    ? profileOrRules
+    : (profileOrRules?.rules ?? profileOrRules?.scoring_rules ?? []);
+  if (!Array.isArray(rules)) return {};
+
+  const map = {};
+  for (const rule of rules) {
+    const num = rule?.rule_number;
+    const text = rule?.context;
+    if (num != null && text != null && String(text).trim() !== '') {
+      map[num] = String(text).trim();
+    }
+  }
+  return map;
+}
+
 export function ruleToApiPayload(rule) {
   return {
     rule_number: rule.rule_number,
