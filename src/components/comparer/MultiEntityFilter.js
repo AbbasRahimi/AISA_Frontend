@@ -14,8 +14,10 @@ function MultiEntityFilter({
   minSelected = 0,
   emptyMessage = 'No items available.',
   idPrefix = 'entity',
+  innerColumns = 1,
 }) {
   const selectedSet = useMemo(() => new Set(selectedIds.map(String)), [selectedIds]);
+  const columnCount = Math.min(3, Math.max(1, innerColumns));
 
   const grouped = useMemo(() => {
     if (!getGroupLabel) {
@@ -70,20 +72,36 @@ function MultiEntityFilter({
             {group.label && (
               <div className="small fw-semibold text-muted mb-1">{group.label}</div>
             )}
-            {group.items.map((item) => (
-              <div key={item.id} className="form-check">
-                <input
-                  className="form-check-input"
-                  type="checkbox"
-                  id={`${idPrefix}-${item.id}`}
-                  checked={selectedSet.has(String(item.id))}
-                  onChange={() => toggle(item.id)}
-                />
-                <label className="form-check-label" htmlFor={`${idPrefix}-${item.id}`}>
-                  {getLabel(item)}
-                </label>
-              </div>
-            ))}
+            <div
+              className={columnCount > 1 ? 'multi-entity-filter-item-grid' : undefined}
+              style={(() => {
+                const effectiveColumns = group.items.length > 0
+                  ? Math.min(columnCount, group.items.length)
+                  : 1;
+                return effectiveColumns > 1
+                  ? {
+                    display: 'grid',
+                    gridTemplateColumns: `repeat(${effectiveColumns}, minmax(0, 1fr))`,
+                    columnGap: '0.75rem',
+                  }
+                  : undefined;
+              })()}
+            >
+              {group.items.map((item) => (
+                <div key={item.id} className="form-check">
+                  <input
+                    className="form-check-input"
+                    type="checkbox"
+                    id={`${idPrefix}-${item.id}`}
+                    checked={selectedSet.has(String(item.id))}
+                    onChange={() => toggle(item.id)}
+                  />
+                  <label className="form-check-label small" htmlFor={`${idPrefix}-${item.id}`}>
+                    {getLabel(item)}
+                  </label>
+                </div>
+              ))}
+            </div>
           </div>
         ))}
       </div>

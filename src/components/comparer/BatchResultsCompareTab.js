@@ -5,11 +5,18 @@ import useSeedPapersAndPrompts, { seedPaperLabel } from '../../hooks/useSeedPape
 import { ComparisonProfilePurpose } from '../../models';
 import ProfileSelect from '../comparisonProfiles/ProfileSelect';
 import MultiEntityFilter from './MultiEntityFilter';
+import SystemKeyColumnFilter from './SystemKeyColumnFilter';
 import BatchCompareRowsTable from './BatchCompareRowsTable';
 import BatchCompareGroupedStats from './BatchCompareGroupedStats';
 import BatchCompareStatsCharts from './BatchCompareStatsCharts';
 import CollapsibleCard from './CollapsibleCard';
-import { normalizeCompareResponse, normalizePromptAliasesResponse } from './batchResultsUtils';
+import {
+  extractSystemKeyItems,
+  filterCompareDataBySystemKeys,
+  normalizeBatchResultsListResponse,
+  normalizeCompareResponse,
+  normalizePromptAliasesResponse,
+} from './batchResultsUtils';
 
 function BatchResultsCompareTab() {
   const { seedPapers, loading: entitiesLoading, error: entitiesError } = useSeedPapersAndPrompts();
@@ -25,8 +32,10 @@ function BatchResultsCompareTab() {
   const [loadingPromptAliases, setLoadingPromptAliases] = useState(false);
   const [promptAliasesError, setPromptAliasesError] = useState(null);
   const [comparisonProfileId, setComparisonProfileId] = useState(null);
-  const [systemKey, setSystemKey] = useState('');
-  const [latestOnly, setLatestOnly] = useState(false);
+  const [storedSystemKeyItems, setStoredSystemKeyItems] = useState([]);
+  const [selectedSystemKeys, setSelectedSystemKeys] = useState([]);
+  const [loadingSystemKeys, setLoadingSystemKeys] = useState(false);
+  const [systemKeysError, setSystemKeysError] = useState(null);
   const [compareData, setCompareData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -77,9 +86,49 @@ function BatchResultsCompareTab() {
     loadPromptAliases(selectedSeedPaperIds);
   }, [selectedSeedPaperIds, loadPromptAliases]);
 
+  const loadSystemKeys = useCallback(async (paperIds) => {
+    if (!paperIds?.length) {
+      setStoredSystemKeyItems([]);
+      setSelectedSystemKeys([]);
+      setSystemKeysError(null);
+      setLoadingSystemKeys(false);
+      return;
+    }
+    setLoadingSystemKeys(true);
+    setSystemKeysError(null);
+    try {
+      const response = await apiService.listBatchComparisonResults({
+        seedPaperIds: paperIds.map(Number),
+        latestOnly: true,
+      });
+      const rows = normalizeBatchResultsListResponse(response);
+      setStoredSystemKeyItems(extractSystemKeyItems(rows, paperIds.map(Number)));
+    } catch (err) {
+      setStoredSystemKeyItems([]);
+      setSystemKeysError(err.message || 'Failed to load stored system keys.');
+    } finally {
+      setLoadingSystemKeys(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    setSelectedSystemKeys([]);
+    loadSystemKeys(selectedSeedPaperIds);
+  }, [selectedSeedPaperIds, loadSystemKeys]);
+
   const getPromptGroupLabel = (item) => {
     const paper = seedPapers.find((p) => p.id === item.seedPaperId);
     return paper ? seedPaperLabel(paper) : `Seed #${item.seedPaperId}`;
+  };
+
+  const resolveSelectedSystemKeys = () => {
+    if (!selectedSystemKeys.length) return [];
+    return [...new Set(selectedSystemKeys.map((id) => {
+      const item = storedSystemKeyItems.find((x) => x.id === id);
+      if (item) return item.systemKey;
+      const sep = String(id).indexOf('::');
+      return sep >= 0 ? String(id).slice(sep + 2) : String(id);
+    }))];
   };
 
   const handleCompare = async () => {
@@ -101,10 +150,10 @@ function BatchResultsCompareTab() {
           }))]
           : null,
         comparisonProfileId,
-        systemKey: systemKey.trim() || null,
-        latestOnly,
+        latestOnly: false,
       });
-      setCompareData(normalizeCompareResponse(response));
+      const normalized = normalizeCompareResponse(response);
+      setCompareData(filterCompareDataBySystemKeys(normalized, resolveSelectedSystemKeys()));
     } catch (err) {
       setError(err.message || 'Failed to compare stored results.');
       setCompareData(null);
@@ -178,8 +227,25 @@ function BatchResultsCompareTab() {
             </div>
           </div>
 
+          <div className="row mt-1">
+            <div className="col-12">
+              {systemKeysError && (
+                <div className="alert alert-warning py-2 small">{systemKeysError}</div>
+              )}
+              <SystemKeyColumnFilter
+                items={storedSystemKeyItems}
+                paperIds={selectedSeedPaperIds.map(Number)}
+                seedPapers={seedPapers}
+                selectedIds={selectedSystemKeys}
+                onChange={setSelectedSystemKeys}
+                loading={loadingSystemKeys}
+                emptyMessage="No stored system keys for this seed paper."
+              />
+            </div>
+          </div>
+
           <div className="row g-3 mt-1">
-            <div className="col-md-4">
+            <div className="col-md-6">
               <ProfileSelect
                 id="compareComparisonProfile"
                 label="Comparison profile"
@@ -190,31 +256,6 @@ function BatchResultsCompareTab() {
                 helperText="Optional filter."
                 manageLinkPurpose={ComparisonProfilePurpose.GT_COMPARISON}
               />
-            </div>
-            <div className="col-md-4">
-              <label htmlFor="compareSystemKey" className="form-label">System key</label>
-              <input
-                id="compareSystemKey"
-                type="text"
-                className="form-control"
-                placeholder="Optional"
-                value={systemKey}
-                onChange={(e) => setSystemKey(e.target.value)}
-              />
-            </div>
-            <div className="col-md-4 d-flex align-items-end">
-              <div className="form-check mb-2">
-                <input
-                  className="form-check-input"
-                  type="checkbox"
-                  id="compareLatestOnly"
-                  checked={latestOnly}
-                  onChange={(e) => setLatestOnly(e.target.checked)}
-                />
-                <label className="form-check-label" htmlFor="compareLatestOnly">
-                  Latest only (per seed + prompt + system + profile)
-                </label>
-              </div>
             </div>
           </div>
 

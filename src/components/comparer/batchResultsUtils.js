@@ -16,6 +16,155 @@ export function normalizePromptAliasesResponse(response) {
   return Array.isArray(list) ? list.filter((a) => a != null && String(a).trim() !== '') : [];
 }
 
+export function normalizeSystemKeysResponse(response) {
+  if (!response) return [];
+  if (Array.isArray(response)) {
+    return response.filter((k) => k != null && String(k).trim() !== '');
+  }
+  const list = response.system_keys ?? response.keys ?? response.items ?? [];
+  return Array.isArray(list) ? list.filter((k) => k != null && String(k).trim() !== '') : [];
+}
+
+/**
+ * Build MultiEntityFilter items from stored batch result rows.
+ * @param {object[]} rows
+ * @param {number[]} paperIds
+ * @returns {{ id: string, systemKey: string, seedPaperId: number }[]}
+ */
+export function extractSystemKeyItems(rows, paperIds) {
+  const multiPaper = paperIds.length > 1;
+  const seen = new Set();
+  const items = [];
+
+  for (const row of rows) {
+    const systemKey = row.system_key ?? row.systemKey;
+    if (systemKey == null || String(systemKey).trim() === '') continue;
+
+    const seedPaperId = Number(row.seed_paper_id ?? row.seedPaperId);
+    const key = multiPaper ? `${seedPaperId}::${systemKey}` : String(systemKey);
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    items.push({
+      id: key,
+      systemKey: String(systemKey),
+      seedPaperId,
+    });
+  }
+
+  return items.sort((a, b) => a.systemKey.localeCompare(b.systemKey));
+}
+
+/**
+ * Per-paper columns and shared keys for multi-seed system key selection.
+ * @param {object[]} items from extractSystemKeyItems
+ * @param {number[]} paperIds selected seed paper ids (order preserved)
+ */
+export function buildSystemKeyColumnData(items, paperIds) {
+  const ids = paperIds.map(Number);
+  const perPaper = ids.map((seedPaperId) => ({
+    seedPaperId,
+    items: items
+      .filter((item) => item.seedPaperId === seedPaperId)
+      .sort((a, b) => a.systemKey.localeCompare(b.systemKey)),
+  }));
+
+  if (ids.length <= 1) {
+    return { perPaper, sharedItems: [], showSharedColumn: false };
+  }
+
+  const keysByPaper = ids.map((seedPaperId) => new Set(
+    items.filter((item) => item.seedPaperId === seedPaperId).map((item) => item.systemKey),
+  ));
+
+  const firstKeys = keysByPaper[0] ?? new Set();
+  const sharedKeys = [...firstKeys]
+    .filter((systemKey) => keysByPaper.every((set) => set.has(systemKey)))
+    .sort((a, b) => a.localeCompare(b));
+
+  const sharedItems = sharedKeys.map((systemKey) => ({
+    id: `shared::${systemKey}`,
+    systemKey,
+  }));
+
+  return { perPaper, sharedItems, showSharedColumn: true };
+}
+
+/**
+ * Shared-column ids that are fully selected across all per-paper columns.
+ */
+export function getSharedSystemKeySelectionIds(sharedItems, items, paperIds, selectedIds) {
+  const selectedSet = new Set(selectedIds.map(String));
+  return sharedItems
+    .filter((shared) => paperIds.every((seedPaperId) => {
+      const perPaperId = items.find(
+        (item) => item.seedPaperId === seedPaperId && item.systemKey === shared.systemKey,
+      )?.id;
+      return perPaperId != null && selectedSet.has(String(perPaperId));
+    }))
+    .map((shared) => shared.id);
+}
+
+/**
+ * Apply shared-column selection changes to per-paper selected ids.
+ */
+export function applySharedSystemKeySelectionChange(
+  sharedItems,
+  items,
+  paperIds,
+  selectedIds,
+  nextSharedSelectedIds,
+) {
+  const prevSharedSet = new Set(getSharedSystemKeySelectionIds(sharedItems, items, paperIds, selectedIds));
+  const nextSharedSet = new Set(nextSharedSelectedIds.map(String));
+  let next = [...selectedIds];
+
+  for (const shared of sharedItems) {
+    const wasSelected = prevSharedSet.has(shared.id);
+    const isSelected = nextSharedSet.has(String(shared.id));
+    if (wasSelected === isSelected) continue;
+
+    const perPaperIds = paperIds
+      .map((seedPaperId) => items.find(
+        (item) => item.seedPaperId === seedPaperId && item.systemKey === shared.systemKey,
+      )?.id)
+      .filter((id) => id != null);
+
+    if (isSelected) {
+      next = [...new Set([...next, ...perPaperIds])];
+    } else {
+      const remove = new Set(perPaperIds.map(String));
+      next = next.filter((id) => !remove.has(String(id)));
+    }
+  }
+
+  return next;
+}
+
+/**
+ * Filter compare data to selected system keys and recompute aggregated stats.
+ * @param {object} compareData normalized compare response
+ * @param {string[]} systemKeys deduplicated system key strings; empty = no filter
+ */
+export function filterCompareDataBySystemKeys(compareData, systemKeys) {
+  if (!compareData || !systemKeys?.length) return compareData;
+
+  const keySet = new Set(systemKeys.map(String));
+  const filteredRows = (compareData.rows ?? []).filter(
+    (row) => row.system_key != null && keySet.has(String(row.system_key)),
+  );
+
+  return normalizeCompareResponse({
+    comparison_profile_id: compareData.comparison_profile_id,
+    include_partial: compareData.include_partial,
+    rows: filteredRows,
+    stats_by_prompt_alias: [],
+    stats_by_prompt_alias_overall: [],
+    stats_by_system_key: [],
+    stats_by_system_key_overall: [],
+  });
+}
+
 export function normalizeBatchResultsListResponse(response) {
   if (!response) return [];
   if (Array.isArray(response)) return response;
