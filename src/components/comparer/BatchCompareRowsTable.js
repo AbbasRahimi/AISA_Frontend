@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import PerExecSortTh from '../evaluation/seedPaperExecutionMetrics/PerExecSortTh';
 import { getPerExecPageNumbers } from '../evaluation/seedPaperExecutionMetrics/perExecTableUtils';
-import { formatPercent } from '../evaluation/seedPaperExecutionMetrics/formatters';
+import { formatPercent, formatInt } from '../evaluation/seedPaperExecutionMetrics/formatters';
 import { seedPaperLabel } from '../../hooks/useSeedPapersAndPrompts';
 import { normalizeCompareRow, storedResultRowKey } from './batchResultsUtils';
 
@@ -11,6 +11,7 @@ const TABLE_COLUMNS = [
   { key: 'seed_paper_id', label: 'Seed paper' },
   { key: 'prompt_alias', label: 'Prompt alias' },
   { key: 'system_key', label: 'System key' },
+  { key: 'total_llm_papers', label: 'Total papers' },
   { key: 'precision', label: 'Precision' },
   { key: 'recall', label: 'Recall' },
   { key: 'f1_score', label: 'F1 score' },
@@ -45,6 +46,8 @@ function formatCell(row, key, seedPapers) {
       return row.prompt_alias?.trim() || '—';
     case 'system_key':
       return row.system_key ? <code>{row.system_key}</code> : '—';
+    case 'total_llm_papers':
+      return formatInt(row.total_llm_papers);
     case 'precision':
     case 'recall':
     case 'f1_score':

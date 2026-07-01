@@ -590,6 +590,7 @@ class ApiService {
    * @property {string|null} prompt_alias
    * @property {number|null} comparison_profile_id
    * @property {string|null} system_key
+   * @property {number|null} total_llm_papers
    * @property {number|null} precision
    * @property {number|null} recall
    * @property {number|null} f1_score

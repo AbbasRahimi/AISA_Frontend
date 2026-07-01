@@ -194,6 +194,10 @@ export function normalizeMetricStats(stats) {
     : null);
   return {
     count: stats.count ?? 0,
+    total_llm_papers_sum:
+      stats.total_llm_papers_sum ??
+      stats.sum_total_llm_papers ??
+      (typeof stats.total_llm_papers === 'number' ? stats.total_llm_papers : null),
     precision: norm(stats.precision),
     recall: norm(stats.recall),
     f1_score: norm(stats.f1_score ?? stats.f1),
@@ -232,6 +236,7 @@ export function normalizeCompareRow(row) {
     seed_paper_alias: row.seed_paper_alias ?? row.seedPaperAlias ?? null,
     prompt_alias: row.prompt_alias ?? row.promptAlias ?? null,
     system_key: row.system_key ?? row.systemKey,
+    total_llm_papers: row.total_llm_papers ?? row.totalLlmPapers ?? null,
     precision: row.precision ?? row.metrics?.precision,
     recall: row.recall ?? row.metrics?.recall,
     f1_score: row.f1_score ?? row.f1 ?? row.metrics?.f1_score,
@@ -245,6 +250,12 @@ function aggregateMetricValues(values) {
   const max = Math.max(...nums);
   const avg = nums.reduce((sum, value) => sum + value, 0) / nums.length;
   return { min, max, avg };
+}
+
+function sumNumericValues(values) {
+  const nums = values.filter((v) => typeof v === 'number' && !Number.isNaN(v));
+  if (!nums.length) return null;
+  return nums.reduce((sum, value) => sum + value, 0);
 }
 
 function buildStatsGroupsFromRows(rows, groupKey) {
@@ -265,6 +276,7 @@ function buildStatsGroupsFromRows(rows, groupKey) {
     [groupKey]: group[groupKey],
     stats: {
       count: group.rows.length,
+      total_llm_papers_sum: sumNumericValues(group.rows.map((r) => r.total_llm_papers)),
       precision: aggregateMetricValues(group.rows.map((r) => r.precision)),
       recall: aggregateMetricValues(group.rows.map((r) => r.recall)),
       f1_score: aggregateMetricValues(group.rows.map((r) => r.f1_score)),
@@ -399,6 +411,7 @@ export function buildStoredResultSystemSummaryRow(row) {
   const totalCitations =
     row.total_citations ??
     row.publication_count ??
+    row.total_llm_papers ??
     summary.total_llm_papers ??
     fully + partial + no;
 
@@ -452,7 +465,8 @@ export function normalizeMatrixRow(row) {
     fully_match_count: row.fully_match_count,
     partial_match_count: row.partial_match_count,
     no_match_count: row.no_match_count,
-    total_citations: row.total_citations ?? row.publication_count,
+    total_citations: row.total_citations ?? row.publication_count ?? row.total_llm_papers,
+    total_llm_papers: row.total_llm_papers ?? row.totalLlmPapers ?? null,
     ground_truth_publication_count: row.ground_truth_publication_count,
     precision: row.precision ?? row.metrics?.precision,
     recall: row.recall ?? row.metrics?.recall,

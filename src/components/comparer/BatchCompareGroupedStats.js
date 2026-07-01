@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import PerExecSortTh from '../evaluation/seedPaperExecutionMetrics/PerExecSortTh';
-import { formatPercent } from '../evaluation/seedPaperExecutionMetrics/formatters';
+import { formatPercent, formatInt } from '../evaluation/seedPaperExecutionMetrics/formatters';
 import { seedPaperLabel } from '../../hooks/useSeedPapersAndPrompts';
 
 const METRIC_COLUMNS = [
@@ -50,6 +50,9 @@ function sortGroups(groups, groupKey, sort) {
     } else if (key === 'count') {
       av = a.stats?.count;
       bv = b.stats?.count;
+    } else if (key === 'total_llm_papers_sum') {
+      av = a.stats?.total_llm_papers_sum;
+      bv = b.stats?.total_llm_papers_sum;
     } else if (metricSort) {
       av = a.stats?.[metricSort.metric]?.[metricSort.sub];
       bv = b.stats?.[metricSort.metric]?.[metricSort.sub];
@@ -95,6 +98,16 @@ function StatsTable({ groups, groupKey, groupLabel, sort, onSort, expandMetricCo
                     as="span"
                   />
                 </th>
+                <th rowSpan={2} scope="col" className="align-middle text-end">
+                  <PerExecSortTh
+                    colKey="total_llm_papers_sum"
+                    label="Total papers"
+                    sortKey={sort.key}
+                    sortDir={sort.dir}
+                    onSort={onSort}
+                    as="span"
+                  />
+                </th>
                 {METRIC_COLUMNS.map(({ key, label }) => (
                   <th key={key} colSpan={METRIC_SUB_COLUMNS.length} scope="colgroup" className="text-center border-start">
                     {label}
@@ -133,6 +146,13 @@ function StatsTable({ groups, groupKey, groupLabel, sort, onSort, expandMetricCo
                 sortDir={sort.dir}
                 onSort={onSort}
               />
+              <PerExecSortTh
+                colKey="total_llm_papers_sum"
+                label="Total papers"
+                sortKey={sort.key}
+                sortDir={sort.dir}
+                onSort={onSort}
+              />
               {METRIC_COLUMNS.map(({ key, label }) => (
                 <PerExecSortTh
                   key={key}
@@ -155,6 +175,7 @@ function StatsTable({ groups, groupKey, groupLabel, sort, onSort, expandMetricCo
                   : (group.prompt_alias?.trim() || '—')}
               </td>
               <td>{group.stats?.count ?? '—'}</td>
+              <td className="text-end">{formatInt(group.stats?.total_llm_papers_sum)}</td>
               {expandMetricColumns
                 ? METRIC_COLUMNS.flatMap(({ key: metricKey }) =>
                   METRIC_SUB_COLUMNS.map(({ key: subKey }) => {

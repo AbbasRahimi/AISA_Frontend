@@ -10,6 +10,7 @@ const TABLE_COLUMNS = [
   { key: 'prompt_alias', label: 'Prompt alias' },
   { key: 'comparison_profile_id', label: 'Profile' },
   { key: 'system_key', label: 'System key' },
+  { key: 'total_llm_papers', label: 'Total  papers' },
   { key: 'precision', label: 'Precision' },
   { key: 'recall', label: 'Recall' },
   { key: 'f1_score', label: 'F1 score' },
@@ -46,6 +47,8 @@ function formatCell(row, key, { seedPapers, profiles }) {
       const profile = profiles.find((p) => p.id === row.comparison_profile_id);
       return profile ? profileLabel(profile) : (row.comparison_profile_id != null ? `#${row.comparison_profile_id}` : '—');
     }
+    case 'total_llm_papers':
+      return formatInt(row.total_llm_papers);
     case 'precision':
     case 'recall':
     case 'f1_score':
