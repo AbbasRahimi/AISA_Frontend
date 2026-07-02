@@ -9,6 +9,8 @@ import SystemKeyColumnFilter from './SystemKeyColumnFilter';
 import BatchCompareRowsTable from './BatchCompareRowsTable';
 import BatchCompareGroupedStats from './BatchCompareGroupedStats';
 import BatchCompareStatsCharts from './BatchCompareStatsCharts';
+import BatchCompareBubbleChart from './BatchCompareBubbleChart';
+import BatchCompareMetricsDotPlot from './BatchCompareMetricsDotPlot';
 import CollapsibleCard from './CollapsibleCard';
 import {
   extractSystemKeyItems,
@@ -343,6 +345,14 @@ function BatchResultsCompareTab() {
                 <i className="fas fa-layer-group text-primary me-1" />
                 Overall across selected seed papers
               </h6>
+              <BatchCompareBubbleChart
+                groups={stats_by_system_key_overall}
+                groupKey="system_key"
+              />
+              <BatchCompareMetricsDotPlot
+                groups={stats_by_system_key_overall}
+                groupKey="system_key"
+              />
               <BatchCompareStatsCharts
                 groups={stats_by_system_key_overall}
                 groupKey="system_key"
