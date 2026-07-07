@@ -129,7 +129,7 @@ function BatchCompareBoxPlot({
 
   if (!data.length) return null;
 
-  const height = Math.max(280, data.length * 34 + 80);
+  const height = Math.max(280, data.length * 40 + 96);
   const yAxisWidth = groupKey === 'system_key' ? 200 : 140;
 
   return (
@@ -157,7 +157,7 @@ function BatchCompareBoxPlot({
         <ComposedChart
           data={data}
           layout="vertical"
-          margin={{ top: 8, right: 24, bottom: 16, left: 8 }}
+          margin={{ top: 20, right: 24, bottom: 16, left: 8 }}
         >
           <CartesianGrid strokeDasharray="3 3" horizontal={false} />
           <XAxis type="number" domain={[0, 100]} tickFormatter={PERCENT_TICK} />
@@ -166,6 +166,8 @@ function BatchCompareBoxPlot({
             dataKey="labelShort"
             width={yAxisWidth}
             tick={{ fontSize: 12 }}
+            interval={0}
+            padding={{ top: 16, bottom: 16 }}
           />
           <Tooltip content={<BoxPlotTooltip metricLabel={metricOption.label} />} />
           <Customized
