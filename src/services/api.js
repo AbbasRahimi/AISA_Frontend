@@ -583,6 +583,25 @@ class ApiService {
   }
 
   /**
+   * @typedef {Object} BatchComparisonMetricStats
+   * @property {number|null} min
+   * @property {number|null} max
+   * @property {number|null} nz_avg - Mean over non-zero, non-null values only
+   * @property {number|null} nz_median - Median of non-zero values
+   */
+
+  /**
+   * @typedef {Object} BatchComparisonGroupedStats
+   * @property {number} count
+   * @property {number|null} total_llm_papers_sum
+   * @property {number} rej_rate - Fraction of rejected rows (0.0–1.0); rejection means total_llm_papers == 0
+   * @property {number} rej_count - Count of rejected rows
+   * @property {BatchComparisonMetricStats|null} precision
+   * @property {BatchComparisonMetricStats|null} recall
+   * @property {BatchComparisonMetricStats|null} f1_score
+   */
+
+  /**
    * @typedef {Object} BatchComparisonResultRow
    * @property {number} id
    * @property {number} run_id
@@ -653,12 +672,14 @@ class ApiService {
 
   /**
    * Compare stored batch results across seed papers and/or prompts.
+   * All filters are applied server-side before aggregation.
    * @param {{
    *   seedPaperIds: number[],
    *   promptIds?: number[]|null,
    *   promptAliases?: string[]|null,
    *   comparisonProfileId?: number|null,
    *   systemKey?: string|null,
+   *   systemKeys?: string[]|null,
    *   latestOnly?: boolean,
    * }} filters
    */
@@ -668,6 +689,7 @@ class ApiService {
     promptAliases = null,
     comparisonProfileId = null,
     systemKey = null,
+    systemKeys = null,
     latestOnly = false,
   }) {
     const ids = Array.isArray(seedPaperIds) ? seedPaperIds : [];
@@ -677,12 +699,17 @@ class ApiService {
     const aliasesParam = promptAliases?.length
       ? promptAliases.join(',')
       : null;
+    const resolvedSystemKeys = systemKeys?.length
+      ? [...new Set(systemKeys.map((key) => String(key).trim()).filter(Boolean))]
+      : systemKey?.trim()
+        ? [systemKey.trim()]
+        : [];
     const query = buildQueryParams({
       seed_paper_ids: ids.join(','),
       prompt_ids: promptIds?.length ? promptIds.join(',') : null,
       prompt_aliases: aliasesParam,
       comparison_profile_id: comparisonProfileId,
-      system_key: systemKey?.trim() || null,
+      system_keys: resolvedSystemKeys.length ? resolvedSystemKeys.join(',') : null,
       latest_only: latestOnly,
     });
     return this.request(`/api/reference-comparer/batch-results/compare${query}`);

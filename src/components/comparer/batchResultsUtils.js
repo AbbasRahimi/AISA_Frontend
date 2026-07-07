@@ -141,30 +141,6 @@ export function applySharedSystemKeySelectionChange(
   return next;
 }
 
-/**
- * Filter compare data to selected system keys and recompute aggregated stats.
- * @param {object} compareData normalized compare response
- * @param {string[]} systemKeys deduplicated system key strings; empty = no filter
- */
-export function filterCompareDataBySystemKeys(compareData, systemKeys) {
-  if (!compareData || !systemKeys?.length) return compareData;
-
-  const keySet = new Set(systemKeys.map(String));
-  const filteredRows = (compareData.rows ?? []).filter(
-    (row) => row.system_key != null && keySet.has(String(row.system_key)),
-  );
-
-  return normalizeCompareResponse({
-    comparison_profile_id: compareData.comparison_profile_id,
-    include_partial: compareData.include_partial,
-    rows: filteredRows,
-    stats_by_prompt_alias: [],
-    stats_by_prompt_alias_overall: [],
-    stats_by_system_key: [],
-    stats_by_system_key_overall: [],
-  });
-}
-
 export function normalizeBatchResultsListResponse(response) {
   if (!response) return [];
   if (Array.isArray(response)) return response;
@@ -183,13 +159,21 @@ export function normalizeBatchRunsListResponse(response) {
   };
 }
 
+function toStatNumber(value, fallback = 0) {
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 export function normalizeMetricStats(stats) {
   if (!stats || typeof stats !== 'object') return null;
   const norm = (m) => (m && typeof m === 'object'
     ? {
       min: m.min ?? null,
       max: m.max ?? null,
-      avg: m.avg ?? m.mean ?? null,
+      nz_avg: m.nz_avg ?? null,
+      nz_median: m.nz_median ?? null,
+      std_dev: m.std_dev ?? null,
+      iqr: m.iqr ?? null,
     }
     : null);
   return {
@@ -198,6 +182,8 @@ export function normalizeMetricStats(stats) {
       stats.total_llm_papers_sum ??
       stats.sum_total_llm_papers ??
       (typeof stats.total_llm_papers === 'number' ? stats.total_llm_papers : null),
+    rej_rate: toStatNumber(stats.rej_rate, 0),
+    rej_count: toStatNumber(stats.rej_count, 0),
     precision: norm(stats.precision),
     recall: norm(stats.recall),
     f1_score: norm(stats.f1_score ?? stats.f1),
@@ -243,87 +229,6 @@ export function normalizeCompareRow(row) {
   };
 }
 
-function aggregateMetricValues(values) {
-  const nums = values.filter((v) => typeof v === 'number' && !Number.isNaN(v));
-  if (!nums.length) return { min: null, max: null, avg: null };
-  const min = Math.min(...nums);
-  const max = Math.max(...nums);
-  const avg = nums.reduce((sum, value) => sum + value, 0) / nums.length;
-  return { min, max, avg };
-}
-
-function sumNumericValues(values) {
-  const nums = values.filter((v) => typeof v === 'number' && !Number.isNaN(v));
-  if (!nums.length) return null;
-  return nums.reduce((sum, value) => sum + value, 0);
-}
-
-function buildStatsGroupsFromRows(rows, groupKey) {
-  const groupMap = new Map();
-  for (const row of rows) {
-    const groupValue = row[groupKey] ?? null;
-    const groupId = groupValue != null ? String(groupValue) : '__null__';
-    if (!groupMap.has(groupId)) {
-      groupMap.set(groupId, {
-        [groupKey]: groupValue,
-        rows: [],
-      });
-    }
-    groupMap.get(groupId).rows.push(row);
-  }
-
-  return [...groupMap.values()].map((group) => ({
-    [groupKey]: group[groupKey],
-    stats: {
-      count: group.rows.length,
-      total_llm_papers_sum: sumNumericValues(group.rows.map((r) => r.total_llm_papers)),
-      precision: aggregateMetricValues(group.rows.map((r) => r.precision)),
-      recall: aggregateMetricValues(group.rows.map((r) => r.recall)),
-      f1_score: aggregateMetricValues(group.rows.map((r) => r.f1_score)),
-    },
-  }));
-}
-
-function computeCompareStatsFromRows(rows, groupKey) {
-  const bySeed = new Map();
-  for (const row of rows) {
-    const seedId = row.seed_paper_id;
-    if (seedId == null) continue;
-
-    if (!bySeed.has(seedId)) {
-      bySeed.set(seedId, {
-        seed_paper_id: seedId,
-        seed_paper_alias: row.seed_paper_alias ?? null,
-        groupMap: new Map(),
-      });
-    }
-
-    const section = bySeed.get(seedId);
-    const groupValue = row[groupKey] ?? null;
-    const groupId = groupValue != null ? String(groupValue) : '__null__';
-    if (!section.groupMap.has(groupId)) {
-      section.groupMap.set(groupId, {
-        [groupKey]: groupValue,
-        rows: [],
-      });
-    }
-    section.groupMap.get(groupId).rows.push(row);
-  }
-
-  return [...bySeed.values()].map((section) => ({
-    seed_paper_id: section.seed_paper_id,
-    seed_paper_alias: section.seed_paper_alias,
-    groups: buildStatsGroupsFromRows(
-      [...section.groupMap.values()].flatMap((group) => group.rows),
-      groupKey,
-    ),
-  }));
-}
-
-export function computeCompareStatsAcrossRows(rows, groupKey) {
-  return buildStatsGroupsFromRows(rows, groupKey);
-}
-
 export function normalizeCompareResponse(response) {
   if (!response || typeof response !== 'object') {
     return {
@@ -341,27 +246,28 @@ export function normalizeCompareResponse(response) {
   const statsByPrompt = response.stats_by_prompt_alias ?? response.statsByPromptAlias ?? [];
   const statsByPromptOverall = response.stats_by_prompt_alias_overall
     ?? response.statsByPromptAliasOverall
-    ?? null;
+    ?? [];
   const statsBySystem = response.stats_by_system_key ?? response.statsBySystemKey ?? [];
   const statsBySystemOverall = response.stats_by_system_key_overall
     ?? response.statsBySystemKeyOverall
-    ?? null;
+    ?? [];
+
   return {
     comparison_profile_id: response.comparison_profile_id ?? response.comparisonProfileId ?? null,
     include_partial: response.include_partial ?? response.includePartial ?? true,
     rows: normalizedRows,
-    stats_by_prompt_alias: Array.isArray(statsByPrompt) && statsByPrompt.length
+    stats_by_prompt_alias: Array.isArray(statsByPrompt)
       ? statsByPrompt.map(normalizeCompareStatsSection).filter(Boolean)
-      : computeCompareStatsFromRows(normalizedRows, 'prompt_alias'),
-    stats_by_prompt_alias_overall: Array.isArray(statsByPromptOverall) && statsByPromptOverall.length
+      : [],
+    stats_by_prompt_alias_overall: Array.isArray(statsByPromptOverall)
       ? statsByPromptOverall.map(normalizeStatsGroup).filter(Boolean)
-      : computeCompareStatsAcrossRows(normalizedRows, 'prompt_alias'),
-    stats_by_system_key: Array.isArray(statsBySystem) && statsBySystem.length
+      : [],
+    stats_by_system_key: Array.isArray(statsBySystem)
       ? statsBySystem.map(normalizeCompareStatsSection).filter(Boolean)
-      : computeCompareStatsFromRows(normalizedRows, 'system_key'),
-    stats_by_system_key_overall: Array.isArray(statsBySystemOverall) && statsBySystemOverall.length
+      : [],
+    stats_by_system_key_overall: Array.isArray(statsBySystemOverall)
       ? statsBySystemOverall.map(normalizeStatsGroup).filter(Boolean)
-      : computeCompareStatsAcrossRows(normalizedRows, 'system_key'),
+      : [],
   };
 }
 

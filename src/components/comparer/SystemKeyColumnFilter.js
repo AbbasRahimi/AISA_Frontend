@@ -119,7 +119,7 @@ function SystemKeyColumnFilter({  items = [],
         {showSharedColumn && (
           <div className={colClass}>
             <MultiEntityFilter
-              title="Shared across all"
+              title={`Shared across all (${sharedItems.length})`}
               items={sharedItems}
               selectedIds={sharedSelectedIds}
               onChange={handleSharedChange}
@@ -132,7 +132,7 @@ function SystemKeyColumnFilter({  items = [],
         {perPaper.map(({ seedPaperId, items: columnItems }) => (
           <div key={seedPaperId} className={colClass}>
             <MultiEntityFilter
-              title={getSeedPaperLabel(seedPaperId)}
+              title={`${getSeedPaperLabel(seedPaperId)} (${columnItems.length})`}
               items={columnItems}
               selectedIds={selectedIds.filter((id) => columnItems.some((item) => String(item.id) === String(id)))}
               onChange={(columnSelectedIds) => handlePerPaperChange(seedPaperId, columnSelectedIds)}

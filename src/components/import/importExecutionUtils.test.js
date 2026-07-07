@@ -23,22 +23,11 @@ describe('parseExecutionFilename', () => {
     expect(meta.system_key).toBe('paperpal.citationfinder');
   });
 
-  it('parses Format 2 without subscription (model in first segment)', () => {
+  it('rejects Format 2 (legacy model-in-first-segment)', () => {
     const meta = parseExecutionFilename(
       'zendy.zaia.pro.2606_soci4_prompt01_v3_260603_151257_na.txt'
     );
-    expect(meta).not.toBeNull();
-    expect(meta.system_name).toBe('zendy');
-    expect(meta.function).toBe('zaia.pro.2606');
-    expect(meta.model_version).toBe('zendy.zaia.pro.2606');
-    expect(meta.subscription_status).toBeNull();
-    expect(meta.seed_paper_alias).toBe('soci4');
-    expect(meta.prompt_id).toBe('prompt01');
-    expect(meta.prompt_version).toBe('v3');
-    expect(meta.date_str).toBe('260603');
-    expect(meta.time_str).toBe('151257');
-    expect(meta.comment).toBe('na');
-    expect(meta.system_key).toBe('zendy.zaia.pro.2606');
+    expect(meta).toBeNull();
   });
 
   it('parses Format 1 with comment suffix', () => {
@@ -72,12 +61,12 @@ describe('validateExecutionFilename', () => {
     expect(result.meta).not.toBeNull();
   });
 
-  it('accepts valid Format 2 filename', () => {
+  it('rejects legacy Format 2 filename', () => {
     const result = validateExecutionFilename(
       'zendy.zaia.pro.2606_soci4_prompt01_v3_260603_151257_na.txt'
     );
-    expect(result.valid).toBe(true);
-    expect(result.meta).not.toBeNull();
+    expect(result.valid).toBe(false);
+    expect(result.meta).toBeNull();
   });
 
   it('rejects unsupported extension', () => {

@@ -8,15 +8,12 @@ export function hasImportExecutionExtension(filename) {
 }
 
 export const FILENAME_PATTERN =
-  'Format 1: systemID.function_modelversion_subscription_seedpaperID_promptID_promptversion_YYMMDD_HHMMSS[_comment] ' +
-  '| Format 2: systemID.modelversion_seedpaperID_promptID_promptversion_YYMMDD_HHMMSS[_comment]';
+  'systemID.function_modelversion_subscription_seedpaperID_promptID_promptversion_YYMMDD_HHMMSS[_comment]';
 export const EXAMPLE_FILENAME =
-  'chatgpt.consensus_gpt4_free_test1_prompt1_v3_250729_131049.json';
-export const EXAMPLE_FILENAME_FORMAT2 =
-  'zendy.zaia.pro.2606_soci4_prompt01_v3_260603_151257_na.txt';
+  'chatgpt.consensus_gpt4_free_test1_prompt1_v3_250729_131049_anycomments.json';
 export const INVALID_FILENAME_MESSAGE =
-  'Invalid filename format. Expected Format 1 (systemID.function with subscription) or Format 2 (model in first segment, no subscription). ' +
-  `(e.g. ${EXAMPLE_FILENAME} or ${EXAMPLE_FILENAME_FORMAT2})`;
+  'Invalid filename format. Expected: systemID.function_modelversion_subscription_seedpaperID_promptID_promptversion_YYMMDD_HHMMSS[_comment]. ' +
+  `(e.g. ${EXAMPLE_FILENAME})`;
 
 /** True if filename is an "_na" execution (no results; .txt with comment "na"). */
 export function isNaExecutionFile(filename) {
@@ -65,9 +62,8 @@ function parseSystemPart(systemPart) {
 }
 
 /**
- * Parses execution filename (Format 1 or Format 2).
+ * Parses execution filename (Format 1 only).
  * Format 1: systemID.function_modelversion_subscription_seedpaperID_promptID_promptversion_date_time[_comment]
- * Format 2: systemID.modelversion_seedpaperID_promptID_promptversion_date_time[_comment]
  * Supports .json, .bib, and .txt (including *_na.txt for no-result executions).
  * Returns parsed fields or null when invalid.
  */
@@ -93,7 +89,7 @@ export function parseExecutionFilename(filename) {
   let comment;
 
   if (dateIdx === 6) {
-    // Format 1: need at least 8 parts (no comment) or 9+ (with comment)
+    // Format 1: need exactly 8 parts (no comment) or 9 parts (with comment)
     if (parts.length < 8) return null;
     model_version = parts[1];
     subscription_status = parts[2];
@@ -105,22 +101,6 @@ export function parseExecutionFilename(filename) {
       comment = '';
     } else if (parts.length === 9) {
       comment = parts[8];
-    } else {
-      return null;
-    }
-  } else if (dateIdx === 4) {
-    // Format 2: need at least 6 parts (no comment) or 7 (with comment)
-    if (parts.length < 6) return null;
-    model_version = null; // embedded in first segment
-    subscription_status = null;
-    seed_paper_alias = parts[1];
-    prompt_id = parts[2];
-    prompt_version = parts[3];
-    systemPart = parts[0];
-    if (parts.length === 6) {
-      comment = '';
-    } else if (parts.length === 7) {
-      comment = parts[6];
     } else {
       return null;
     }

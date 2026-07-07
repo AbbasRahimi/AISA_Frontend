@@ -54,9 +54,9 @@ function BatchCompareStatsCharts({ groups = [], groupKey, groupLabel }) {
     <div className="row g-3 mb-4">
       <div className="col-lg-5">
         <div className="border rounded p-3 h-100 bg-white">
-          <h6 className="text-muted mb-1">F1 leaderboard (avg across selected seeds)</h6>
+          <h6 className="text-muted mb-1">F1 leaderboard (NZ avg across selected seeds)</h6>
           <p className="small text-muted mb-3">
-            {groupLabel}s ranked by average F1 score
+            {groupLabel}s ranked by non-zero average F1 score
           </p>
           <ResponsiveContainer width="100%" height={leaderboardHeight}>
             <BarChart
@@ -87,9 +87,9 @@ function BatchCompareStatsCharts({ groups = [], groupKey, groupLabel }) {
 
       <div className="col-lg-7">
         <div className="border rounded p-3 h-100 bg-white">
-          <h6 className="text-muted mb-1">Precision, recall &amp; F1 comparison (avg)</h6>
+          <h6 className="text-muted mb-1">Precision, recall &amp; F1 comparison (NZ avg)</h6>
           <p className="small text-muted mb-3">
-            Average metrics per {groupLabel.toLowerCase()} across all selected seed papers
+            Non-zero average metrics per {groupLabel.toLowerCase()} across all selected seed papers
           </p>
           <ResponsiveContainer width="100%" height={groupedHeight}>
             <BarChart

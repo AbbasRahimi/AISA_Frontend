@@ -12,8 +12,16 @@ const METRIC_COLUMNS = [
 const METRIC_SUB_COLUMNS = [
   { key: 'min', label: 'Min' },
   { key: 'max', label: 'Max' },
-  { key: 'avg', label: 'Avg' },
+  { key: 'nz_avg', label: 'NZ Avg' },
+  { key: 'nz_median', label: 'NZ Median' },
+  { key: 'std_dev', label: 'Std dev' },
+  { key: 'iqr', label: 'IQR' },
 ];
+
+function formatMetricSubValue(value) {
+  if (value == null) return '—';
+  return formatPercent(value);
+}
 
 function metricSortKey(metricKey, subKey) {
   return `${metricKey}:${subKey}`;
@@ -53,12 +61,18 @@ function sortGroups(groups, groupKey, sort) {
     } else if (key === 'total_llm_papers_sum') {
       av = a.stats?.total_llm_papers_sum;
       bv = b.stats?.total_llm_papers_sum;
+    } else if (key === 'rej_count') {
+      av = a.stats?.rej_count;
+      bv = b.stats?.rej_count;
+    } else if (key === 'rej_rate') {
+      av = a.stats?.rej_rate;
+      bv = b.stats?.rej_rate;
     } else if (metricSort) {
       av = a.stats?.[metricSort.metric]?.[metricSort.sub];
       bv = b.stats?.[metricSort.metric]?.[metricSort.sub];
     } else {
-      av = a.stats?.[key]?.avg;
-      bv = b.stats?.[key]?.avg;
+      av = a.stats?.[key]?.nz_avg;
+      bv = b.stats?.[key]?.nz_avg;
     }
     if (av == null && bv == null) return 0;
     if (av == null) return 1;
@@ -88,7 +102,7 @@ function StatsTable({ groups, groupKey, groupLabel, sort, onSort, expandMetricCo
                     as="span"
                   />
                 </th>
-                <th rowSpan={2} scope="col" className="align-middle">
+                <th rowSpan={2} scope="col" className="align-middle text-center">
                   <PerExecSortTh
                     colKey="count"
                     label="Count"
@@ -98,10 +112,30 @@ function StatsTable({ groups, groupKey, groupLabel, sort, onSort, expandMetricCo
                     as="span"
                   />
                 </th>
-                <th rowSpan={2} scope="col" className="align-middle text-end">
+                <th rowSpan={2} scope="col" className="align-middle text-center">
                   <PerExecSortTh
                     colKey="total_llm_papers_sum"
                     label="Total papers"
+                    sortKey={sort.key}
+                    sortDir={sort.dir}
+                    onSort={onSort}
+                    as="span"
+                  />
+                </th>
+                <th rowSpan={2} scope="col" className="align-middle text-center">
+                  <PerExecSortTh
+                    colKey="rej_count"
+                    label="Rejection count"
+                    sortKey={sort.key}
+                    sortDir={sort.dir}
+                    onSort={onSort}
+                    as="span"
+                  />
+                </th>
+                <th rowSpan={2} scope="col" className="align-middle text-center">
+                  <PerExecSortTh
+                    colKey="rej_rate"
+                    label="Rejection rate"
                     sortKey={sort.key}
                     sortDir={sort.dir}
                     onSort={onSort}
@@ -142,6 +176,7 @@ function StatsTable({ groups, groupKey, groupLabel, sort, onSort, expandMetricCo
               <PerExecSortTh
                 colKey="count"
                 label="Count"
+                className="text-center"
                 sortKey={sort.key}
                 sortDir={sort.dir}
                 onSort={onSort}
@@ -149,6 +184,23 @@ function StatsTable({ groups, groupKey, groupLabel, sort, onSort, expandMetricCo
               <PerExecSortTh
                 colKey="total_llm_papers_sum"
                 label="Total papers"
+                className="text-center"
+                sortKey={sort.key}
+                sortDir={sort.dir}
+                onSort={onSort}
+              />
+              <PerExecSortTh
+                colKey="rej_count"
+                label="Rejection count"
+                className="text-center"
+                sortKey={sort.key}
+                sortDir={sort.dir}
+                onSort={onSort}
+              />
+              <PerExecSortTh
+                colKey="rej_rate"
+                label="Rejection rate"
+                className="text-center"
                 sortKey={sort.key}
                 sortDir={sort.dir}
                 onSort={onSort}
@@ -174,8 +226,10 @@ function StatsTable({ groups, groupKey, groupLabel, sort, onSort, expandMetricCo
                   ? (group.system_key ? <code>{group.system_key}</code> : '—')
                   : (group.prompt_alias?.trim() || '—')}
               </td>
-              <td>{group.stats?.count ?? '—'}</td>
-              <td className="text-end">{formatInt(group.stats?.total_llm_papers_sum)}</td>
+              <td className="text-center">{group.stats?.count ?? '—'}</td>
+              <td className="text-center">{formatInt(group.stats?.total_llm_papers_sum)}</td>
+              <td className="text-center">{formatInt(group.stats?.rej_count)}</td>
+              <td className="text-center">{formatPercent(group.stats?.rej_rate ?? 0)}</td>
               {expandMetricColumns
                 ? METRIC_COLUMNS.flatMap(({ key: metricKey }) =>
                   METRIC_SUB_COLUMNS.map(({ key: subKey }) => {
@@ -183,17 +237,17 @@ function StatsTable({ groups, groupKey, groupLabel, sort, onSort, expandMetricCo
                     return (
                       <td
                         key={metricSortKey(metricKey, subKey)}
-                        className={`text-end small ${subKey === 'min' ? 'border-start' : ''} ${subKey === 'avg' ? 'fw-semibold' : 'text-muted'}`}
+                        className={`text-end small ${subKey === 'min' ? 'border-start' : ''} ${subKey === 'nz_avg' ? 'fw-semibold' : 'text-muted'}`}
                       >
-                        {value != null ? formatPercent(value) : '—'}
+                        {formatMetricSubValue(value)}
                       </td>
                     );
                   })
                 )
                 : METRIC_COLUMNS.map(({ key }) => {
                   const metric = group.stats?.[key];
-                  const { min, max, avg } = metric ?? {};
-                  if (min == null && max == null && avg == null) {
+                  const { min, max, nz_avg } = metric ?? {};
+                  if (min == null && max == null && nz_avg == null) {
                     return <td key={key}>—</td>;
                   }
                   return (
@@ -203,7 +257,7 @@ function StatsTable({ groups, groupKey, groupLabel, sort, onSort, expandMetricCo
                         <span className="mx-1 text-muted">/</span>
                         <span className="text-muted">max</span> {formatPercent(max)}
                         <span className="mx-1 text-muted">/</span>
-                        <span className="fw-semibold">avg</span> {formatPercent(avg)}
+                        <span className="fw-semibold">NZ avg</span> {formatPercent(nz_avg)}
                       </span>
                     </td>
                   );
@@ -227,7 +281,7 @@ function BatchCompareGroupedStats({
   expandMetricColumns = false,
 }) {
   const [tableSort, setTableSort] = useState({
-    key: expandMetricColumns ? metricSortKey('f1_score', 'avg') : 'f1_score',
+    key: expandMetricColumns ? metricSortKey('f1_score', 'nz_avg') : 'f1_score',
     dir: 'desc',
   });
 

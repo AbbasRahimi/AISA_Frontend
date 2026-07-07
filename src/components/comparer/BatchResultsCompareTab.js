@@ -11,10 +11,10 @@ import BatchCompareGroupedStats from './BatchCompareGroupedStats';
 import BatchCompareStatsCharts from './BatchCompareStatsCharts';
 import BatchCompareBubbleChart from './BatchCompareBubbleChart';
 import BatchCompareMetricsDotPlot from './BatchCompareMetricsDotPlot';
+import BatchCompareBoxPlot from './BatchCompareBoxPlot';
 import CollapsibleCard from './CollapsibleCard';
 import {
   extractSystemKeyItems,
-  filterCompareDataBySystemKeys,
   normalizeBatchResultsListResponse,
   normalizeCompareResponse,
   normalizePromptAliasesResponse,
@@ -141,6 +141,7 @@ function BatchResultsCompareTab() {
     setLoading(true);
     setError(null);
     try {
+      const systemKeys = resolveSelectedSystemKeys();
       const response = await apiService.compareBatchComparisonResults({
         seedPaperIds: selectedSeedPaperIds,
         promptAliases: selectedPromptAliases.length
@@ -152,10 +153,10 @@ function BatchResultsCompareTab() {
           }))]
           : null,
         comparisonProfileId,
+        systemKeys: systemKeys.length ? systemKeys : null,
         latestOnly: false,
       });
-      const normalized = normalizeCompareResponse(response);
-      setCompareData(filterCompareDataBySystemKeys(normalized, resolveSelectedSystemKeys()));
+      setCompareData(normalizeCompareResponse(response));
     } catch (err) {
       setError(err.message || 'Failed to compare stored results.');
       setCompareData(null);
@@ -316,6 +317,11 @@ function BatchResultsCompareTab() {
                 <i className="fas fa-layer-group text-primary me-1" />
                 Overall across selected seed papers
               </h6>
+              <BatchCompareBoxPlot
+                groups={stats_by_prompt_alias_overall}
+                groupKey="prompt_alias"
+                groupLabel="Prompt alias"
+              />
               <BatchCompareStatsCharts
                 groups={stats_by_prompt_alias_overall}
                 groupKey="prompt_alias"
@@ -352,6 +358,11 @@ function BatchResultsCompareTab() {
               <BatchCompareMetricsDotPlot
                 groups={stats_by_system_key_overall}
                 groupKey="system_key"
+              />
+              <BatchCompareBoxPlot
+                groups={stats_by_system_key_overall}
+                groupKey="system_key"
+                groupLabel="System key"
               />
               <BatchCompareStatsCharts
                 groups={stats_by_system_key_overall}

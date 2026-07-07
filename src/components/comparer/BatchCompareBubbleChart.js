@@ -62,9 +62,9 @@ function BubbleTooltip({ active, payload }) {
           <span>{formatInt(p.totalPapers)}</span>
         </div>
       )}
-      {p.stats?.precision?.avg != null && (
+      {p.stats?.precision?.nz_avg != null && (
         <div className="text-muted mt-2" style={{ fontSize: 12 }}>
-          Avg shown. Precision min/max: {formatPercent(p.stats.precision.min)} / {formatPercent(p.stats.precision.max)}
+          NZ avg shown. Precision min/max: {formatPercent(p.stats.precision.min)} / {formatPercent(p.stats.precision.max)} · std dev: {formatPercent(p.stats.precision.std_dev)} · IQR: {formatPercent(p.stats.precision.iqr)}
         </div>
       )}
     </div>
@@ -75,9 +75,9 @@ function BatchCompareBubbleChart({ groups = [], groupKey, title = 'Precision vs 
   const data = useMemo(() => {
     return (groups || [])
       .map((g) => {
-        const precision = toChartPercent(g.stats?.precision?.avg);
-        const recall = toChartPercent(g.stats?.recall?.avg);
-        const f1 = toChartPercent(g.stats?.f1_score?.avg);
+        const precision = toChartPercent(g.stats?.precision?.nz_avg);
+        const recall = toChartPercent(g.stats?.recall?.nz_avg);
+        const f1 = toChartPercent(g.stats?.f1_score?.nz_avg);
         const count = safeNumber(g.stats?.count);
         const totalPapers = safeNumber(g.stats?.total_llm_papers_sum);
         if (precision == null || recall == null) return null;
@@ -104,7 +104,7 @@ function BatchCompareBubbleChart({ groups = [], groupKey, title = 'Precision vs 
     <div className="border rounded p-3 bg-white mb-4">
       <h6 className="text-muted mb-1">{title}</h6>
       <p className="small text-muted mb-3">
-        X = recall (avg), Y = precision (avg), bubble size = total papers, bubble color = F1 (avg)
+        X = recall (NZ avg), Y = precision (NZ avg), bubble size = total papers, bubble color = F1 (NZ avg)
       </p>
       <ResponsiveContainer width="100%" height={height}>
         <ScatterChart margin={{ top: 8, right: 16, bottom: 16, left: 8 }}>

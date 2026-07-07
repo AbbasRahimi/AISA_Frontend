@@ -43,10 +43,10 @@ function DiamondDot({ cx, cy, fill }) {
   return <polygon points={points} fill={fill} stroke="rgba(0,0,0,0.35)" strokeWidth={1} />;
 }
 
-function sortByF1AvgDesc(groups) {
+function sortByF1NzAvgDesc(groups) {
   return [...(groups || [])].sort((a, b) => {
-    const av = a?.stats?.f1_score?.avg;
-    const bv = b?.stats?.f1_score?.avg;
+    const av = a?.stats?.f1_score?.nz_avg;
+    const bv = b?.stats?.f1_score?.nz_avg;
     if (av == null && bv == null) return 0;
     if (av == null) return 1;
     if (bv == null) return -1;
@@ -71,20 +71,20 @@ function DotTooltip({ active, payload, label }) {
 function BatchCompareMetricsDotPlot({
   groups = [],
   groupKey,
-  title = 'Top systems: precision, recall, and F1 (avg)',
+  title = 'Top systems: precision, recall, and F1 (NZ avg)',
   topN = 25,
 }) {
   const data = useMemo(() => {
-    return sortByF1AvgDesc(groups)
+    return sortByF1NzAvgDesc(groups)
       .slice(0, topN)
       .map((g) => {
         const label = getGroupLabel(g, groupKey);
         return {
           label,
           labelShort: truncateChartLabel(label, 34),
-          Precision: toPercent(g.stats?.precision?.avg),
-          Recall: toPercent(g.stats?.recall?.avg),
-          F1: toPercent(g.stats?.f1_score?.avg),
+          Precision: toPercent(g.stats?.precision?.nz_avg),
+          Recall: toPercent(g.stats?.recall?.nz_avg),
+          F1: toPercent(g.stats?.f1_score?.nz_avg),
         };
       });
   }, [groups, groupKey, topN]);
@@ -98,7 +98,7 @@ function BatchCompareMetricsDotPlot({
     <div className="border rounded p-3 bg-white mb-4">
       <h6 className="text-muted mb-1">{title}</h6>
       <p className="small text-muted mb-3">
-        Systems are ranked by F1 (avg). Points show each metric’s average score.
+        Systems are ranked by F1 (NZ avg). Points show each metric’s non-zero average score.
       </p>
       <ResponsiveContainer width="100%" height={height}>
         <ScatterChart
