@@ -43,6 +43,52 @@ function DiamondDot({ cx, cy, fill }) {
   return <polygon points={points} fill={fill} stroke="rgba(0,0,0,0.35)" strokeWidth={1} />;
 }
 
+function LegendMarker({ name, color }) {
+  const stroke = 'rgba(0,0,0,0.35)';
+  if (name === 'Precision') {
+    return (
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
+        <circle cx="7" cy="7" r="5" fill={color} stroke={stroke} strokeWidth="1" />
+      </svg>
+    );
+  }
+  if (name === 'Recall') {
+    return (
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
+        <polygon points="7,1 1,13 13,13" fill={color} stroke={stroke} strokeWidth="1" />
+      </svg>
+    );
+  }
+  if (name === 'F1') {
+    return (
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
+        <polygon points="7,1 1,7 7,13 13,7" fill={color} stroke={stroke} strokeWidth="1" />
+      </svg>
+    );
+  }
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
+      <rect x="2" y="2" width="10" height="10" fill={color} stroke={stroke} strokeWidth="1" />
+    </svg>
+  );
+}
+
+function DotPlotLegend({ payload }) {
+  if (!payload?.length) return null;
+  return (
+    <div className="w-100 d-flex justify-content-center">
+      <ul className="list-unstyled d-flex flex-wrap justify-content-center gap-3 mb-0 small">
+        {payload.map((entry) => (
+          <li key={entry.dataKey ?? entry.value} className="d-flex align-items-center gap-2">
+            <LegendMarker name={entry.value} color={entry.color} />
+            <span>{entry.value}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function sortByF1NzAvgDesc(groups) {
   return [...(groups || [])].sort((a, b) => {
     const av = a?.stats?.f1_score?.nz_avg;
@@ -115,7 +161,7 @@ function BatchCompareMetricsDotPlot({
             tick={{ fontSize: 12 }}
           />
           <Tooltip content={<DotTooltip />} />
-          <Legend />
+          <Legend content={<DotPlotLegend />} align="center"  />
           <Scatter
             name="Precision"
             dataKey="Precision"

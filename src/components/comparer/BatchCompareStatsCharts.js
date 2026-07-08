@@ -3,6 +3,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  LabelList,
   Legend,
   ResponsiveContainer,
   Tooltip,
@@ -18,6 +19,27 @@ import {
 } from './batchCompareVisualUtils';
 
 const PERCENT_TICK = (value) => `${value}%`;
+
+function PercentLabel({ x, y, width, height, value }) {
+  if (value == null || Number.isNaN(value) || x == null || y == null || width == null || height == null) return null;
+  const label = `${Number(value).toFixed(1)}%`;
+  const textX = x + width + 6;
+  const fill = '#111827';
+  const anchor = 'start';
+  return (
+    <text
+      x={textX}
+      y={y + height / 2}
+      dy={4}
+      textAnchor={anchor}
+      fill={fill}
+      fontSize={12}
+      style={{ pointerEvents: 'none' }}
+    >
+      {label}
+    </text>
+  );
+}
 
 function CompareChartTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
@@ -79,7 +101,9 @@ function BatchCompareStatsCharts({ groups = [], groupKey, groupLabel }) {
                 name="F1"
                 fill={METRIC_CHART_COLORS.f1}
                 radius={[0, 4, 4, 0]}
-              />
+              >
+                <LabelList dataKey="F1" content={<PercentLabel />} />
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
