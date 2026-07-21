@@ -66,8 +66,9 @@ export function boxPlotValuesFromMetric(metric) {
   return { min, q1, median, q3, max, nzAvg };
 }
 
-export function buildCompareBoxPlotData(groups, groupKey, metricKey = 'f1_score') {
+export function buildCompareBoxPlotData(groups, groupKey, metricKey = 'f1_score', topN = 25) {
   return sortGroupsByF1NzAvg(groups)
+    .slice(0, topN)
     .map((group) => ({
       label: getGroupLabel(group, groupKey),
       labelShort: truncateChartLabel(

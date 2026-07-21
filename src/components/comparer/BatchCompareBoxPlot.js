@@ -118,13 +118,14 @@ function BatchCompareBoxPlot({
   groupKey,
   groupLabel,
   title = 'Metric distribution across selected seed papers',
+  topN = 25,
 }) {
   const [metricKey, setMetricKey] = useState('f1_score');
   const metricOption = METRIC_OPTIONS.find((option) => option.key === metricKey) ?? METRIC_OPTIONS[2];
 
   const data = useMemo(
-    () => buildCompareBoxPlotData(groups, groupKey, metricKey),
-    [groups, groupKey, metricKey],
+    () => buildCompareBoxPlotData(groups, groupKey, metricKey, topN),
+    [groups, groupKey, metricKey, topN],
   );
 
   if (!data.length) return null;
@@ -150,8 +151,9 @@ function BatchCompareBoxPlot({
         </div>
       </div>
       <p className="small text-muted mb-3">
-        Horizontal box-and-whisker per {groupLabel?.toLowerCase() ?? 'group'}: whiskers = min/max,
-        box = IQR around NZ median, bold line = median, hollow dot = NZ avg
+        Top {topN} by F1 (NZ avg). Horizontal box-and-whisker per{' '}
+        {groupLabel?.toLowerCase() ?? 'group'}: whiskers = min/max, box = IQR around NZ median,
+        bold line = median, hollow dot = NZ avg
       </p>
       <ResponsiveContainer width="100%" height={height}>
         <ComposedChart
