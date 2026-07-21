@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { isValidFile } from './helpers';
+import { getCitationFileTypeLabel, isValidFile } from './helpers';
 
 const FileUploadSection = ({ selectedFile, setSelectedFile, dragOver, setDragOver, onStartVerification, onExportResults, onClearResults, error, setError, isVerifying, verificationResults }) => {
   const fileInputRef = useRef(null);
@@ -25,7 +25,7 @@ const FileUploadSection = ({ selectedFile, setSelectedFile, dragOver, setDragOve
         setSelectedFile(file);
         setError(null);
       } else {
-        setError('Please select a valid JSON or BibTeX file.');
+        setError('Please select a valid JSON, BibTeX, RIS, or CSV file.');
       }
     }
   };
@@ -36,7 +36,7 @@ const FileUploadSection = ({ selectedFile, setSelectedFile, dragOver, setDragOve
       setSelectedFile(file);
       setError(null);
     } else {
-      setError('Please select a valid JSON or BibTeX file.');
+      setError('Please select a valid JSON, BibTeX, RIS, or CSV file.');
     }
   };
 
@@ -67,12 +67,12 @@ const FileUploadSection = ({ selectedFile, setSelectedFile, dragOver, setDragOve
             >
               <i className="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
               <p className="mb-2">Drop your publications file here or click to browse</p>
-              <p className="text-muted small">Supported formats: JSON (.json), BibTeX (.bib)</p>
+              <p className="text-muted small">Supported formats: JSON (.json), BibTeX (.bib), RIS (.ris), CSV (.csv)</p>
               <input 
                 ref={fileInputRef}
                 type="file" 
                 className="d-none" 
-                accept=".json,.bib"
+                accept=".json,.bib,.ris,.csv"
                 onChange={handleFileSelect}
               />
               {selectedFile && (
@@ -80,7 +80,7 @@ const FileUploadSection = ({ selectedFile, setSelectedFile, dragOver, setDragOve
                   <div className="alert alert-success alert-sm">
                     <i className="fas fa-file"></i> <strong>{selectedFile.name}</strong><br />
                     <small>
-                      Type: {selectedFile.name.toLowerCase().endsWith('.bib') ? 'BibTeX' : 'JSON'} | 
+                      Type: {getCitationFileTypeLabel(selectedFile.name)} | 
                       Size: {(selectedFile.size / 1024).toFixed(2)} KB
                     </small>
                   </div>

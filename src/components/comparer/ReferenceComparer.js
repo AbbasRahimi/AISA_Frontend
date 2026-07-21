@@ -416,7 +416,7 @@ const ReferenceComparer = () => {
 
     if (uploadable.length === 0) {
 
-      setError('Please select at least one valid LLM file (.json, .bib, or _na.txt).');
+      setError('Please select at least one valid LLM file (.json, .bib, .ris, .csv, or _na.txt).');
 
       return;
 

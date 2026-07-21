@@ -66,7 +66,7 @@ const BatchFileUploadSection = ({
     if (dropped.length === 0) return;
     const valid = dropped.filter(isValidBatchLlmFile);
     if (valid.length === 0) {
-      setError('LLM files must be .json, .bib, or *_na.txt.');
+      setError('LLM files must be .json, .bib, .ris, .csv, or *_na.txt.');
       return;
     }
     setLlmFiles((prev) => {
@@ -97,7 +97,7 @@ const BatchFileUploadSection = ({
     if (selected.length === 0) return;
     const valid = selected.filter(isValidBatchLlmFile);
     if (valid.length === 0) {
-      setError('LLM files must be .json, .bib, or *_na.txt.');
+      setError('LLM files must be .json, .bib, .ris, .csv, or *_na.txt.');
       return;
     }
     setLlmFiles(valid);
@@ -131,8 +131,8 @@ const BatchFileUploadSection = ({
           <div className="card-body">
             <p className="text-muted small">
               {useSeedPaperGroundTruth
-                ? 'Ground truth comes from the selected seed paper. Upload one or more LLM execution files (.json, .bib, or '
-                : 'Upload one ground-truth BibTeX file and one or more LLM execution files (.json, .bib, or '}
+                ? 'Ground truth comes from the selected seed paper. Upload one or more LLM execution files (.json, .bib, .ris, .csv, or '
+                : 'Upload one ground-truth BibTeX file and one or more LLM execution files (.json, .bib, .ris, .csv, or '}
               <code>_na.txt</code>). Filenames should follow the execution naming format when possible.
             </p>
             <div className="row">

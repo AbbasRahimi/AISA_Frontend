@@ -239,9 +239,19 @@ export function renderCitationMultiSearchResult(response) {
 }
 
 export const isValidFile = (file) => {
-  const validExtensions = ['.json', '.bib'];
+  const validExtensions = ['.json', '.bib', '.ris', '.csv'];
   const fileName = file.name.toLowerCase();
   return validExtensions.some(ext => fileName.endsWith(ext));
+};
+
+/** Human-readable label for a citation list file extension. */
+export function getCitationFileTypeLabel(filename) {
+  const name = String(filename || '').toLowerCase();
+  if (name.endsWith('.bib') || name.endsWith('.bibtex')) return 'BibTeX';
+  if (name.endsWith('.ris')) return 'RIS';
+  if (name.endsWith('.csv')) return 'CSV';
+  if (name.endsWith('.json')) return 'JSON';
+  return 'Unknown';
 };
 
 export function isDatabaseResultFound(dbResult) {

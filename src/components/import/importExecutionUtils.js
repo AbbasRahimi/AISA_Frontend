@@ -1,7 +1,7 @@
-export const ACCEPT_EXTENSIONS = '.json,.bib,.txt';
+export const ACCEPT_EXTENSIONS = '.json,.bib,.ris,.csv,.txt';
 
 /** Filenames accepted for import (extension check only). */
-export const IMPORT_EXECUTION_EXT_REGEX = /\.(json|bib|txt)$/i;
+export const IMPORT_EXECUTION_EXT_REGEX = /\.(json|bib|ris|csv|txt)$/i;
 
 export function hasImportExecutionExtension(filename) {
   return IMPORT_EXECUTION_EXT_REGEX.test(String(filename || '').trim());
@@ -64,12 +64,12 @@ function parseSystemPart(systemPart) {
 /**
  * Parses execution filename (Format 1 only).
  * Format 1: systemID.function_modelversion_subscription_seedpaperID_promptID_promptversion_date_time[_comment]
- * Supports .json, .bib, and .txt (including *_na.txt for no-result executions).
+ * Supports .json, .bib, .ris, .csv, and .txt (including *_na.txt for no-result executions).
  * Returns parsed fields or null when invalid.
  */
 export function parseExecutionFilename(filename) {
   if (!filename || typeof filename !== 'string') return null;
-  const base = filename.replace(/\.(json|bib|txt)$/i, '').trim();
+  const base = filename.replace(/\.(json|bib|ris|csv|txt)$/i, '').trim();
   const parts = base.split('_');
   if (parts.length < 6) return null;
 
@@ -135,7 +135,7 @@ export function validateExecutionFilename(filename) {
     return {
       valid: false,
       meta: null,
-      message: 'Unsupported extension (use .json, .bib, or .txt).',
+      message: 'Unsupported extension (use .json, .bib, .ris, .csv, or .txt).',
     };
   }
   const meta = parseExecutionFilename(filename);

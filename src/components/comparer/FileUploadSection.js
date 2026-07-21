@@ -54,7 +54,7 @@ const FileUploadSection = ({
         }
         setError(null);
       } else {
-        setError('Please select a valid JSON or BibTeX file.');
+        setError('Please select a valid JSON, BibTeX, RIS, or CSV file.');
       }
     }
   };
@@ -69,7 +69,7 @@ const FileUploadSection = ({
       }
       setError(null);
     } else {
-      setError('Please select a valid JSON or BibTeX file.');
+      setError('Please select a valid JSON, BibTeX, RIS, or CSV file.');
     }
   };
 
@@ -118,12 +118,12 @@ const FileUploadSection = ({
                 >
                   <i className="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
                   <p className="mb-2">Drop your ground truth file here or click to browse</p>
-                  <p className="text-muted small">Supported formats: JSON (.json), BibTeX (.bib)</p>
+                  <p className="text-muted small">Supported formats: JSON (.json), BibTeX (.bib), RIS (.ris), CSV (.csv)</p>
                   <input 
                     type="file" 
                     ref={targetFileInputRef}
                     className="d-none" 
-                    accept=".json,.bib"
+                    accept=".json,.bib,.ris,.csv"
                     onChange={(e) => handleFileSelect(e, 'target')}
                   />
                   {targetFile && (
@@ -159,12 +159,12 @@ const FileUploadSection = ({
                 >
                   <i className="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
                   <p className="mb-2">Drop your LLM output file here or click to browse</p>
-                  <p className="text-muted small">Supported formats: JSON (.json), BibTeX (.bib)</p>
+                  <p className="text-muted small">Supported formats: JSON (.json), BibTeX (.bib), RIS (.ris), CSV (.csv)</p>
                   <input 
                     type="file" 
                     ref={sourceFileInputRef}
                     className="d-none" 
-                    accept=".json,.bib"
+                    accept=".json,.bib,.ris,.csv"
                     onChange={(e) => handleFileSelect(e, 'source')}
                   />
                   {sourceFile && (

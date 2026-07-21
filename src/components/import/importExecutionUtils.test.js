@@ -69,8 +69,21 @@ describe('validateExecutionFilename', () => {
     expect(result.meta).toBeNull();
   });
 
+  it('accepts .ris and .csv extensions', () => {
+    expect(
+      validateExecutionFilename(
+        'paperpal.citationfinder_unknown_free_soci4_prompt06_v3_260612_142108.ris'
+      ).valid
+    ).toBe(true);
+    expect(
+      validateExecutionFilename(
+        'paperpal.citationfinder_unknown_free_soci4_prompt06_v3_260612_142108.csv'
+      ).valid
+    ).toBe(true);
+  });
+
   it('rejects unsupported extension', () => {
-    const result = validateExecutionFilename('test.csv');
+    const result = validateExecutionFilename('test.docx');
     expect(result.valid).toBe(false);
   });
 });

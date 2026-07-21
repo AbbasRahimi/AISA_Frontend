@@ -398,7 +398,7 @@ export default function ImportExecution() {
     const skippedExt = files.filter((f) => !hasImportExecutionExtension(f.name));
 
     if (uploadable.length === 0) {
-      setError('No files with a supported extension (.json, .bib, .txt).');
+      setError('No files with a supported extension (.json, .bib, .ris, .csv, .txt).');
       return;
     }
 
@@ -425,7 +425,7 @@ export default function ImportExecution() {
           fileName: skippedExt.map((f) => f.name).join(', '),
           createdAt,
           message:
-            'Not uploaded — unsupported extension (only .json, .bib, and .txt are sent to the server).',
+            'Not uploaded — unsupported extension (only .json, .bib, .ris, .csv, and .txt are sent to the server).',
         },
       ];
     };
@@ -620,7 +620,7 @@ export default function ImportExecution() {
             Import execution from file
           </h2>
           <p className="text-muted">
-            Upload one or more JSON or BibTeX files (publication lists) exported from a manual run, or <code>_na.txt</code> files for no-result runs. Each file name should follow the naming format so metadata can be resolved (single-file mode checks seed paper and prompt before import). For multiple files, the server processes each file and skips problematic ones; results appear under Import attempts.
+            Upload one or more JSON, BibTeX, RIS, or CSV files (publication lists) exported from a manual run, or <code>_na.txt</code> files for no-result runs. Each file name should follow the naming format so metadata can be resolved (single-file mode checks seed paper and prompt before import). For multiple files, the server processes each file and skips problematic ones; results appear under Import attempts.
           </p>
         </div>
       </div>
@@ -636,7 +636,7 @@ export default function ImportExecution() {
             </div>
             <div className="card-body">
               <div className="mb-3">
-                <label className="form-label fw-bold">File(s) (JSON, BibTeX, or .txt for no-result)</label>
+                <label className="form-label fw-bold">File(s) (JSON, BibTeX, RIS, CSV, or .txt for no-result)</label>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -652,7 +652,7 @@ export default function ImportExecution() {
                         <i className="fas fa-file me-1"></i>
                         {f.name} ({(f.size / 1024).toFixed(2)} KB)
                         {!hasImportExecutionExtension(f.name) && (
-                          <span className="text-warning ms-1">— not uploaded (use .json, .bib, or .txt)</span>
+                          <span className="text-warning ms-1">— not uploaded (use .json, .bib, .ris, .csv, or .txt)</span>
                         )}
                         {files.length === 1 && isNaExecutionFile(f.name) && (
                           <span className="d-block mt-1 text-info">No-result execution — stored with 0 publications; file body (if any) as execution comment.</span>
@@ -805,11 +805,11 @@ export default function ImportExecution() {
 
               <div className="alert alert-light border small">
                 <strong>Filename format:</strong>
-                <code className="d-block mt-1 mb-1">{FILENAME_PATTERN}.json | .bib | .txt</code>
+                <code className="d-block mt-1 mb-1">{FILENAME_PATTERN}.json | .bib | .ris | .csv | .txt</code>
                 <span className="text-muted">Example: </span>
                 <code>{EXAMPLE_FILENAME}</code>
                 <p className="mt-2 mb-0 text-muted">
-                  Comment is optional. Use <code>.json</code> or <code>.bib</code> for publication lists; use <code>_na.txt</code> for no-result runs (execution stored with 0 publications; file content saved as execution comment if present).
+                  Comment is optional. Use <code>.json</code>, <code>.bib</code>, <code>.ris</code>, or <code>.csv</code> for publication lists; use <code>_na.txt</code> for no-result runs (execution stored with 0 publications; file content saved as execution comment if present).
                 </p>
               </div>
               <button
@@ -834,7 +834,7 @@ export default function ImportExecution() {
                 <p className="small text-muted mt-2 mb-0">
                   {isMultiFile
                     ? uploadableFiles.length === 0
-                      ? 'Select at least one .json, .bib, or .txt file.'
+                      ? 'Select at least one .json, .bib, .ris, .csv, or .txt file.'
                       : null
                     : !parsedMeta
                       ? 'Use a valid filename format.'

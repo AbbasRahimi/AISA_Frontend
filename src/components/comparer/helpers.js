@@ -3,7 +3,7 @@
 import { getTierClassificationTier } from '../../utils/tierClassification';
 
 export const isValidFile = (file) => {
-  const validExtensions = ['.json', '.bib'];
+  const validExtensions = ['.json', '.bib', '.ris', '.csv'];
   const fileName = file.name.toLowerCase();
   return validExtensions.some(ext => fileName.endsWith(ext));
 };
@@ -17,7 +17,13 @@ export const isValidGroundTruthBib = (file) => {
 export const isValidBatchLlmFile = (file) => {
   if (!file?.name) return false;
   const fileName = file.name.toLowerCase();
-  return fileName.endsWith('.json') || fileName.endsWith('.bib') || /_na\.txt$/i.test(fileName);
+  return (
+    fileName.endsWith('.json') ||
+    fileName.endsWith('.bib') ||
+    fileName.endsWith('.ris') ||
+    fileName.endsWith('.csv') ||
+    /_na\.txt$/i.test(fileName)
+  );
 };
 
 /**

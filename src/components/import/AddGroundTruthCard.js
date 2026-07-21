@@ -20,14 +20,14 @@ export default function AddGroundTruthCard({
       </div>
       <div className="card-body py-2">
         <p className="small text-muted mb-2">
-          Add the ground truth list for seed paper &quot;{seedLabel}&quot; (BibTeX or JSON file), same as on the Main Dashboard.
+          Add the ground truth list for seed paper &quot;{seedLabel}&quot; (BibTeX, JSON, RIS, or CSV file), same as on the Main Dashboard.
         </p>
-        <label className="form-label small">BibTeX or JSON file</label>
+        <label className="form-label small">BibTeX, JSON, RIS, or CSV file</label>
         <input
           ref={groundTruthInputRef}
           type="file"
           className="form-control form-control-sm mb-2"
-          accept=".bib,.json"
+          accept=".bib,.json,.ris,.csv"
           onChange={(e) => {
             const f = e.target.files?.[0];
             setGroundTruthFile(f || null);

@@ -13,11 +13,11 @@ const UPLOAD_TYPE_CONFIG = {
     hasAlias: true,
   },
   'ground-truth': {
-    validExtensions: ['bib', 'json'],
+    validExtensions: ['bib', 'json', 'ris', 'csv'],
     modalTitle: 'Add Ground Truth References',
-    fileLabel: 'BibTeX or JSON File',
-    fileDescription: 'Select a BibTeX or JSON file containing ground truth references',
-    accept: '.bib,.json',
+    fileLabel: 'Citation list file',
+    fileDescription: 'Select a BibTeX, JSON, RIS, or CSV file containing ground truth references',
+    accept: '.bib,.json,.ris,.csv',
     hasVersion: false,
   },
   'prompt': {

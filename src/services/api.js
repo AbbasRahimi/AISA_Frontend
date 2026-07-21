@@ -800,8 +800,8 @@ class ApiService {
   }
 
   /**
-   * Import execution from uploaded file (JSON, BibTeX, or .txt for _na no-result executions).
-   * Filename must follow: name[.function]_modelversion_subscription_seedpaperID_promptID_promptversion_YYMMDD_HHMMSS[_comment].json|.bib|.txt
+   * Import execution from uploaded file (JSON, BibTeX, RIS, CSV, or .txt for _na no-result executions).
+   * Filename must follow: name[.function]_modelversion_subscription_seedpaperID_promptID_promptversion_YYMMDD_HHMMSS[_comment].json|.bib|.ris|.csv|.txt
    * Example: chatgpt.consensus_gpt4_free_test1_prompt1_v3_250729_131049.json
    * Options (when server returns missing_data): seed_paper_id, seed_paper_content (BibTeX), seed_paper_alias,
    *   prompt_id, prompt_content so the server can create missing records and continue.
