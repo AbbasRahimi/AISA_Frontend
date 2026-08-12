@@ -17,6 +17,10 @@ import {
   isCitationValidByTier,
   getTierClassificationTier,
 } from '../../utils/tierClassification';
+import {
+  getFoundInDatabaseLabel,
+  getDatabaseBadgeClass,
+} from '../verification/helpers';
 
 const ResultsPanel = ({ results, workflowProgress, onExportResults, isLive = false, comparisonProfileId = null }) => {
   const [activeTab, setActiveTab] = useState('llm');
@@ -114,8 +118,8 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults, isLive = fal
     const invalidReferences = Math.max(0, totalReferences - validReferences);
 
     const getDetailDatabaseName = (detail) => {
-      const foundIn = detail?.found_in_database;
-      if (foundIn && foundIn !== 'Not Found') return foundIn;
+      const label = getFoundInDatabaseLabel(detail);
+      if (label && label !== 'Not Found') return label;
 
       const dbResults = detail?.database_results;
       if (!dbResults || typeof dbResults !== 'object') return '-';
@@ -173,15 +177,17 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults, isLive = fal
               </tr>
             </thead>
             <tbody>
-              {verificationData.map((ref, index) => (
+              {verificationData.map((ref, index) => {
+                const dbName = getDetailDatabaseName(ref);
+                return (
                 <tr key={ref.id || index}>
                   <td>{index + 1}</td>
                   <td className="text-truncate" style={{ maxWidth: '260px' }} title={ref?.title || '-'}>
                     {ref?.title || '-'}
                   </td>
                   <td>
-                    <span className="badge bg-secondary">
-                      {getDetailDatabaseName(ref)}
+                    <span className={`badge ${getDatabaseBadgeClass(dbName === '-' ? null : dbName)}`}>
+                      {dbName}
                     </span>
                   </td>
                   <td>
@@ -203,7 +209,8 @@ const ResultsPanel = ({ results, workflowProgress, onExportResults, isLive = fal
                     <small className="text-muted">{getDetailMethod(ref)}</small>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

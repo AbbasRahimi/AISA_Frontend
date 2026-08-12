@@ -264,13 +264,14 @@ export function isDatabaseResultFound(dbResult) {
 }
 
 function formatFoundDatabaseEntry(db, result) {
+  const label = normalizeDbDisplayName(db) || db;
   if (result.exact_match_found) {
-    return `${db}: ✅`;
+    return `${label}: ✅`;
   }
   if (result.best_similarity > 0) {
-    return `${db}: ⚠️ ${(result.best_similarity * 100).toFixed(1)}%`;
+    return `${label}: ⚠️ ${(result.best_similarity * 100).toFixed(1)}%`;
   }
-  return `${db}: ✓`;
+  return `${label}: ✓`;
 }
 
 /** Per-citation database breakdown: only sources that found a match, plus not-found total. */
@@ -296,6 +297,18 @@ export const formatDatabaseResults = (databaseResults) => {
   return parts.length > 0 ? parts.join(' | ') : 'N/A';
 };
 
+/** True when a DB key/label is a web-search rescue source (DuckDuckGo). */
+function isWebSearchSource(dbKey) {
+  const lower = String(dbKey || '').toLowerCase();
+  if (!lower) return false;
+  return (
+    lower.includes('web search') ||
+    lower.includes('web_search') ||
+    lower.includes('duckduckgo') ||
+    (lower.includes('duck') && lower.includes('go'))
+  );
+}
+
 function normalizeDbDisplayName(dbKey) {
   const key = String(dbKey || '').trim();
   const lower = key.toLowerCase();
@@ -303,8 +316,13 @@ function normalizeDbDisplayName(dbKey) {
   if (lower.includes('openalex')) return 'OpenAlex';
   if (lower.includes('crossref')) return 'Crossref';
   if (lower === 'doi' || lower.includes('doi')) return 'DOI API';
+  if (lower.includes('pubmed') || lower.includes('pub med')) return 'PubMed';
   if (lower.includes('arxiv')) return 'ArXiv';
   if (lower.includes('semantic')) return 'Semantic Scholar';
+  // Rescued / gray-literature citations via DuckDuckGo web search
+  if (isWebSearchSource(lower)) {
+    return 'Web Search (DuckDuckGo)';
+  }
   return key;
 }
 
@@ -314,7 +332,7 @@ function normalizeDbDisplayName(dbKey) {
  */
 export function getFoundInDatabaseLabel(detail) {
   const explicit = detail?.found_in_database != null ? String(detail.found_in_database).trim() : '';
-  if (explicit) return explicit;
+  if (explicit) return normalizeDbDisplayName(explicit) || explicit;
 
   const dbResults = detail?.database_results;
   if (!dbResults || typeof dbResults !== 'object') return null;
@@ -325,7 +343,19 @@ export function getFoundInDatabaseLabel(detail) {
 
   if (entries.length === 0) return null;
 
-  const priority = ['doi', 'doi api', 'crossref', 'openalex', 'semantic', 'semantic scholar', 'arxiv'];
+  // Authoritative DBs first; web search is a rescue/fallback source (lowest priority).
+  const priority = [
+    'doi',
+    'doi api',
+    'crossref',
+    'openalex',
+    'semantic',
+    'semantic scholar',
+    'arxiv',
+    'pubmed',
+    'web search (duckduckgo)',
+    'web search',
+  ];
 
   const score = (entry) => {
     const v = entry.value || {};
@@ -333,7 +363,7 @@ export function getFoundInDatabaseLabel(detail) {
     const display = normalizeDbDisplayName(entry.key);
     const displayLower = String(display || '').toLowerCase();
     const pIndex =
-      priority.findIndex((p) => keyLower.includes(p) || displayLower.includes(p));
+      priority.findIndex((p) => keyLower.includes(p) || displayLower.includes(p) || displayLower === p);
     const p = pIndex >= 0 ? (priority.length - pIndex) : 0;
     const exact = v.exact_match_found ? 1000 : 0;
     const found = v.found ? 100 : 0;
@@ -357,6 +387,9 @@ export const getDatabaseBadgeClass = (database) => {
   if (db.includes('doi')) return 'bg-success';
   if (db.includes('arxiv')) return 'bg-warning';
   if (db.includes('semantic')) return 'bg-secondary';
+  if (db.includes('pubmed') || db.includes('pub med')) return 'bg-primary';
+  // Web search rescue sources — first-class, not "Other"/error
+  if (isWebSearchSource(db)) return 'bg-dark';
   return 'bg-dark';
 };
 

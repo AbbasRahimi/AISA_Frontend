@@ -16,6 +16,8 @@ import BatchResultsBrowseTab from './BatchResultsBrowseTab';
 
 import BatchResultsCompareTab from './BatchResultsCompareTab';
 
+import SubtractMatchesTab from './SubtractMatchesTab';
+
 import RelevanceMetrics from '../evaluation/RelevanceMetrics';
 
 import { downloadBlob } from '../../utils';
@@ -644,6 +646,24 @@ const ReferenceComparer = () => {
 
             </li>
 
+            <li className="nav-item">
+
+              <button
+
+                type="button"
+
+                className={`nav-link ${activeTab === 'subtract' ? 'active' : ''}`}
+
+                onClick={() => handleTabChange('subtract')}
+
+              >
+
+                <i className="fas fa-minus-circle me-1" /> Subtract matches
+
+              </button>
+
+            </li>
+
           </ul>
 
         </div>
@@ -805,6 +825,10 @@ const ReferenceComparer = () => {
 
 
       {activeTab === 'compare' && <BatchResultsCompareTab />}
+
+
+
+      {activeTab === 'subtract' && <SubtractMatchesTab />}
 
 
 

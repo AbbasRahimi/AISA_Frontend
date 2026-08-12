@@ -37,6 +37,17 @@ export const GroundTruthResponse = {
   seed_paper_id: null
 };
 
+// Excluded Study Response Model
+export const ExcludedStudyResponse = {
+  id: null,
+  title: '',
+  authors: null,
+  year: null,
+  doi: null,
+  journal: null,
+  seed_paper_id: null
+};
+
 // Literature reference (author report / deduplication; OpenAPI: LiteratureRefResponse)
 export const LiteratureRefResponse = {
   id: null,
@@ -205,11 +216,20 @@ export const ComparisonProgressResultEntry = {
   confidence_score: null,
 };
 
+export const ComparisonProgressSummary = {
+  total_llm_papers: 0,
+  total_gt_papers: 0,
+  exact_count: 0,
+  partial_count: 0,
+  no_match_count: 0,
+};
+
 export const ComparisonProgressData = {
   total: 0,
   completed: 0,
   results: [],
   current_comparing: null,
+  summary: null,
 };
 
 export const LLMResponseData = {
@@ -218,7 +238,8 @@ export const LLMResponseData = {
   total_count: 0,
 };
 
-// Execution Status Response Model (OpenAPI: ExecutionStatusResponse — GET /api/workflow/{id}/status)
+// Execution Status Response Model (OpenAPI: ExecutionStatusResponse —
+// GET /api/workflow/{id}/status and GET /api/executions/{id}/status; SSE /events wraps as { type, data })
 export const ExecutionStatusResponse = {
   execution_id: '',
   status: ExecutionStatus.PENDING,
@@ -251,6 +272,7 @@ export const VerificationDetail = {
   best_match_title: null,
   best_match_authors: null,
   best_match_year: null,
+  best_match_url: null,
   database_results: {},
   citation_pair_similarities: null,
   existence_pair_similarities: null,
@@ -266,6 +288,7 @@ export const DatabaseResult = {
   best_match_title: null,
   best_match_authors: null,
   best_match_year: null,
+  best_match_url: null,
   error: null
 };
 
@@ -278,6 +301,7 @@ export const VerificationSummary = {
   found_in_pubmed: 0,
   found_in_arxiv: 0,
   found_in_semantic_scholar: 0,
+  found_in_web_search: 0,
   not_found: 0,
   search_time: null
 };
@@ -291,6 +315,7 @@ export const VerificationResult = {
   found_in_pubmed: 0,
   found_in_arxiv: 0,
   found_in_semantic_scholar: 0,
+  found_in_web_search: 0,
   not_found: 0,
   detailed_results: [],
   summary: VerificationSummary,

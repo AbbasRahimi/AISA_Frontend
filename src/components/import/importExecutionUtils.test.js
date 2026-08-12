@@ -2,6 +2,11 @@ import {
   parseExecutionFilename,
   deriveSystemKey,
   validateExecutionFilename,
+  normalizeImportBatchItem,
+  interpretImportExecutionResponse,
+  extractPendingImportExecutions,
+  extractExecutionIdFromPayload,
+  isImportVerificationPendingStatus,
 } from './importExecutionUtils';
 
 describe('parseExecutionFilename', () => {
@@ -85,5 +90,75 @@ describe('validateExecutionFilename', () => {
   it('rejects unsupported extension', () => {
     const result = validateExecutionFilename('test.docx');
     expect(result.valid).toBe(false);
+  });
+});
+
+describe('isImportVerificationPendingStatus', () => {
+  it('accepts pending and running', () => {
+    expect(isImportVerificationPendingStatus('pending')).toBe(true);
+    expect(isImportVerificationPendingStatus('running')).toBe(true);
+    expect(isImportVerificationPendingStatus('completed')).toBe(false);
+  });
+});
+
+describe('extractExecutionIdFromPayload', () => {
+  it('reads top-level execution_id', () => {
+    expect(extractExecutionIdFromPayload({ execution_id: 42 })).toBe('42');
+  });
+
+  it('reads nested result.execution_id', () => {
+    expect(extractExecutionIdFromPayload({ result: { execution_id: '99' } })).toBe('99');
+  });
+});
+
+describe('normalizeImportBatchItem', () => {
+  it('treats pending result with execution_id as ok/pending', () => {
+    const item = normalizeImportBatchItem({
+      file_name: 'a.bib',
+      result: { status: 'pending', execution_id: '7' },
+    });
+    expect(item.ok).toBe(true);
+    expect(item.pending).toBe(true);
+    expect(item.executionId).toBe('7');
+  });
+
+  it('keeps hard failures as not ok', () => {
+    const item = normalizeImportBatchItem({
+      file_name: 'b.bib',
+      error: 'bad file',
+    });
+    expect(item.ok).toBe(false);
+    expect(item.pending).toBe(false);
+  });
+});
+
+describe('extractPendingImportExecutions', () => {
+  it('extracts single pending execution_id', () => {
+    const interpreted = interpretImportExecutionResponse(
+      { status: 'pending', execution_id: '15', insertion_report: { publications: [] } },
+      1
+    );
+    const pending = extractPendingImportExecutions(interpreted, 'file.bib');
+    expect(pending).toHaveLength(1);
+    expect(pending[0].executionId).toBe('15');
+    expect(pending[0].fileName).toBe('file.bib');
+    expect(pending[0].report).toEqual({ publications: [] });
+  });
+
+  it('extracts batch results[].result.execution_id', () => {
+    const interpreted = interpretImportExecutionResponse(
+      {
+        total_files: 2,
+        results: [
+          { file_name: 'a.bib', result: { status: 'pending', execution_id: '1' } },
+          { file_name: 'b.bib', result: { status: 'failed', error: 'nope' } },
+        ],
+      },
+      2
+    );
+    const pending = extractPendingImportExecutions(interpreted);
+    expect(pending).toHaveLength(1);
+    expect(pending[0].executionId).toBe('1');
+    expect(pending[0].fileName).toBe('a.bib');
   });
 });

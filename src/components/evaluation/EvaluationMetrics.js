@@ -3,7 +3,6 @@ import apiService from '../../services/api';
 import ExecutionsTable from './ExecutionsTable';
 import SelectedExecutionDetails from './SelectedExecutionDetails';
 import MetricsResults from './MetricsResults';
-import MetricsGuide from './MetricsGuide';
 import BatchEvaluation from './BatchEvaluation';
 import BatchEvaluationRecalculate from './BatchEvaluationRecalculate';
 import SeedPaperExecutionMetrics from './SeedPaperExecutionMetrics';
@@ -152,16 +151,6 @@ const EvaluationMetricsGuide = () => {
                 <i className="fas fa-sync-alt"></i> Batch recalculate
               </button>
             </li>
-            <li className="nav-item" role="presentation">
-              <button
-                className={`nav-link ${activeTab === 'guide' ? 'active' : ''}`}
-                onClick={() => setActiveTab('guide')}
-                type="button"
-                role="tab"
-              >
-                <i className="fas fa-book"></i> Guide
-              </button>
-            </li>
           </ul>
 
           {/* Tab Content */}
@@ -229,13 +218,6 @@ const EvaluationMetricsGuide = () => {
             {activeTab === 'batchRecalculate' && (
               <div>
                 <BatchEvaluationRecalculate />
-              </div>
-            )}
-
-            {/* Guide Tab */}
-            {activeTab === 'guide' && (
-              <div>
-                <MetricsGuide />
               </div>
             )}
           </div>

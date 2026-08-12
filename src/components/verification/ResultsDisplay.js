@@ -22,6 +22,7 @@ const VERIFICATION_FOUND_COUNT_KEYS = [
   'found_in_pubmed',
   'found_in_arxiv',
   'found_in_semantic_scholar',
+  'found_in_web_search',
 ];
 
 const VERIFICATION_SUMMARY_ROWS = [
@@ -31,6 +32,7 @@ const VERIFICATION_SUMMARY_ROWS = [
   { key: 'found_in_pubmed', label: 'PubMed' },
   { key: 'found_in_arxiv', label: 'ArXiv' },
   { key: 'found_in_semantic_scholar', label: 'Semantic Scholar' },
+  { key: 'found_in_web_search', label: 'Web Search (DuckDuckGo)' },
   { key: 'not_found', label: 'Not Found' },
 ];
 
@@ -218,7 +220,7 @@ const ResultsDisplay = ({ verificationResults, email, apiKey }) => {
 
     const renderDoiValidityBadge = (doiValid) => {
       if (doiValid === true) return <span className="badge bg-success">Valid</span>;
-      if (doiValid === false) return <span className="badge bg-danger">Invalid</span>;
+      if (doiValid === false) return <span className="badge bg-danger">DOI doesn't match the title!</span>;
       return <span className="badge bg-secondary">Unknown</span>;
     };
 
@@ -299,6 +301,14 @@ const ResultsDisplay = ({ verificationResults, email, apiKey }) => {
                           </div>
 
                           <p className="mb-1"><strong>Best Match:</strong> {result.best_match_title || 'N/A'}</p>
+                          {result.best_match_url ? (
+                            <p className="mb-1 small">
+                              <strong>URL:</strong>{' '}
+                              <a href={result.best_match_url} target="_blank" rel="noopener noreferrer">
+                                {result.best_match_url}
+                              </a>
+                            </p>
+                          ) : null}
                           <small className="d-block">
                             <strong>Database Results:</strong> {formatDatabaseResults(result.database_results)}
                           </small>
@@ -435,6 +445,7 @@ const ResultsDisplay = ({ verificationResults, email, apiKey }) => {
               <th>Found In</th>
               <th>Similarity</th>
               <th>Best Match Title</th>
+              <th>Best Match URL</th>
               <th>Metadata Sources Tried</th>
               <th>Database Results</th>
             </tr>
@@ -483,6 +494,15 @@ const ResultsDisplay = ({ verificationResults, email, apiKey }) => {
                     </span>
                   </td>
                   <td>{result.best_match_title || 'N/A'}</td>
+                  <td className="text-truncate" style={{ maxWidth: 220 }}>
+                    {result.best_match_url ? (
+                      <a href={result.best_match_url} target="_blank" rel="noopener noreferrer" title={result.best_match_url}>
+                        {result.best_match_url}
+                      </a>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
                   <td className="text-truncate" style={{ maxWidth: 220 }}>
                     {Array.isArray(result.metadata_sources_tried) && result.metadata_sources_tried.length > 0
                       ? result.metadata_sources_tried.join(', ')

@@ -30,6 +30,8 @@ const ConfigurationPanel = ({
   setSelectedSeedPaper,
   groundTruthReferences,
   onDeleteGroundTruthReference,
+  excludedStudyReferences,
+  onDeleteExcludedStudyReference,
   prompts,
   selectedPrompt,
   setSelectedPrompt,
@@ -170,6 +172,49 @@ const ConfigurationPanel = ({
           </div>
           <div className="mt-2 text-muted">
             <small><strong>Ground Truth Count: {groundTruthReferences.length}</strong></small>
+          </div>
+        </div>
+
+        {/* Excluded Studies */}
+        <div className="mb-3">
+          <label className="form-label">
+            <i className="fas fa-ban"></i> Excluded Studies
+          </label>
+          <div className="mb-2">
+            <button
+              className="btn btn-outline-warning btn-sm"
+              onClick={() => onOpenModal('excluded-studies')}
+              disabled={!selectedSeedPaper || loading}
+            >
+              <i className="fas fa-plus"></i> Add Excluded Studies
+            </button>
+          </div>
+          <div className="border rounded p-2" style={{ maxHeight: '200px', overflowY: 'auto' }}>
+            {excludedStudyReferences.length > 0 ? (
+              <div>
+                {excludedStudyReferences.map(ref => (
+                  <div key={ref.id} className="d-flex justify-content-between align-items-center mb-1">
+                    <small className="text-truncate me-2" title={ref.title}>
+                      {ref.title}
+                    </small>
+                    <button
+                      type="button"
+                      className="btn btn-outline-danger btn-sm"
+                      onClick={() => onDeleteExcludedStudyReference?.(ref.id)}
+                      disabled={loading || !onDeleteExcludedStudyReference}
+                      aria-label={`Delete excluded study reference: ${ref.title}`}
+                    >
+                      <i className="fas fa-trash"></i>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <small className="text-muted">No excluded studies selected</small>
+            )}
+          </div>
+          <div className="mt-2 text-muted">
+            <small><strong>Excluded Studies Count: {excludedStudyReferences.length}</strong></small>
           </div>
         </div>
 

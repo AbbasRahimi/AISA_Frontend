@@ -273,6 +273,7 @@ function MainDashboard() {
   const [prompts, setPrompts] = useState([]);
   const [llmModels, setLlmModels] = useState({ chatgpt_models: [], gemini_models: [] });
   const [groundTruthReferences, setGroundTruthReferences] = useState([]);
+  const [excludedStudyReferences, setExcludedStudyReferences] = useState([]);
   const [selectedSeedPaper, setSelectedSeedPaper] = useState(null);
   const [selectedPrompt, setSelectedPrompt] = useState(null);
   const [selectedLlmProvider, setSelectedLlmProvider] = useState(LLMProvider.CHATGPT);
@@ -326,14 +327,16 @@ function MainDashboard() {
     loadInitialData();
   }, []);
 
-  // Load ground truth references and reset prompt selection when seed paper changes
+  // Load ground truth / excluded studies and reset prompt selection when seed paper changes
   useEffect(() => {
     if (selectedSeedPaper) {
       loadGroundTruthReferences(selectedSeedPaper.id);
+      loadExcludedStudyReferences(selectedSeedPaper.id);
       // Reset selected prompt when seed paper changes
       setSelectedPrompt(null);
     } else {
       setGroundTruthReferences([]);
+      setExcludedStudyReferences([]);
       setSelectedPrompt(null);
     }
   }, [selectedSeedPaper]);
@@ -390,6 +393,15 @@ function MainDashboard() {
     }
   };
 
+  const loadExcludedStudyReferences = async (seedPaperId) => {
+    try {
+      const references = await apiService.getExcludedStudyReferences(seedPaperId);
+      setExcludedStudyReferences(references);
+    } catch (error) {
+      setExcludedStudyReferences([]);
+    }
+  };
+
   const handleDeleteGroundTruthReference = async (referenceId) => {
     if (referenceId == null || !selectedSeedPaper) return;
     const confirmed = window.confirm('Remove this ground truth reference from the seed paper?');
@@ -401,6 +413,22 @@ function MainDashboard() {
       await loadGroundTruthReferences(selectedSeedPaper.id);
     } catch (err) {
       setError('Failed to delete ground truth reference: ' + (err?.message || String(err)));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteExcludedStudyReference = async (referenceId) => {
+    if (referenceId == null || !selectedSeedPaper) return;
+    const confirmed = window.confirm('Remove this excluded study from the seed paper?');
+    if (!confirmed) return;
+    try {
+      setLoading(true);
+      setError(null);
+      await apiService.deleteExcludedStudyReference(referenceId);
+      await loadExcludedStudyReferences(selectedSeedPaper.id);
+    } catch (err) {
+      setError('Failed to delete excluded study: ' + (err?.message || String(err)));
     } finally {
       setLoading(false);
     }
@@ -421,6 +449,13 @@ function MainDashboard() {
           }
           await apiService.addGroundTruthReferences(selectedSeedPaper.id, file);
           await loadGroundTruthReferences(selectedSeedPaper.id);
+          break;
+        case 'excluded-studies':
+          if (!selectedSeedPaper) {
+            throw new Error('Please select a seed paper first');
+          }
+          await apiService.addExcludedStudyReferences(selectedSeedPaper.id, file);
+          await loadExcludedStudyReferences(selectedSeedPaper.id);
           break;
         case 'prompt':
           if (!selectedSeedPaper) {
@@ -592,6 +627,8 @@ function MainDashboard() {
             setSelectedSeedPaper={setSelectedSeedPaper}
             groundTruthReferences={groundTruthReferences}
             onDeleteGroundTruthReference={handleDeleteGroundTruthReference}
+            excludedStudyReferences={excludedStudyReferences}
+            onDeleteExcludedStudyReference={handleDeleteExcludedStudyReference}
             prompts={prompts}
             selectedPrompt={selectedPrompt}
             setSelectedPrompt={setSelectedPrompt}

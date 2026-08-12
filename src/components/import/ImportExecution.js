@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import apiService from '../../services/api';
 import { AuthoritativeVerificationMode, ComparisonProfilePurpose } from '../../models';
 import ProfileSelect from '../comparisonProfiles/ProfileSelect';
@@ -17,12 +17,18 @@ import {
   isNaExecutionFile,
   hasImportExecutionExtension,
   interpretImportExecutionResponse,
+  extractPendingImportExecutions,
 } from './importExecutionUtils';
 import FilenameMetadataCard from './FilenameMetadataCard';
 import AddSeedPaperCard from './AddSeedPaperCard';
 import AddGroundTruthCard from './AddGroundTruthCard';
 import AddPromptCard from './AddPromptCard';
 import ImportHistoryList from './ImportHistoryList';
+import { useImportExecutionLiveStatus } from '../../hooks/useImportExecutionLiveStatus';
+import {
+  INITIAL_WORKFLOW_PROGRESS,
+  toComparisonResultsEnvelope,
+} from '../../utils/workflowStatus';
 
 export default function ImportExecution() {
   const [files, setFiles] = useState([]);
@@ -64,6 +70,142 @@ export default function ImportExecution() {
   const addSeedPaperInputRef = useRef(null);
   const addPromptFileInputRef = useRef(null);
   const groundTruthInputRef = useRef(null);
+
+  const updateHistoryEntry = useCallback((executionId, updater, { allowCompleted = false } = {}) => {
+    const id = String(executionId);
+    setImportHistory((prev) =>
+      prev.map((entry) => {
+        if (String(entry.executionId) !== id) return entry;
+        if (entry.type === 'verifying') {
+          return typeof updater === 'function' ? updater(entry) : { ...entry, ...updater };
+        }
+        if (allowCompleted && entry.type === 'success') {
+          return typeof updater === 'function' ? updater(entry) : { ...entry, ...updater };
+        }
+        return entry;
+      })
+    );
+  }, []);
+
+  const resolveComparisonResults = useCallback(async (executionId, status) => {
+    const fromStatus = toComparisonResultsEnvelope(status?.comparison_progress);
+    if (fromStatus?.detailed_results?.length) return fromStatus;
+
+    try {
+      const envelope = await apiService.getExecutionComparisonResults(executionId);
+      return toComparisonResultsEnvelope(envelope) || envelope;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const { startLiveStatus, stopAllLiveStatus } = useImportExecutionLiveStatus({
+    onStatus: (executionId, status) => {
+      updateHistoryEntry(executionId, (entry) => ({
+        ...entry,
+        executionStatus: status,
+      }));
+    },
+    onProgress: (executionId, progressUpdater) => {
+      updateHistoryEntry(executionId, (entry) => ({
+        ...entry,
+        workflowProgress: progressUpdater(entry.workflowProgress || INITIAL_WORKFLOW_PROGRESS),
+      }));
+    },
+    onCompleted: (executionId, status) => {
+      updateHistoryEntry(executionId, (entry) => {
+        const fromStatus = status?.verification_progress?.citations;
+        const fromProgress = entry.workflowProgress?.verificationProgress?.citations;
+        const verificationCitations =
+          Array.isArray(fromStatus) && fromStatus.length > 0
+            ? fromStatus
+            : Array.isArray(fromProgress)
+              ? fromProgress
+              : [];
+        const verificationTotal =
+          status?.verification_progress?.total ??
+          entry.workflowProgress?.verificationProgress?.total ??
+          verificationCitations.length;
+        const verificationResults =
+          (Array.isArray(status?.verification_progress?.results) &&
+            status.verification_progress.results) ||
+          entry.workflowProgress?.verificationResults ||
+          [];
+        const liveComparison =
+          toComparisonResultsEnvelope(status?.comparison_progress) ||
+          toComparisonResultsEnvelope({
+            results: entry.workflowProgress?.comparisonResults,
+            summary: entry.workflowProgress?.comparisonSummary,
+          });
+        return {
+          ...entry,
+          type: 'success',
+          executionId: String(executionId),
+          report: entry.report,
+          data: entry.data,
+          verificationCitations,
+          verificationTotal,
+          verificationResults,
+          comparisonResults: liveComparison?.detailed_results?.length ? liveComparison : null,
+          gtComparisonProfileId: entry.gtComparisonProfileId ?? gtComparisonProfileId,
+        };
+      });
+
+      // Prefer live blob; otherwise fetch ComparisonResultsEnvelope after complete.
+      const live = toComparisonResultsEnvelope(status?.comparison_progress);
+      if (live?.detailed_results?.length) return;
+
+      resolveComparisonResults(executionId, status).then((envelope) => {
+        if (!envelope) return;
+        const hasRows = Array.isArray(envelope.detailed_results) && envelope.detailed_results.length > 0;
+        const hasSummary = envelope.summary && typeof envelope.summary === 'object';
+        if (!hasRows && !hasSummary) return;
+        updateHistoryEntry(
+          executionId,
+          (entry) => ({
+            ...entry,
+            comparisonResults: envelope,
+          }),
+          { allowCompleted: true }
+        );
+      });
+    },
+    onFailed: (executionId, errorMessage) => {
+      updateHistoryEntry(executionId, (entry) => ({
+        ...entry,
+        type: 'error',
+        message: errorMessage || entry.executionStatus?.error || 'Verification failed',
+      }));
+    },
+    onPollError: (executionId, error) => {
+      updateHistoryEntry(executionId, (entry) => ({
+        ...entry,
+        type: 'error',
+        message: error?.message || 'Lost connection while verifying import',
+      }));
+    },
+    onConnectionMode: (executionId, mode) => {
+      updateHistoryEntry(executionId, (entry) => ({
+        ...entry,
+        connectionMode: mode,
+      }));
+    },
+  });
+
+  useEffect(() => {
+    return () => {
+      stopAllLiveStatus();
+    };
+  }, [stopAllLiveStatus]);
+
+  const startVerificationStreams = useCallback(
+    (pendingList) => {
+      for (const item of pendingList) {
+        startLiveStatus(item.executionId);
+      }
+    },
+    [startLiveStatus]
+  );
 
   const primaryFile = files[0] ?? null;
   const isMultiFile = files.length > 1;
@@ -475,6 +617,8 @@ export default function ImportExecution() {
         const newEntries = [...pushSkippedExtensionEntries()];
         let successCount = 0;
         let failCount = 0;
+        let verifyingCount = 0;
+        const pendingToStart = [];
 
         for (const item of interpreted.items) {
           const inner =
@@ -486,7 +630,36 @@ export default function ImportExecution() {
               ? inner.insertion_report
               : null) ||
             null;
-          if (report) {
+
+          if (item.pending && item.executionId) {
+            verifyingCount += 1;
+            pendingToStart.push({
+              executionId: String(item.executionId),
+              fileName: item.fileName,
+              report,
+              data: inner ?? item.raw,
+            });
+            newEntries.push({
+              type: 'verifying',
+              fileName: item.fileName,
+              createdAt,
+              executionId: String(item.executionId),
+              data: inner ?? item.raw,
+              report,
+              gtComparisonProfileId,
+              executionStatus: {
+                execution_id: String(item.executionId),
+                status: 'pending',
+                progress: 0,
+                message: 'Waiting for verification…',
+                current_stage: null,
+                error: null,
+                activity_log: [],
+              },
+              workflowProgress: { ...INITIAL_WORKFLOW_PROGRESS },
+              connectionMode: 'connecting',
+            });
+          } else if (report) {
             successCount += 1;
             newEntries.push({
               type: 'success',
@@ -521,8 +694,10 @@ export default function ImportExecution() {
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
         }
+        startVerificationStreams(pendingToStart);
 
         const summaryParts = [];
+        if (verifyingCount) summaryParts.push(`${verifyingCount} verifying`);
         if (successCount) summaryParts.push(`${successCount} imported`);
         if (failCount) summaryParts.push(`${failCount} failed`);
         if (skippedExt.length) summaryParts.push(`${skippedExt.length} skipped (bad extension)`);
@@ -536,6 +711,47 @@ export default function ImportExecution() {
 
       const r = interpreted.raw;
       const fileName = uploadable[0].name;
+      const pendingList = extractPendingImportExecutions(interpreted, fileName);
+
+      if (pendingList.length > 0) {
+        const pending = pendingList[0];
+        setImportHistory((prev) => [
+          ...pushSkippedExtensionEntries(),
+          {
+            type: 'verifying',
+            fileName,
+            createdAt,
+            executionId: pending.executionId,
+            data: pending.data,
+            report: pending.report,
+            gtComparisonProfileId,
+            executionStatus: {
+              execution_id: pending.executionId,
+              status: 'pending',
+              progress: 0,
+              message: 'Waiting for verification…',
+              current_stage: null,
+              error: null,
+              activity_log: [],
+            },
+            workflowProgress: { ...INITIAL_WORKFLOW_PROGRESS },
+            connectionMode: 'connecting',
+          },
+          ...prev,
+        ]);
+        setFiles([]);
+        clearMissingDataForm();
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        setError(
+          skippedExt.length
+            ? `Import started; ${skippedExt.length} skipped (bad extension). See below.`
+            : null
+        );
+        startVerificationStreams(pendingList);
+        return;
+      }
 
       if (r.status === 'success' || r.insertion_report) {
         setImportHistory((prev) => [
@@ -607,6 +823,7 @@ export default function ImportExecution() {
   };
 
   const handleClearHistory = () => {
+    stopAllLiveStatus();
     setImportHistory([]);
     setError(null);
   };
@@ -865,7 +1082,11 @@ export default function ImportExecution() {
 
       <div className="row mt-4">
         <div className="col-12">
-          <ImportHistoryList importHistory={importHistory} onClearHistory={handleClearHistory} />
+          <ImportHistoryList
+            importHistory={importHistory}
+            onClearHistory={handleClearHistory}
+            gtComparisonProfileId={gtComparisonProfileId}
+          />
         </div>
       </div>
     </div>

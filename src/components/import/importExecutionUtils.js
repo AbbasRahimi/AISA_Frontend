@@ -179,7 +179,7 @@ export function readFileAsText(file) {
 /**
  * Normalize one entry from a batch import API `results` array.
  * @param {Record<string, unknown>} raw
- * @returns {{ fileName: string, ok: boolean, report: object|null, message: string|null, raw: object }}
+ * @returns {{ fileName: string, ok: boolean, pending: boolean, report: object|null, message: string|null, executionId: string|null, raw: object }}
  */
 export function normalizeImportBatchItem(raw) {
   const r = raw && typeof raw === 'object' ? raw : {};
@@ -196,12 +196,18 @@ export function normalizeImportBatchItem(raw) {
     (r.insertion_report && typeof r.insertion_report === 'object' ? r.insertion_report : null) ||
     (inner?.insertion_report && typeof inner.insertion_report === 'object' ? inner.insertion_report : null) ||
     null;
-  if (report) {
-    return { fileName, ok: true, report, message: null, raw: r };
-  }
+  const executionId = extractExecutionIdFromPayload(r) || extractExecutionIdFromPayload(inner);
   const st = String(r.status || r.outcome || inner?.status || inner?.outcome || '').toLowerCase();
+  const pending = isImportVerificationPendingStatus(st) && executionId != null;
+
+  if (report) {
+    return { fileName, ok: true, pending, report, message: null, executionId, raw: r };
+  }
+  if (pending) {
+    return { fileName, ok: true, pending: true, report: null, message: null, executionId, raw: r };
+  }
   if (st === 'success' || st === 'ok' || r.ok === true || inner?.ok === true) {
-    return { fileName, ok: true, report: null, message: null, raw: r };
+    return { fileName, ok: true, pending: false, report: null, message: null, executionId, raw: r };
   }
   let msg =
     (typeof r.error === 'string' && r.error) ||
@@ -220,7 +226,83 @@ export function normalizeImportBatchItem(raw) {
   if (msg == null) {
     msg = 'Import failed for this file.';
   }
-  return { fileName, ok: false, report: null, message: msg, raw: r };
+  return { fileName, ok: false, pending: false, report: null, message: msg, executionId, raw: r };
+}
+
+/**
+ * @param {unknown} status
+ * @returns {boolean}
+ */
+export function isImportVerificationPendingStatus(status) {
+  const st = String(status ?? '').toLowerCase();
+  return st === 'pending' || st === 'running';
+}
+
+/**
+ * @param {unknown} payload
+ * @returns {string|null}
+ */
+export function extractExecutionIdFromPayload(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  const p = /** @type {Record<string, unknown>} */ (payload);
+  if (p.execution_id != null && String(p.execution_id).trim() !== '') {
+    return String(p.execution_id);
+  }
+  const nestedResult = p.result && typeof p.result === 'object' ? p.result : null;
+  if (nestedResult?.execution_id != null && String(nestedResult.execution_id).trim() !== '') {
+    return String(nestedResult.execution_id);
+  }
+  const report =
+    (p.insertion_report && typeof p.insertion_report === 'object' ? p.insertion_report : null) ||
+    (nestedResult?.insertion_report && typeof nestedResult.insertion_report === 'object'
+      ? nestedResult.insertion_report
+      : null);
+  const exec = report?.execution && typeof report.execution === 'object' ? report.execution : null;
+  if (exec?.id != null && String(exec.id).trim() !== '') {
+    return String(exec.id);
+  }
+  return null;
+}
+
+/**
+ * Collect executions that still need live verification after import.
+ * @param {ReturnType<typeof interpretImportExecutionResponse>} interpreted
+ * @param {string} [fallbackFileName]
+ * @returns {{ executionId: string, fileName: string, report: object|null, data: object|null }[]}
+ */
+export function extractPendingImportExecutions(interpreted, fallbackFileName = 'unknown') {
+  if (!interpreted || typeof interpreted !== 'object') return [];
+
+  if (interpreted.kind === 'batch') {
+    return (interpreted.items || [])
+      .filter((item) => item.pending && item.executionId)
+      .map((item) => {
+        const inner =
+          item.raw?.result && typeof item.raw.result === 'object' ? item.raw.result : null;
+        return {
+          executionId: String(item.executionId),
+          fileName: item.fileName || fallbackFileName,
+          report: item.report || null,
+          data: inner ?? item.raw ?? null,
+        };
+      });
+  }
+
+  const raw = interpreted.raw;
+  if (!raw || typeof raw !== 'object') return [];
+  const st = String(raw.status || '').toLowerCase();
+  const executionId = extractExecutionIdFromPayload(raw);
+  if (!executionId || !isImportVerificationPendingStatus(st)) {
+    return [];
+  }
+  return [
+    {
+      executionId,
+      fileName: fallbackFileName,
+      report: raw.insertion_report && typeof raw.insertion_report === 'object' ? raw.insertion_report : null,
+      data: raw,
+    },
+  ];
 }
 
 /**

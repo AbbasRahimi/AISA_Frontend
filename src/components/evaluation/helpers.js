@@ -150,6 +150,30 @@ export const transformComparisonResults = (rawResults) => {
     };
   }
 
+  // ComparisonResultsEnvelope (workflow + import GET /comparison-results)
+  if (Array.isArray(rawResults.detailed_results)) {
+    const summary = rawResults.summary && typeof rawResults.summary === 'object' ? rawResults.summary : {};
+    return {
+      total_comparisons:
+        rawResults.total_ground_truth ??
+        summary.total_gt_papers ??
+        rawResults.detailed_results.length,
+      exact_matches: rawResults.exact_matches ?? summary.exact_count ?? 0,
+      partial_matches: rawResults.partial_matches ?? summary.partial_count ?? 0,
+      no_matches:
+        rawResults.no_matches ??
+        summary.no_match_count ??
+        Math.max(
+          0,
+          (rawResults.detailed_results.length || 0) -
+            (rawResults.exact_matches ?? summary.exact_count ?? 0) -
+            (rawResults.partial_matches ?? summary.partial_count ?? 0)
+        ),
+      detailed_results: rawResults.detailed_results,
+      summary: rawResults.summary ?? summary,
+    };
+  }
+
   // Handle case where rawResults might be wrapped in an object
   let resultsArray = rawResults;
   if (!Array.isArray(rawResults)) {
@@ -180,10 +204,12 @@ export const transformComparisonResults = (rawResults) => {
   }
 
   const exactMatches = resultsArray.filter(r => 
-    r.match_status === 'exact' || r.match_status === 'EXACT' || r.status === 'exact'
+    r.match_status === 'exact' || r.match_status === 'EXACT' || r.status === 'exact' ||
+    r.is_exact_match === true
   ).length;
   const partialMatches = resultsArray.filter(r => 
-    r.match_status === 'partial' || r.match_status === 'PARTIAL' || r.status === 'partial'
+    r.match_status === 'partial' || r.match_status === 'PARTIAL' || r.status === 'partial' ||
+    r.is_partial_match === true
   ).length;
 
   return {

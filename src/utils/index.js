@@ -18,6 +18,9 @@ export {
   WORKFLOW_MAX_WAIT_MS,
   STATUS_POLL_TIMEOUT_MS,
   WORKFLOW_WS_CONNECT_TIMEOUT_MS,
+  SUBTRACT_MATCHES_JOB_CREATE_TIMEOUT_MS,
+  SUBTRACT_MATCHES_JOB_MAX_WAIT_MS,
+  SUBTRACT_MATCHES_JOB_RESULTS_TIMEOUT_MS,
   TEXT_PREVIEW_WORD_COUNT,
 } from './constants';
 export {
@@ -25,12 +28,15 @@ export {
   normalizeExecutionStatusResponse,
   normalizeVerificationProgress,
   normalizeComparisonProgress,
+  toComparisonResultsEnvelope,
   mergeActivityLogSnapshot,
   buildWorkflowProgressFromStatus,
   hasLiveWorkflowData,
   isWorkflowActive,
   shouldShowWorkflowConsole,
   INITIAL_WORKFLOW_PROGRESS,
+  normalizeVerificationCitation,
+  normalizeVerificationCitationPublication,
 } from './workflowStatus';
 export {
   PROMPT_TEMPLATE_PREFIX,

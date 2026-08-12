@@ -1,5 +1,9 @@
 import { parseWorkflowStatusMessage, normalizeExecutionStatusResponse } from '../utils/workflowStatus';
-import { STATUS_POLL_TIMEOUT_MS } from '../utils/constants';
+import {
+  STATUS_POLL_TIMEOUT_MS,
+  SUBTRACT_MATCHES_JOB_CREATE_TIMEOUT_MS,
+  SUBTRACT_MATCHES_JOB_RESULTS_TIMEOUT_MS,
+} from '../utils/constants';
 
 export { parseWorkflowStatusMessage, normalizeExecutionStatusResponse };
 
@@ -40,6 +44,11 @@ function buildQueryParams(params) {
     .filter(([, v]) => v != null && v !== '')
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
   return pairs.length ? '?' + pairs.join('&') : '';
+}
+
+function wrapSubtractMatchesStepError(step, err) {
+  const message = err?.message || String(err);
+  return new Error(`Failed while ${step}: ${message}`);
 }
 
 /**
@@ -323,6 +332,28 @@ class ApiService {
     });
   }
 
+  // Excluded Study References
+  async getExcludedStudyReferences(seedPaperId) {
+    return this.request(`/api/seed-papers/${seedPaperId}/excluded-studies`);
+  }
+
+  async addExcludedStudyReferences(seedPaperId, file) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return this.request(`/api/seed-papers/${seedPaperId}/excluded-studies`, {
+      method: 'POST',
+      headers: {}, // Let browser set Content-Type for FormData
+      body: formData,
+    });
+  }
+
+  async deleteExcludedStudyReference(referenceId) {
+    return this.request(`/api/excluded-studies/${referenceId}`, {
+      method: 'DELETE',
+    });
+  }
+
   // Prompts
   async getPrompts(options = {}) {
     return this.request('/api/prompts', options);
@@ -383,6 +414,17 @@ class ApiService {
 
   async getExecutionStatus(executionId) {
     const raw = await this.request(`/api/workflow/${executionId}/status`, {
+      timeout: STATUS_POLL_TIMEOUT_MS,
+    });
+    return normalizeExecutionStatusResponse(raw) ?? raw;
+  }
+
+  /**
+   * Import / post-import verification status (flat ExecutionStatusResponse).
+   * OpenAPI: GET /api/executions/{execution_id}/status
+   */
+  async getImportExecutionStatus(executionId) {
+    const raw = await this.request(`/api/executions/${executionId}/status`, {
       timeout: STATUS_POLL_TIMEOUT_MS,
     });
     return normalizeExecutionStatusResponse(raw) ?? raw;
@@ -524,6 +566,115 @@ class ApiService {
       headers: {}, // Let browser set Content-Type for FormData
       body: formData,
     });
+  }
+
+  /**
+   * Build multipart body for subtract-matches (sync or async job create).
+   * @param {{
+   *   sourceFiles: File[],
+   *   targetFile: File,
+   *   comparisonProfileId?: number|null,
+   *   removePartialMatches?: boolean,
+   *   dedupeMode?: 'profile_full_partial'|'title_only'|'both_always',
+   * }} payload
+   */
+  _buildSubtractMatchesFormData({
+    sourceFiles,
+    targetFile,
+    comparisonProfileId = null,
+    removePartialMatches = false,
+    dedupeMode = 'profile_full_partial',
+  }) {
+    const list = Array.isArray(sourceFiles) ? sourceFiles.filter((file) => file instanceof File) : [];
+    if (list.length === 0 || !(targetFile instanceof File)) {
+      throw new Error('At least one source file and one target file are required.');
+    }
+    const formData = new FormData();
+    for (const file of list) {
+      formData.append('source_files', file);
+    }
+    formData.append('target_file', targetFile);
+    if (comparisonProfileId != null) {
+      formData.append('comparison_profile_id', String(comparisonProfileId));
+    }
+    formData.append('remove_partial_matches', String(Boolean(removePartialMatches)));
+    formData.append('dedupe_mode', String(dedupeMode || 'profile_full_partial'));
+    return formData;
+  }
+
+  /**
+   * Synchronous subtract-matches.
+   * OpenAPI: POST /api/reference-comparer/subtract-matches
+   */
+  async subtractMatches(payload) {
+    const formData = this._buildSubtractMatchesFormData(payload);
+    try {
+      return await this.request('/api/reference-comparer/subtract-matches', {
+        method: 'POST',
+        headers: {},
+        body: formData,
+        timeout: SUBTRACT_MATCHES_JOB_CREATE_TIMEOUT_MS,
+      });
+    } catch (err) {
+      throw wrapSubtractMatchesStepError('synchronous subtract-matches', err);
+    }
+  }
+
+  /**
+   * Create a persisted async subtract-matches job.
+   * OpenAPI: POST /api/reference-comparer/subtract-matches/jobs
+   */
+  async createSubtractMatchesJob(payload) {
+    const formData = this._buildSubtractMatchesFormData(payload);
+    try {
+      return await this.request('/api/reference-comparer/subtract-matches/jobs', {
+        method: 'POST',
+        headers: {},
+        body: formData,
+        timeout: SUBTRACT_MATCHES_JOB_CREATE_TIMEOUT_MS,
+      });
+    } catch (err) {
+      throw wrapSubtractMatchesStepError('creating subtract-matches job (upload/create)', err);
+    }
+  }
+
+  /**
+   * OpenAPI: GET /api/reference-comparer/subtract-matches/jobs/{run_id}/status
+   */
+  async getSubtractMatchesJobStatus(runId) {
+    if (runId == null) throw new Error('run_id is required.');
+    try {
+      return await this.request(
+        `/api/reference-comparer/subtract-matches/jobs/${encodeURIComponent(runId)}/status`,
+        { timeout: STATUS_POLL_TIMEOUT_MS }
+      );
+    } catch (err) {
+      throw wrapSubtractMatchesStepError(`polling subtract-matches job #${runId} status`, err);
+    }
+  }
+
+  /**
+   * OpenAPI: GET /api/reference-comparer/subtract-matches/jobs/{run_id}/results
+   */
+  async getSubtractMatchesJobResults(runId) {
+    if (runId == null) throw new Error('run_id is required.');
+    try {
+      return await this.request(
+        `/api/reference-comparer/subtract-matches/jobs/${encodeURIComponent(runId)}/results`,
+        { timeout: SUBTRACT_MATCHES_JOB_RESULTS_TIMEOUT_MS }
+      );
+    } catch (err) {
+      throw wrapSubtractMatchesStepError(`fetching subtract-matches job #${runId} results`, err);
+    }
+  }
+
+  /**
+   * OpenAPI: GET /api/reference-comparer/subtract-matches/jobs
+   * @param {{ limit?: number, offset?: number }} params
+   */
+  async listSubtractMatchesJobs({ limit = 50, offset = 0 } = {}) {
+    const query = buildQueryParams({ limit, offset });
+    return this.request(`/api/reference-comparer/subtract-matches/jobs${query}`);
   }
 
   /**
@@ -807,7 +958,8 @@ class ApiService {
    *   prompt_id, prompt_content so the server can create missing records and continue.
    * Options: execution_comment (for _na .txt imports – file body stored as execution comment).
    *   verification_profile_id, gt_comparison_profile_id (omit for server defaults).
-   * Returns { status: 'success', insertion_report, ... } or { status: 'missing_data', ... }.
+   * Returns { status: 'success'|'pending', execution_id?, insertion_report?, ... } or { status: 'missing_data', ... }.
+   * When status is pending/running with execution_id, open GET /api/executions/{id}/events for live activity_log.
    */
   async importExecutionFromFile(file, options = {}) {
     const formData = new FormData();
@@ -1096,6 +1248,90 @@ class ApiService {
     };
 
     return eventSource;
+  }
+
+  /**
+   * Fetch-stream SSE for import verification: GET /api/executions/{execution_id}/events
+   * Uses Authorization Bearer (native EventSource cannot set auth headers).
+   * @param {string|number} executionId
+   * @param {(data: object) => void} onMessage
+   * @param {(error: Error) => void} [onError]
+   * @param {string|null} [token]
+   * @returns {{ close: () => void }}
+   */
+  connectExecutionEvents(executionId, onMessage, onError, token = null) {
+    const controller = new AbortController();
+    const url = `${this.baseURL}/api/executions/${executionId}/events`;
+    let closed = false;
+
+    const close = () => {
+      closed = true;
+      try {
+        controller.abort();
+      } catch {
+        /* ignore */
+      }
+    };
+
+    const run = async () => {
+      try {
+        const headers = {
+          Accept: 'text/event-stream',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        };
+        const response = await fetch(url, {
+          method: 'GET',
+          headers,
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        if (!response.body) {
+          throw new Error('SSE response has no body');
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (!closed) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          // SSE events are separated by blank lines; process complete chunks.
+          const parts = buffer.split(/\r?\n\r?\n/);
+          buffer = parts.pop() ?? '';
+
+          for (const part of parts) {
+            const dataLines = [];
+            for (const line of part.split(/\r?\n/)) {
+              if (line.startsWith('data:')) {
+                dataLines.push(line.slice(5).trimStart());
+              }
+            }
+            if (dataLines.length === 0) continue;
+            const raw = dataLines.join('\n');
+            if (!raw || raw === '[DONE]') continue;
+            try {
+              const data = JSON.parse(raw);
+              onMessage(data);
+            } catch (error) {
+              console.error('Failed to parse execution SSE message:', error);
+              if (onError) onError(error instanceof Error ? error : new Error(String(error)));
+            }
+          }
+        }
+      } catch (error) {
+        if (closed || error?.name === 'AbortError') return;
+        console.error('Execution SSE error:', error);
+        if (onError) onError(error instanceof Error ? error : new Error(String(error)));
+      }
+    };
+
+    run();
+    return { close };
   }
 
   // WebSocket: WS /api/workflow/{execution_id}/stream

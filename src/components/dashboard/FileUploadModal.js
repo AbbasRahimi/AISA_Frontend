@@ -20,6 +20,14 @@ const UPLOAD_TYPE_CONFIG = {
     accept: '.bib,.json,.ris,.csv',
     hasVersion: false,
   },
+  'excluded-studies': {
+    validExtensions: ['bib', 'json', 'ris', 'csv'],
+    modalTitle: 'Add Excluded Studies',
+    fileLabel: 'Citation list file',
+    fileDescription: 'Select a BibTeX, JSON, RIS, or CSV file containing excluded study references',
+    accept: '.bib,.json,.ris,.csv',
+    hasVersion: false,
+  },
   'prompt': {
     validExtensions: ['txt'],
     modalTitle: 'Add Prompt',

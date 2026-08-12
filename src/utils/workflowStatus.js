@@ -14,16 +14,100 @@ function normalizeStatusValue(status) {
 }
 
 /**
+ * Normalize optional publication metadata attached when a citation is done.
+ * Only keeps present non-empty fields (backend omits empty).
+ * @param {unknown} publication
+ * @returns {object|null}
+ */
+export function normalizeVerificationCitationPublication(publication) {
+  if (!publication || typeof publication !== 'object') return null;
+  const out = {};
+  const assign = (key, value) => {
+    if (value == null || value === '') return;
+    out[key] = value;
+  };
+
+  assign('title', publication.title != null ? String(publication.title) : null);
+  assign('authors', publication.authors);
+  assign(
+    'year',
+    publication.year != null && publication.year !== ''
+      ? String(publication.year)
+      : null
+  );
+  assign('doi', publication.doi != null ? String(publication.doi) : null);
+  assign('journal', publication.journal != null ? String(publication.journal) : null);
+  assign('booktitle', publication.booktitle != null ? String(publication.booktitle) : null);
+  assign('publisher', publication.publisher != null ? String(publication.publisher) : null);
+  assign('pages', publication.pages != null ? String(publication.pages) : null);
+  assign('volume', publication.volume != null ? String(publication.volume) : null);
+  assign('number', publication.number != null ? String(publication.number) : null);
+  assign('abstract', publication.abstract != null ? String(publication.abstract) : null);
+  assign(
+    'resolved_doi',
+    publication.resolved_doi != null ? String(publication.resolved_doi) : null
+  );
+  assign(
+    'best_match_title',
+    publication.best_match_title != null ? String(publication.best_match_title) : null
+  );
+  if (
+    publication.best_match_similarity != null &&
+    publication.best_match_similarity !== '' &&
+    !Number.isNaN(Number(publication.best_match_similarity))
+  ) {
+    out.best_match_similarity = Number(publication.best_match_similarity);
+  }
+
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/**
+ * @param {unknown} citation
+ * @returns {object|null}
+ */
+export function normalizeVerificationCitation(citation) {
+  if (!citation || typeof citation !== 'object') return null;
+  const statusRaw = String(citation.status ?? 'pending').toLowerCase();
+  const status =
+    statusRaw === 'searching' || statusRaw === 'done' || statusRaw === 'pending'
+      ? statusRaw
+      : 'pending';
+  const messages = Array.isArray(citation.messages)
+    ? citation.messages.map((m) => (m != null ? String(m) : '')).filter((m) => m !== '')
+    : [];
+
+  const publication = normalizeVerificationCitationPublication(citation.publication);
+
+  return {
+    index: citation.index != null ? Number(citation.index) : null,
+    title: citation.title != null ? String(citation.title) : '',
+    status,
+    messages,
+    found_in_database:
+      citation.found_in_database != null ? citation.found_in_database : null,
+    classification: citation.classification != null ? citation.classification : null,
+    publication,
+  };
+}
+
+/**
  * @param {unknown} progress
  * @returns {object|null}
  */
 export function normalizeVerificationProgress(progress) {
   if (!progress || typeof progress !== 'object') return null;
+  const citationsRaw = Array.isArray(progress.citations) ? progress.citations : null;
+  const citations = citationsRaw
+    ? citationsRaw.map(normalizeVerificationCitation).filter(Boolean)
+    : [];
   return {
     total: Number(progress.total) || 0,
     completed: Number(progress.completed) || 0,
     results: Array.isArray(progress.results) ? progress.results : [],
     current_verifying: progress.current_verifying ?? null,
+    current_index: progress.current_index != null ? Number(progress.current_index) : null,
+    citations,
   };
 }
 
@@ -33,12 +117,41 @@ export function normalizeVerificationProgress(progress) {
  */
 export function normalizeComparisonProgress(progress) {
   if (!progress || typeof progress !== 'object') return null;
+  const summary =
+    progress.summary && typeof progress.summary === 'object' ? progress.summary : null;
   return {
     total: Number(progress.total) || 0,
     completed: Number(progress.completed) || 0,
     results: Array.isArray(progress.results) ? progress.results : [],
     current_comparing: progress.current_comparing ?? null,
+    summary,
   };
+}
+
+/**
+ * Build ComparisonResultsEnvelope-like object from live comparison_progress or a fetched envelope.
+ * @param {object|null|undefined} data
+ * @returns {object|null}
+ */
+export function toComparisonResultsEnvelope(data) {
+  if (!data || typeof data !== 'object') return null;
+
+  if (Array.isArray(data.detailed_results)) {
+    return data;
+  }
+
+  if (Array.isArray(data.results) && data.results.length > 0) {
+    return {
+      detailed_results: data.results,
+      summary: data.summary && typeof data.summary === 'object' ? data.summary : undefined,
+      total_generated: data.summary?.total_llm_papers,
+      total_ground_truth: data.summary?.total_gt_papers,
+      exact_matches: data.summary?.exact_count,
+      partial_matches: data.summary?.partial_count,
+    };
+  }
+
+  return null;
 }
 
 /**
@@ -159,6 +272,9 @@ export function buildWorkflowProgressFromStatus(status, prev = {}) {
       completed: vp.completed ?? 0,
       total: vp.total ?? 0,
       currentVerifying: vp.current_verifying ?? null,
+      currentIndex: vp.current_index ?? null,
+      // Full snapshot replace — do not append to previous citations.
+      citations: Array.isArray(vp.citations) ? vp.citations : [],
     };
     if (Array.isArray(vp.results)) {
       newProgress.verificationResults = vp.results;
@@ -175,6 +291,9 @@ export function buildWorkflowProgressFromStatus(status, prev = {}) {
     if (Array.isArray(cp.results)) {
       newProgress.comparisonResults = cp.results;
     }
+    if (cp.summary && typeof cp.summary === 'object') {
+      newProgress.comparisonSummary = cp.summary;
+    }
   }
 
   return newProgress;
@@ -186,8 +305,15 @@ export const INITIAL_WORKFLOW_PROGRESS = {
   llmTotalCount: null,
   llmReceivedAt: null,
   verificationResults: [],
-  verificationProgress: { completed: 0, total: 0, currentVerifying: null },
+  verificationProgress: {
+    completed: 0,
+    total: 0,
+    currentVerifying: null,
+    currentIndex: null,
+    citations: [],
+  },
   comparisonResults: [],
+  comparisonSummary: null,
   comparisonProgress: { completed: 0, total: 0, currentComparing: null },
   activityLog: [],
   lastActivityLogLength: 0,
@@ -205,6 +331,7 @@ export function hasLiveWorkflowData(executionStatus, workflowProgress) {
   if (!isWorkflowActive(executionStatus)) return false;
 
   if ((workflowProgress?.activityLog?.length ?? 0) > 0) return true;
+  if ((workflowProgress?.verificationProgress?.citations?.length ?? 0) > 0) return true;
   const pubs = workflowProgress?.llmPublications;
   if (Array.isArray(pubs) && pubs.length > 0) return true;
   if (workflowProgress?.verificationResults?.length > 0) return true;
