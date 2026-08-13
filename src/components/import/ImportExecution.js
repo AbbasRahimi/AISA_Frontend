@@ -99,7 +99,7 @@ export default function ImportExecution() {
     }
   }, []);
 
-  const { startLiveStatus, stopAllLiveStatus } = useImportExecutionLiveStatus({
+  const { startVerificationQueue, stopAllLiveStatus } = useImportExecutionLiveStatus({
     onStatus: (executionId, status) => {
       updateHistoryEntry(executionId, (entry) => ({
         ...entry,
@@ -197,15 +197,6 @@ export default function ImportExecution() {
       stopAllLiveStatus();
     };
   }, [stopAllLiveStatus]);
-
-  const startVerificationStreams = useCallback(
-    (pendingList) => {
-      for (const item of pendingList) {
-        startLiveStatus(item.executionId);
-      }
-    },
-    [startLiveStatus]
-  );
 
   const primaryFile = files[0] ?? null;
   const isMultiFile = files.length > 1;
@@ -657,7 +648,7 @@ export default function ImportExecution() {
                 activity_log: [],
               },
               workflowProgress: { ...INITIAL_WORKFLOW_PROGRESS },
-              connectionMode: 'connecting',
+              connectionMode: 'queued',
             });
           } else if (report) {
             successCount += 1;
@@ -694,7 +685,7 @@ export default function ImportExecution() {
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
         }
-        startVerificationStreams(pendingToStart);
+        startVerificationQueue(pendingToStart);
 
         const summaryParts = [];
         if (verifyingCount) summaryParts.push(`${verifyingCount} verifying`);
@@ -735,7 +726,7 @@ export default function ImportExecution() {
               activity_log: [],
             },
             workflowProgress: { ...INITIAL_WORKFLOW_PROGRESS },
-            connectionMode: 'connecting',
+            connectionMode: 'queued',
           },
           ...prev,
         ]);
@@ -749,7 +740,7 @@ export default function ImportExecution() {
             ? `Import started; ${skippedExt.length} skipped (bad extension). See below.`
             : null
         );
-        startVerificationStreams(pendingList);
+        startVerificationQueue(pendingList);
         return;
       }
 

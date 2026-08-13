@@ -68,10 +68,19 @@ export default function VerifyingImportCard({
     summary: workflowProgress?.comparisonSummary,
   });
   const summary = comparisonEnvelope?.summary || workflowProgress?.comparisonSummary;
-  const waiting = !hasCitations && !hasLog && !showComparison;
+  const isQueued = connectionMode === 'queued';
+  const waiting = !isQueued && !hasCitations && !hasLog && !showComparison;
 
-  const headerTitle = isComparisonStage ? 'Comparing to ground truth' : 'Verifying citations';
-  const headerIcon = isComparisonStage ? 'fa-balance-scale' : 'fa-spinner fa-spin';
+  const headerTitle = isQueued
+    ? 'Queued for verification'
+    : isComparisonStage
+      ? 'Comparing to ground truth'
+      : 'Verifying citations';
+  const headerIcon = isQueued
+    ? 'fa-clock'
+    : isComparisonStage
+      ? 'fa-balance-scale'
+      : 'fa-spinner fa-spin';
 
   return (
     <div className="card mb-3 border-primary">
@@ -91,6 +100,13 @@ export default function VerifyingImportCard({
         )}
       </div>
       <div className="card-body">
+        {isQueued ? (
+          <div className="alert alert-light border mb-3 py-2 small mb-0">
+            <i className="fas fa-clock me-2 text-muted"></i>
+            Queued — waiting for prior imports to finish.
+          </div>
+        ) : (
+          <>
         <div className="progress mb-3">
           <div
             className={`progress-bar bg-${statusColor}`}
@@ -203,10 +219,6 @@ export default function VerifyingImportCard({
           </div>
         )}
 
-        {executionId && (
-          <small className="text-muted d-block mt-2">Execution ID: {executionId}</small>
-        )}
-
         {report ? (
           <p className="small text-muted mb-0 mt-2">
             Insertion recorded; citation verification
@@ -214,6 +226,12 @@ export default function VerifyingImportCard({
             available when the import finishes.
           </p>
         ) : null}
+          </>
+        )}
+
+        {executionId && (
+          <small className="text-muted d-block mt-2">Execution ID: {executionId}</small>
+        )}
       </div>
     </div>
   );
