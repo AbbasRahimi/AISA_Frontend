@@ -734,6 +734,29 @@ class ApiService {
   }
 
   /**
+   * Diagnostic: parse uploaded citation files and report metadata-field completeness.
+   * No ground truth, matching, or persistence.
+   * OpenAPI: POST /api/reference-comparer/citation-metadata-completeness
+   * Multipart field: llm_files (repeat per file; `files` is an accepted alias on the API).
+   * @param {File[]} llmFiles
+   */
+  async getCitationMetadataCompleteness(llmFiles) {
+    const list = Array.isArray(llmFiles) ? llmFiles.filter((f) => f instanceof File) : [];
+    if (list.length === 0) {
+      throw new Error('At least one LLM output file is required');
+    }
+    const formData = new FormData();
+    for (const f of list) {
+      formData.append('llm_files', f);
+    }
+    return this.request('/api/reference-comparer/citation-metadata-completeness', {
+      method: 'POST',
+      headers: {},
+      body: formData,
+    });
+  }
+
+  /**
    * @typedef {Object} BatchComparisonMetricStats
    * @property {number|null} min
    * @property {number|null} max

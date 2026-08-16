@@ -26,6 +26,18 @@ export const isValidBatchLlmFile = (file) => {
   );
 };
 
+export const CITATION_COMPLETENESS_ACCEPT = '.json,.bib,.bibtex,.ris,.csv,.txt';
+
+export const CITATION_COMPLETENESS_TYPES_LABEL =
+  '.json, .bib, .bibtex, .ris, .csv, or _na.txt';
+
+/** Same types as batch LLM files, plus .bibtex. Format 1 filenames are not required. */
+export const isValidCitationCompletenessFile = (file) => {
+  if (!file?.name) return false;
+  const fileName = file.name.toLowerCase();
+  return isValidBatchLlmFile(file) || fileName.endsWith('.bibtex');
+};
+
 /**
  * Map batch API match_status to legacy boolean flags for ResultsDisplay.
  * @param {object} row

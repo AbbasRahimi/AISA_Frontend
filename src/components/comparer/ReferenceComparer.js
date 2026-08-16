@@ -18,6 +18,8 @@ import BatchResultsCompareTab from './BatchResultsCompareTab';
 
 import SubtractMatchesTab from './SubtractMatchesTab';
 
+import CitationMetadataCompletenessTab from './CitationMetadataCompletenessTab';
+
 import RelevanceMetrics from '../evaluation/RelevanceMetrics';
 
 import { downloadBlob } from '../../utils';
@@ -616,6 +618,24 @@ const ReferenceComparer = () => {
 
                 type="button"
 
+                className={`nav-link ${activeTab === 'completeness' ? 'active' : ''}`}
+
+                onClick={() => handleTabChange('completeness')}
+
+              >
+
+                <i className="fas fa-clipboard-list me-1" /> Metadata completeness
+
+              </button>
+
+            </li>
+
+            <li className="nav-item">
+
+              <button
+
+                type="button"
+
                 className={`nav-link ${activeTab === 'browse' ? 'active' : ''}`}
 
                 onClick={() => handleTabChange('browse')}
@@ -817,6 +837,10 @@ const ReferenceComparer = () => {
         />
 
       )}
+
+
+
+      {activeTab === 'completeness' && <CitationMetadataCompletenessTab />}
 
 
 
