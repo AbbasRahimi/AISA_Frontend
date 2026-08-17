@@ -6,6 +6,7 @@ import MetricsResults from './MetricsResults';
 import BatchEvaluation from './BatchEvaluation';
 import BatchEvaluationRecalculate from './BatchEvaluationRecalculate';
 import SeedPaperExecutionMetrics from './SeedPaperExecutionMetrics';
+import ExecutionCompareTab from './ExecutionCompareTab';
 
 const EvaluationMetricsGuide = () => {
   const [activeTab, setActiveTab] = useState('executions');
@@ -133,6 +134,16 @@ const EvaluationMetricsGuide = () => {
             </li>
             <li className="nav-item" role="presentation">
               <button
+                className={`nav-link ${activeTab === 'executionCompare' ? 'active' : ''}`}
+                onClick={() => setActiveTab('executionCompare')}
+                type="button"
+                role="tab"
+              >
+                <i className="fas fa-not-equal"></i> Compare executions
+              </button>
+            </li>
+            <li className="nav-item" role="presentation">
+              <button
                 className={`nav-link ${activeTab === 'batch' ? 'active' : ''}`}
                 onClick={() => setActiveTab('batch')}
                 type="button"
@@ -205,6 +216,12 @@ const EvaluationMetricsGuide = () => {
             {activeTab === 'seedPaperMetrics' && (
               <div>
                 <SeedPaperExecutionMetrics />
+              </div>
+            )}
+
+            {activeTab === 'executionCompare' && (
+              <div>
+                <ExecutionCompareTab />
               </div>
             )}
 

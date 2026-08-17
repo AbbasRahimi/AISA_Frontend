@@ -1088,6 +1088,55 @@ class ApiService {
     });
   }
 
+  /**
+   * Compare stored execution evaluations across seed papers.
+   * Same response shape as compareBatchComparisonResults.
+   * OpenAPI: GET /api/evaluation/executions/compare
+   * @param {{
+   *   seedPaperIds: number[],
+   *   promptIds?: number[]|null,
+   *   promptAliases?: string[]|null,
+   *   comparisonProfileId?: number|null,
+   *   systemKey?: string|null,
+   *   systemKeys?: string[]|null,
+   *   includePartial?: boolean,
+   *   latestOnly?: boolean,
+   * }} filters
+   */
+  async compareExecutionEvaluations({
+    seedPaperIds,
+    promptIds = null,
+    promptAliases = null,
+    comparisonProfileId = null,
+    systemKey = null,
+    systemKeys = null,
+    includePartial = true,
+    latestOnly = false,
+  }) {
+    const ids = Array.isArray(seedPaperIds) ? seedPaperIds : [];
+    if (ids.length === 0) {
+      throw new Error('At least one seed paper is required.');
+    }
+    const aliasesParam = promptAliases?.length
+      ? promptAliases.join(',')
+      : null;
+    const resolvedSystemKeys = systemKeys?.length
+      ? [...new Set(systemKeys.map((key) => String(key).trim()).filter(Boolean))]
+      : systemKey?.trim()
+        ? [systemKey.trim()]
+        : [];
+    const query = buildQueryParams({
+      seed_paper_ids: ids.join(','),
+      prompt_ids: promptIds?.length ? promptIds.join(',') : null,
+      prompt_aliases: aliasesParam,
+      comparison_profile_id: comparisonProfileId,
+      system_keys: resolvedSystemKeys.length ? resolvedSystemKeys.join(',') : null,
+      include_partial: includePartial,
+      latest_only: latestOnly,
+    });
+    return this.request(`/api/evaluation/executions/compare${query}`);
+  }
+
   async getMetricsExplanation() {
     return this.request('/api/evaluation/metrics-explanation');
   }

@@ -234,9 +234,8 @@ export default function InsertionReport({
         )}
         {publications && (
           <div className="mt-2">
-            <span className="badge bg-success me-1">Publications</span>
-            Total: {publications.total} — New: {publications.inserted_new} — Linked existing:{' '}
-            {publications.linked_existing}
+            <span className="badge bg-success me-1">Citations</span>
+            {(publications.total ?? publications.inserted_new ?? 0).toLocaleString()} added to database
           </div>
         )}
         {hasVerificationResults && !showItems && (
