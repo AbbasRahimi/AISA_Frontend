@@ -25,6 +25,7 @@ export {
 } from './constants';
 export {
   parseWorkflowStatusMessage,
+  getWorkflowProgressFingerprint,
   normalizeExecutionStatusResponse,
   normalizeVerificationProgress,
   normalizeComparisonProgress,

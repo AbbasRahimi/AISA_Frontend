@@ -1,6 +1,7 @@
 import { renderHook, act } from '@testing-library/react';
 import apiService from '../services/api';
 import { ExecutionStatus } from '../models';
+import { POLL_INTERVAL_MS, WORKFLOW_MAX_WAIT_MS } from '../utils/constants';
 import {
   enqueueVerificationIds,
   useImportExecutionLiveStatus,
@@ -201,5 +202,134 @@ describe('useImportExecutionLiveStatus queue', () => {
 
     expect(apiService.connectExecutionEvents).toHaveBeenCalledTimes(3);
     expect(sseById.has('42')).toBe(true);
+  });
+});
+
+describe('useImportExecutionLiveStatus stall timeout', () => {
+  const sseById = new Map();
+  let latestStatus;
+  let hookResult;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    sseById.clear();
+    hookResult = null;
+    latestStatus = { status: ExecutionStatus.PENDING, progress: 0 };
+    apiService.connectExecutionEvents.mockImplementation((id, onMessage) => {
+      const key = String(id);
+      const handle = { onMessage, close: jest.fn() };
+      sseById.set(key, handle);
+      return { close: handle.close };
+    });
+    apiService.getImportExecutionStatus.mockImplementation(() =>
+      Promise.resolve(latestStatus)
+    );
+    jest.useFakeTimers('modern');
+  });
+
+  afterEach(() => {
+    hookResult?.current?.stopAllLiveStatus();
+    hookResult = null;
+    jest.useRealTimers();
+  });
+
+  function renderLiveStatus() {
+    const onCompleted = jest.fn();
+    const onFailed = jest.fn();
+    const onPollError = jest.fn();
+
+    const hook = renderHook(() =>
+      useImportExecutionLiveStatus({
+        onStatus: jest.fn(),
+        onProgress: jest.fn(),
+        onCompleted,
+        onFailed,
+        onPollError,
+        onConnectionMode: jest.fn(),
+      })
+    );
+    hookResult = hook.result;
+
+    return { ...hook, onCompleted, onFailed, onPollError };
+  }
+
+  async function flushAsync() {
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  }
+
+  function sendProgress(executionId, completed) {
+    latestStatus = {
+      status: ExecutionStatus.RUNNING,
+      progress: completed,
+      current_stage: 'verification',
+      verification_progress: {
+        total: 100,
+        completed,
+        current_index: completed,
+        current_verifying: `Paper ${completed}`,
+      },
+    };
+    sseById.get(String(executionId)).onMessage(latestStatus);
+  }
+
+  it('times out when status snapshots stay unchanged', async () => {
+    const { result, onPollError } = renderLiveStatus();
+
+    act(() => {
+      result.current.startVerificationQueue([{ executionId: '99' }]);
+    });
+    await flushAsync();
+
+    await act(async () => {
+      jest.advanceTimersByTime(800);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(onPollError).not.toHaveBeenCalled();
+
+    await act(async () => {
+      jest.setSystemTime(Date.now() + WORKFLOW_MAX_WAIT_MS + 1);
+      jest.advanceTimersByTime(POLL_INTERVAL_MS);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onPollError).toHaveBeenCalledWith(
+      '99',
+      expect.objectContaining({
+        message: expect.stringMatching(/stalled \(no progress for 10 minutes\)/i),
+      })
+    );
+  });
+
+  it('does not time out while verification progress keeps changing', async () => {
+    const { result, onPollError, onCompleted } = renderLiveStatus();
+
+    act(() => {
+      result.current.startVerificationQueue([{ executionId: '10' }]);
+    });
+    await flushAsync();
+
+    await act(async () => {
+      jest.advanceTimersByTime(800);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      for (let i = 1; i <= 3; i++) {
+        sendProgress('10', i);
+        jest.setSystemTime(Date.now() + WORKFLOW_MAX_WAIT_MS - POLL_INTERVAL_MS);
+        jest.advanceTimersByTime(POLL_INTERVAL_MS);
+        await Promise.resolve();
+        await Promise.resolve();
+      }
+    });
+
+    expect(onPollError).not.toHaveBeenCalled();
+    expect(onCompleted).not.toHaveBeenCalled();
   });
 });

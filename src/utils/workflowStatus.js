@@ -208,6 +208,39 @@ export function parseWorkflowStatusMessage(raw) {
 }
 
 /**
+ * Compact snapshot of fields that indicate a workflow is still making progress.
+ * Identical poll payloads produce the same fingerprint so a stall timer does not reset.
+ * @param {unknown} status
+ * @returns {string}
+ */
+export function getWorkflowProgressFingerprint(status) {
+  const normalized = parseWorkflowStatusMessage(status);
+  if (!normalized) return '';
+
+  const vp = normalized.verification_progress;
+  const cp = normalized.comparison_progress;
+  const citations = Array.isArray(vp?.citations)
+    ? vp.citations
+        .map((c) => `${c.index ?? ''}:${c.status}:${(c.messages && c.messages.length) || 0}`)
+        .join(',')
+    : '';
+  const log = Array.isArray(normalized.activity_log) ? normalized.activity_log : [];
+  const lastLog = log.length ? JSON.stringify(log[log.length - 1]) : '';
+
+  return [
+    normalized.status,
+    normalized.progress,
+    normalized.message,
+    normalized.current_stage ?? '',
+    vp ? `${vp.completed}/${vp.total}:${vp.current_index ?? ''}:${vp.current_verifying ?? ''}` : '',
+    citations,
+    cp ? `${cp.completed}/${cp.total}:${cp.current_comparing ?? ''}` : '',
+    String(log.length),
+    lastLog,
+  ].join('|');
+}
+
+/**
  * Server sends the full activity_log each time; use it as authoritative snapshot.
  * @param {Array} prev
  * @param {Array|null|undefined} serverLog

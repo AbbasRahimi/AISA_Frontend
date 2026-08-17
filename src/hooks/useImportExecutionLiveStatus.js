@@ -10,6 +10,7 @@ import {
 import {
   parseWorkflowStatusMessage,
   buildWorkflowProgressFromStatus,
+  getWorkflowProgressFingerprint,
 } from '../utils/workflowStatus';
 
 /**
@@ -90,6 +91,8 @@ export function useImportExecutionLiveStatus({
     }
 
     const startTime = Date.now();
+    let lastProgressAt = startTime;
+    let lastFingerprint = '';
     let stopped = false;
     let streamHandle = null;
     let pollTimeoutId = null;
@@ -143,6 +146,12 @@ export function useImportExecutionLiveStatus({
       const status = parseWorkflowStatusMessage(raw);
       if (!status) return false;
 
+      const fingerprint = getWorkflowProgressFingerprint(status);
+      if (fingerprint !== lastFingerprint) {
+        lastFingerprint = fingerprint;
+        lastProgressAt = Date.now();
+      }
+
       handlers.onStatus?.(id, status);
       handlers.onProgress?.(id, (prev) => buildWorkflowProgressFromStatus(status, prev));
       return handleTerminal(status);
@@ -157,13 +166,13 @@ export function useImportExecutionLiveStatus({
       if (stopped) return;
 
       try {
-        const elapsedMs = Date.now() - startTime;
-        if (elapsedMs > WORKFLOW_MAX_WAIT_MS) {
+        const stalledMs = Date.now() - lastProgressAt;
+        if (stalledMs > WORKFLOW_MAX_WAIT_MS) {
           stopAll();
           handlers.onPollError?.(
             id,
             new Error(
-              `Import verification did not complete within ${Math.round(WORKFLOW_MAX_WAIT_MS / 60000)} minutes`
+              `Import verification stalled (no progress for ${Math.round(WORKFLOW_MAX_WAIT_MS / 60000)} minutes)`
             )
           );
           return;

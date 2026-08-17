@@ -7,6 +7,7 @@ import {
   buildWorkflowProgressFromStatus,
   INITIAL_WORKFLOW_PROGRESS,
   parseWorkflowStatusMessage,
+  getWorkflowProgressFingerprint,
 } from './workflowStatus';
 
 describe('normalizeVerificationCitationPublication', () => {
@@ -207,5 +208,71 @@ describe('normalizeComparisonProgress + toComparisonResultsEnvelope', () => {
       total: 2,
       currentComparing: 'Paper X',
     });
+  });
+});
+
+describe('getWorkflowProgressFingerprint', () => {
+  const base = {
+    status: 'running',
+    progress: 40,
+    message: 'Verifying citations...',
+    current_stage: 'verification',
+    verification_progress: {
+      total: 10,
+      completed: 3,
+      current_index: 3,
+      current_verifying: 'Paper C',
+      citations: [
+        { index: 1, status: 'done', messages: ['ok'] },
+        { index: 2, status: 'done', messages: ['ok'] },
+        { index: 3, status: 'searching', messages: ['Searching Crossref...'] },
+      ],
+    },
+  };
+
+  it('is stable for identical poll snapshots', () => {
+    expect(getWorkflowProgressFingerprint(base)).toBe(getWorkflowProgressFingerprint({ ...base }));
+  });
+
+  it('changes when a citation advances', () => {
+    const next = {
+      ...base,
+      progress: 50,
+      verification_progress: {
+        ...base.verification_progress,
+        completed: 4,
+        current_index: 4,
+        current_verifying: 'Paper D',
+        citations: [
+          ...base.verification_progress.citations,
+          { index: 4, status: 'searching', messages: ['Searching Crossref...'] },
+        ],
+      },
+    };
+    expect(getWorkflowProgressFingerprint(next)).not.toBe(getWorkflowProgressFingerprint(base));
+  });
+
+  it('changes when a citation gains search messages without completing', () => {
+    const next = {
+      ...base,
+      verification_progress: {
+        ...base.verification_progress,
+        citations: [
+          { index: 1, status: 'done', messages: ['ok'] },
+          { index: 2, status: 'done', messages: ['ok'] },
+          {
+            index: 3,
+            status: 'searching',
+            messages: ['Searching Crossref...', 'Searching DOI.org...'],
+          },
+        ],
+      },
+    };
+    expect(getWorkflowProgressFingerprint(next)).not.toBe(getWorkflowProgressFingerprint(base));
+  });
+
+  it('returns empty string for invalid status', () => {
+    expect(getWorkflowProgressFingerprint(null)).toBe('');
+    expect(getWorkflowProgressFingerprint('not-json')).toBe('');
   });
 });

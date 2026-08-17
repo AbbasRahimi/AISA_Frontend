@@ -10,7 +10,7 @@ export const POLL_INTERVAL_MS = 1000;
 export const STATUS_POLL_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 /** Wait before falling back from WebSocket to SSE/poll. */
 export const WORKFLOW_WS_CONNECT_TIMEOUT_MS = 5000;
-// Max time the UI should wait for a workflow to progress to completion.
+/** Max time with no status/progress change before the UI gives up on a live workflow. */
 export const WORKFLOW_MAX_WAIT_MS = 10 * 60 * 1000; // 10 minutes
 
 // Allow the backend enough time to create the execution record and start returning status.
