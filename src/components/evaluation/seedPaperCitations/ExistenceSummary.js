@@ -40,9 +40,9 @@ function ExistenceSummary({ fastRollup, citationStats, citationLoading, citation
       <div className="card-body">
         <h6 className="text-muted">Per-run instance totals</h6>
         <p className="small text-muted">
-          The same paper in two runs is counted twice. Values come from the executions list
-          (<code>total_publications_found</code> = LLM citation count,{' '}
-          <code>verified_publications</code> = citations that passed existence).
+          The same paper in two runs is counted twice. When verification rows are loaded they are the
+          source of truth — imported executions often leave <code>verified_publications</code> empty
+          on the executions list.
         </p>
         <div className="row">
           <StatCard label="Executions" value={formatInt(fastRollup?.executionCount)} border="#6c757d" />
@@ -81,16 +81,21 @@ function ExistenceSummary({ fastRollup, citationStats, citationLoading, citation
                 {status}: {count}
               </span>
             ))}
+            {fastRollup?.usedVerification ? (
+              <span className="badge bg-info me-2 mb-1">from verification rows</span>
+            ) : null}
           </div>
         )}
-        <div className="row">
-          <div className="col-md-6">
-            <MetricBar label="Existence rate" value={fastRollup?.existenceRate} />
+        {(fastRollup?.existenceRate != null || accuracyRatio != null) && (
+          <div className="row">
+            <div className="col-md-6">
+              <MetricBar label="Existence rate" value={fastRollup?.existenceRate ?? undefined} />
+            </div>
+            <div className="col-md-6">
+              <MetricBar label="Mean accuracy" value={accuracyRatio ?? undefined} />
+            </div>
           </div>
-          <div className="col-md-6">
-            <MetricBar label="Mean accuracy" value={accuracyRatio} />
-          </div>
-        </div>
+        )}
 
         <hr />
         <h6 className="text-muted">Citation-level (preferred)</h6>

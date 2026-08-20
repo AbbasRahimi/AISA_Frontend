@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { formatDate, getStatusBadgeClass } from '../helpers';
 import { formatLlmSystemLabel, parseLlmSystemFromExecution } from '../../../utils/llmSystem';
-import { formatAccuracyScore } from './utils';
+import { formatAccuracyScore, gtFoundCountFromComparison, resolveExecutionExistenceCounts } from './utils';
 
 function promptCell(execution) {
   const version = execution.prompt_version ?? execution.prompt?.version ?? null;
@@ -16,7 +16,7 @@ function promptCell(execution) {
   return '—';
 }
 
-function SeedPaperExecutionsTable({ executions, onSelectExecution }) {
+function SeedPaperExecutionsTable({ executions, groupedByExecId, comparisonByExecId, onSelectExecution }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const list = Array.isArray(executions) ? executions : [];
@@ -74,6 +74,7 @@ function SeedPaperExecutionsTable({ executions, onSelectExecution }) {
                 <th>LLM</th>
                 <th>Prompt</th>
                 <th>Existence</th>
+                <th title="Exact + partial GT matches">#GT found</th>
                 <th>Accuracy</th>
                 <th>Seed cited</th>
                 <th>Comment</th>
@@ -82,12 +83,17 @@ function SeedPaperExecutionsTable({ executions, onSelectExecution }) {
             <tbody>
               {pageRows.map((execution) => {
                 const llm = parseLlmSystemFromExecution(execution);
-                const total = execution.total_publications_found;
-                const verified = execution.verified_publications;
+                const counts = resolveExecutionExistenceCounts(
+                  execution,
+                  groupedByExecId?.[execution.id] ?? groupedByExecId?.[String(execution.id)],
+                );
                 const existence =
-                  total != null || verified != null
-                    ? `${verified ?? '—'} / ${total ?? '—'}`
+                  counts.total != null || counts.verified != null
+                    ? `${counts.verified ?? '—'} / ${counts.total ?? '—'}`
                     : '—';
+                const cmpPayload =
+                  comparisonByExecId?.[execution.id] ?? comparisonByExecId?.[String(execution.id)];
+                const gtFound = gtFoundCountFromComparison(cmpPayload);
                 const seedCited = execution.seed_paper_found_by_llm;
                 const comment = execution.comment != null ? String(execution.comment) : '';
                 return (
@@ -112,7 +118,8 @@ function SeedPaperExecutionsTable({ executions, onSelectExecution }) {
                       {promptCell(execution)}
                     </td>
                     <td title="verified / LLM citation count">{existence}</td>
-                    <td>{formatAccuracyScore(execution.accuracy_score)}</td>
+                    <td title="exact + partial">{gtFound == null ? '—' : gtFound}</td>
+                    <td>{formatAccuracyScore(counts.accuracy)}</td>
                     <td>
                       {seedCited === true ? (
                         <span className="badge bg-success">Yes</span>

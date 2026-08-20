@@ -8,6 +8,7 @@ import {
   dbRank,
   groupVerificationByLiterature,
   gtComparisonSummaryCards,
+  gtFoundCountFromComparison,
   isEmptyComparisonPayload,
   joinExistenceAndGt,
   normalizeDbKey,
@@ -134,6 +135,46 @@ describe('computeFastExistenceRollup', () => {
     expect(rollup.existenceRate).toBeCloseTo(13 / 18);
     expect(rollup.meanAccuracyScore).toBe(90);
   });
+
+  it('does not treat null list counters as zero', () => {
+    const rollup = computeFastExistenceRollup([
+      { status: 'completed', id: 1, total_publications_found: 29, verified_publications: null, accuracy_score: null },
+      { status: 'completed', id: 2, total_publications_found: 6, verified_publications: null },
+    ]);
+    expect(rollup.sumTotalPublicationsFound).toBe(35);
+    expect(rollup.sumVerifiedPublications).toBeNull();
+    expect(rollup.existenceRate).toBeNull();
+    expect(rollup.meanAccuracyScore).toBeNull();
+  });
+
+  it('prefers verification-row counts over stale list counters', () => {
+    const citationsA = groupVerificationByLiterature(
+      Array.from({ length: 29 }, (_, i) => ({
+        database_name: 'crossref',
+        found: true,
+        literature: { id: i + 1, title: `A${i}` },
+      })),
+    );
+    const citationsB = groupVerificationByLiterature(
+      Array.from({ length: 6 }, (_, i) => ({
+        database_name: 'crossref',
+        found: true,
+        literature: { id: 100 + i, title: `B${i}` },
+      })),
+    );
+    const rollup = computeFastExistenceRollup(
+      [
+        { id: 1, status: 'completed', total_publications_found: 36, verified_publications: 0 },
+        { id: 2, status: 'completed', total_publications_found: 0, verified_publications: 0 },
+      ],
+      { 1: citationsA, 2: citationsB },
+    );
+    expect(rollup.sumTotalPublicationsFound).toBe(35);
+    expect(rollup.sumVerifiedPublications).toBe(35);
+    expect(rollup.existenceRate).toBe(1);
+    expect(rollup.meanAccuracyScore).toBe(100);
+    expect(rollup.usedVerification).toBe(true);
+  });
 });
 
 describe('computeCitationLevelExistence', () => {
@@ -237,6 +278,38 @@ describe('GT comparison classification traps', () => {
     expect(isEmptyComparisonPayload(null)).toBe(true);
     expect(isEmptyComparisonPayload({})).toBe(true);
     expect(isEmptyComparisonPayload({ detailed_comparisons: [], detailed_results: [] })).toBe(true);
+  });
+
+  it('counts #GT found as exact + partial', () => {
+    expect(gtFoundCountFromComparison({ exact_matches: 4, partial_matches: 1, matches_found: 5 })).toBe(5);
+    expect(
+      gtFoundCountFromComparison({
+        detailed_comparisons: [
+          {
+            generated_publication: { title: 'A' },
+            ground_truth_publication: { title: 'GT A' },
+            is_match: true,
+            match_quality: 'exact',
+            similarity_score: 0.99,
+          },
+          {
+            generated_publication: { title: 'B' },
+            ground_truth_publication: { title: 'GT B' },
+            is_match: true,
+            match_quality: 'partial',
+            similarity_score: 0.8,
+          },
+          {
+            generated_publication: { title: '' },
+            ground_truth_publication: { title: 'GT C' },
+            is_match: false,
+            match_quality: 'none',
+            similarity_score: 0,
+          },
+        ],
+      }),
+    ).toBe(2);
+    expect(gtFoundCountFromComparison(null)).toBeNull();
   });
 });
 

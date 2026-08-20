@@ -209,19 +209,30 @@ function SeedPaperCitationsTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seedPaperId, executions]);
 
-  const fastRollup = useMemo(() => computeFastExistenceRollup(executions), [executions]);
+  const groupedByExecId = useMemo(() => {
+    const map = {};
+    for (const ex of executions) {
+      if (ex?.id == null) continue;
+      const payload = vrCache[ex.id] ?? vrCache[String(ex.id)];
+      if (payload == null) continue;
+      map[ex.id] = groupVerificationByLiterature(payload);
+    }
+    return map;
+  }, [executions, vrCache]);
+
+  const fastRollup = useMemo(
+    () => computeFastExistenceRollup(executions, groupedByExecId),
+    [executions, groupedByExecId],
+  );
 
   const citationStats = useMemo(() => {
-    const completed = completedExecutions(executions);
-    const groups = completed
-      .filter((ex) => vrCache[ex.id] != null)
-      .map((ex) => ({
-        executionId: ex.id,
-        citations: groupVerificationByLiterature(vrCache[ex.id]),
-      }));
+    const groups = Object.entries(groupedByExecId).map(([executionId, citations]) => ({
+      executionId,
+      citations,
+    }));
     if (groups.length === 0) return null;
     return computeCitationLevelExistence(groups);
-  }, [executions, vrCache]);
+  }, [groupedByExecId]);
 
   const hasGroundTruth = groundTruth.length > 0;
   const gtCoverage = useMemo(
@@ -372,6 +383,8 @@ function SeedPaperCitationsTab() {
               <SeedPaperExecutionsTable
                 key={seedPaperId}
                 executions={executions}
+                groupedByExecId={groupedByExecId}
+                comparisonByExecId={cmpCache}
                 onSelectExecution={handleSelectExecution}
               />
             </>

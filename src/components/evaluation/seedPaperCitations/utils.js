@@ -210,34 +210,101 @@ export function groupVerificationByLiterature(rows) {
   });
 }
 
-export function computeFastExistenceRollup(executions) {
+/** Parse a count field; null/'' are missing (do not treat Number(null) as 0). */
+export function optionalNumber(value) {
+  if (value == null || value === '') return null;
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+export function existenceCountsFromGroupedCitations(citations) {
+  const list = Array.isArray(citations) ? citations : [];
+  return {
+    total: list.length,
+    verified: list.filter((c) => c.exists).length,
+  };
+}
+
+function groupedCitationsForExecution(citationsByExecutionId, executionId) {
+  if (!citationsByExecutionId || executionId == null) return undefined;
+  if (Object.prototype.hasOwnProperty.call(citationsByExecutionId, executionId)) {
+    return citationsByExecutionId[executionId];
+  }
+  const asString = String(executionId);
+  if (Object.prototype.hasOwnProperty.call(citationsByExecutionId, asString)) {
+    return citationsByExecutionId[asString];
+  }
+  return undefined;
+}
+
+/**
+ * Prefer verification-result instance counts when loaded.
+ * Imported executions often leave verified_publications null/0 on the list row.
+ */
+export function resolveExecutionExistenceCounts(execution, groupedCitations) {
+  const fromVr = Array.isArray(groupedCitations)
+    ? existenceCountsFromGroupedCitations(groupedCitations)
+    : null;
+  const listTotal = optionalNumber(execution?.total_publications_found);
+  const listVerified = optionalNumber(execution?.verified_publications);
+  const total = fromVr ? fromVr.total : listTotal;
+  const verified = fromVr ? fromVr.verified : listVerified;
+  let accuracy = optionalNumber(execution?.accuracy_score);
+  if (accuracy == null && total != null && total > 0 && verified != null) {
+    accuracy = (verified / total) * 100;
+  }
+  return {
+    total,
+    verified,
+    accuracy,
+    source: fromVr ? 'verification' : 'list',
+  };
+}
+
+export function computeFastExistenceRollup(executions, citationsByExecutionId = null) {
   const list = Array.isArray(executions) ? executions : [];
   const byStatus = {};
   let sumTotal = 0;
+  let totalSeen = false;
   let sumVerified = 0;
+  let verifiedSeen = false;
+  let pairedTotal = 0;
+  let pairedVerified = 0;
   const scores = [];
+  let usedVerification = false;
 
   for (const ex of list) {
     const st = ex?.status != null ? String(ex.status).toLowerCase() : 'unknown';
     byStatus[st] = (byStatus[st] || 0) + 1;
-    const total = Number(ex?.total_publications_found);
-    const verified = Number(ex?.verified_publications);
-    if (Number.isFinite(total)) sumTotal += total;
-    if (Number.isFinite(verified)) sumVerified += verified;
-    if (st === 'completed' && ex?.accuracy_score != null) {
-      const n = Number(ex.accuracy_score);
-      if (Number.isFinite(n)) scores.push(n);
+    const grouped = groupedCitationsForExecution(citationsByExecutionId, ex?.id);
+    const counts = resolveExecutionExistenceCounts(ex, grouped);
+    if (counts.source === 'verification') usedVerification = true;
+    if (counts.total != null) {
+      sumTotal += counts.total;
+      totalSeen = true;
+    }
+    if (counts.verified != null) {
+      sumVerified += counts.verified;
+      verifiedSeen = true;
+    }
+    if (counts.total != null && counts.verified != null) {
+      pairedTotal += counts.total;
+      pairedVerified += counts.verified;
+    }
+    if (st === 'completed' && counts.accuracy != null) {
+      scores.push(counts.accuracy);
     }
   }
 
   return {
     executionCount: list.length,
     byStatus,
-    sumTotalPublicationsFound: sumTotal,
-    sumVerifiedPublications: sumVerified,
-    existenceRate: sumTotal > 0 ? sumVerified / sumTotal : null,
+    sumTotalPublicationsFound: totalSeen ? sumTotal : null,
+    sumVerifiedPublications: verifiedSeen ? sumVerified : null,
+    existenceRate: pairedTotal > 0 ? pairedVerified / pairedTotal : null,
     meanAccuracyScore: scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null,
     scoredRunCount: scores.length,
+    usedVerification,
   };
 }
 
@@ -326,6 +393,19 @@ export function isEmptyComparisonPayload(payload) {
     Number(payload.exact_matches) > 0 ||
     Number(payload.partial_matches) > 0;
   return !hasDc && !hasDr && !hasTotals;
+}
+
+/** Sum of exact + partial GT matches for one execution. */
+export function gtFoundCountFromComparison(payload) {
+  if (isEmptyComparisonPayload(payload)) return null;
+  const rows = buildGtComparisonRows(payload);
+  if (rows.length > 0) {
+    return rows.filter((r) => r.matchQuality === 'exact' || r.matchQuality === 'partial').length;
+  }
+  const exact = optionalNumber(payload.exact_matches);
+  const partial = optionalNumber(payload.partial_matches);
+  if (exact != null || partial != null) return (exact || 0) + (partial || 0);
+  return optionalNumber(payload.matches_found);
 }
 
 function mean(values) {
