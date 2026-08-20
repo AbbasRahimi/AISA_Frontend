@@ -1,7 +1,12 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { formatDate, getStatusBadgeClass } from '../helpers';
 import { formatLlmSystemLabel, parseLlmSystemFromExecution } from '../../../utils/llmSystem';
-import { formatAccuracyScore, gtFoundCountFromComparison, resolveExecutionExistenceCounts } from './utils';
+import {
+  cacheHas,
+  formatAccuracyScore,
+  gtFoundCountFromComparison,
+  resolveExecutionExistenceCounts,
+} from './utils';
 
 function promptCell(execution) {
   const version = execution.prompt_version ?? execution.prompt?.version ?? null;
@@ -16,9 +21,26 @@ function promptCell(execution) {
   return '—';
 }
 
-function SeedPaperExecutionsTable({ executions, groupedByExecId, comparisonByExecId, onSelectExecution }) {
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+function PendingCell({ label }) {
+  return (
+    <span className="spinner-border spinner-border-sm text-secondary" role="status" aria-label={label || 'Loading'} />
+  );
+}
+
+function isCompletedStatus(status) {
+  return String(status || '').toLowerCase() === 'completed';
+}
+
+function SeedPaperExecutionsTable({
+  executions,
+  groupedByExecId,
+  comparisonByExecId,
+  page = 1,
+  pageSize = 10,
+  onPageChange,
+  onPageSizeChange,
+  onSelectExecution,
+}) {
   const list = Array.isArray(executions) ? executions : [];
 
   const totalPages = Math.max(1, Math.ceil(list.length / pageSize));
@@ -52,8 +74,7 @@ function SeedPaperExecutionsTable({ executions, groupedByExecId, comparisonByExe
             style={{ width: 'auto' }}
             value={pageSize}
             onChange={(e) => {
-              setPageSize(Number(e.target.value));
-              setPage(1);
+              onPageSizeChange?.(Number(e.target.value));
             }}
           >
             {[10, 25, 50, 100].map((n) => (
@@ -83,10 +104,13 @@ function SeedPaperExecutionsTable({ executions, groupedByExecId, comparisonByExe
             <tbody>
               {pageRows.map((execution) => {
                 const llm = parseLlmSystemFromExecution(execution);
-                const counts = resolveExecutionExistenceCounts(
-                  execution,
-                  groupedByExecId?.[execution.id] ?? groupedByExecId?.[String(execution.id)],
-                );
+                const grouped =
+                  groupedByExecId?.[execution.id] ?? groupedByExecId?.[String(execution.id)];
+                const vrReady = Array.isArray(grouped);
+                const cmpReady = cacheHas(comparisonByExecId, execution.id);
+                const waitingVr = isCompletedStatus(execution.status) && !vrReady;
+                const waitingCmp = isCompletedStatus(execution.status) && !cmpReady;
+                const counts = resolveExecutionExistenceCounts(execution, grouped);
                 const existence =
                   counts.total != null || counts.verified != null
                     ? `${counts.verified ?? '—'} / ${counts.total ?? '—'}`
@@ -117,9 +141,13 @@ function SeedPaperExecutionsTable({ executions, groupedByExecId, comparisonByExe
                     <td className="text-truncate" style={{ maxWidth: '180px' }} title={promptCell(execution)}>
                       {promptCell(execution)}
                     </td>
-                    <td title="verified / LLM citation count">{existence}</td>
-                    <td title="exact + partial">{gtFound == null ? '—' : gtFound}</td>
-                    <td>{formatAccuracyScore(counts.accuracy)}</td>
+                    <td title="verified / LLM citation count">
+                      {waitingVr ? <PendingCell label="Loading existence" /> : existence}
+                    </td>
+                    <td title="exact + partial">
+                      {waitingCmp ? <PendingCell label="Loading GT found" /> : gtFound == null ? '—' : gtFound}
+                    </td>
+                    <td>{waitingVr ? <PendingCell label="Loading accuracy" /> : formatAccuracyScore(counts.accuracy)}</td>
                     <td>
                       {seedCited === true ? (
                         <span className="badge bg-success">Yes</span>
@@ -149,7 +177,7 @@ function SeedPaperExecutionsTable({ executions, groupedByExecId, comparisonByExe
               type="button"
               className="btn btn-outline-secondary"
               disabled={safePage <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              onClick={() => onPageChange?.(Math.max(1, safePage - 1))}
             >
               Previous
             </button>
@@ -157,7 +185,7 @@ function SeedPaperExecutionsTable({ executions, groupedByExecId, comparisonByExe
               type="button"
               className="btn btn-outline-secondary"
               disabled={safePage >= totalPages}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              onClick={() => onPageChange?.(Math.min(totalPages, safePage + 1))}
             >
               Next
             </button>

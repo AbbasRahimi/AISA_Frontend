@@ -13,6 +13,7 @@ import {
   joinExistenceAndGt,
   normalizeDbKey,
   normalizeDoi,
+  orderExecutionFetchIds,
   paperDedupeKey,
   pickWinningHit,
   seedPaperPickerLabel,
@@ -174,6 +175,29 @@ describe('computeFastExistenceRollup', () => {
     expect(rollup.existenceRate).toBe(1);
     expect(rollup.meanAccuracyScore).toBe(100);
     expect(rollup.usedVerification).toBe(true);
+  });
+
+  it('verificationOnly sums only executions that have verification rows', () => {
+    const citationsA = groupVerificationByLiterature([
+      { database_name: 'crossref', found: true, literature: { id: 1, title: 'A' } },
+    ]);
+    const rollup = computeFastExistenceRollup(
+      [
+        { id: 1, status: 'completed', total_publications_found: 10, verified_publications: 0 },
+        { id: 2, status: 'completed', total_publications_found: 6, verified_publications: 0 },
+      ],
+      { 1: citationsA },
+      { verificationOnly: true },
+    );
+    expect(rollup.executionCount).toBe(2);
+    expect(rollup.sumTotalPublicationsFound).toBe(1);
+    expect(rollup.sumVerifiedPublications).toBe(1);
+  });
+});
+
+describe('orderExecutionFetchIds', () => {
+  it('puts visible and priority ids first without duplicates', () => {
+    expect(orderExecutionFetchIds([1, 2, 3, 4, 5], [3, 4], 5)).toEqual([3, 4, 5, 1, 2]);
   });
 });
 

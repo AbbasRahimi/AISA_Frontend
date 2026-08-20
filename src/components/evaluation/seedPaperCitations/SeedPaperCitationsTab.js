@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import apiService from '../../../services/api';
 import SearchableSeedPaperSelect from './SearchableSeedPaperSelect';
@@ -7,13 +7,14 @@ import GtCoverageSummary from './GtCoverageSummary';
 import SeedPaperExecutionsTable from './SeedPaperExecutionsTable';
 import ExecutionDetailView from './ExecutionDetailView';
 import {
+  cacheHas,
   completedExecutions,
   computeCitationLevelExistence,
   computeFastExistenceRollup,
   computeGtCoverageFromAuthorReport,
   computePerRunGtRollup,
   groupVerificationByLiterature,
-  mapPool,
+  orderExecutionFetchIds,
   unwrapExecutionsList,
   unwrapGroundTruthList,
 } from './utils';
@@ -45,9 +46,20 @@ function SeedPaperCitationsTab() {
 
   const [vrCache, setVrCache] = useState({});
   const [cmpCache, setCmpCache] = useState({});
-  const [citationLoading, setCitationLoading] = useState(false);
   const [citationError, setCitationError] = useState(null);
-  const [perRunLoading, setPerRunLoading] = useState(false);
+
+  const [tablePage, setTablePage] = useState(1);
+  const [tablePageSize, setTablePageSize] = useState(10);
+
+  const vrCacheRef = useRef(vrCache);
+  const cmpCacheRef = useRef(cmpCache);
+  const queueRef = useRef([]);
+  const inFlightRef = useRef(new Set());
+  const visibleIdsRef = useRef([]);
+  const executionIdRef = useRef(executionId);
+  vrCacheRef.current = vrCache;
+  cmpCacheRef.current = cmpCache;
+  executionIdRef.current = executionId;
 
   const writeParams = useCallback(
     (next) => {
@@ -78,7 +90,16 @@ function SeedPaperCitationsTab() {
     loadSeedPapers();
   }, [loadSeedPapers]);
 
-  const loadSeedPaperData = useCallback(async (id, { clearCaches = false } = {}) => {
+  useEffect(() => {
+    setTablePage(1);
+  }, [seedPaperId]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(executions.length / tablePageSize));
+    setTablePage((p) => (p > totalPages ? totalPages : p));
+  }, [executions.length, tablePageSize]);
+
+  const loadSeedPaperData = useCallback(async (id, { clearCaches = true } = {}) => {
     if (!id) return;
     try {
       setLoadingSeedData(true);
@@ -88,6 +109,7 @@ function SeedPaperCitationsTab() {
       setExecutions([]);
       setGroundTruth([]);
       setAuthorReport(null);
+      setCitationError(null);
       if (clearCaches) {
         setVrCache({});
         setCmpCache({});
@@ -129,85 +151,112 @@ function SeedPaperCitationsTab() {
       setExecutions([]);
       setGroundTruth([]);
       setAuthorReport(null);
+      setVrCache({});
+      setCmpCache({});
       return;
     }
     loadSeedPaperData(seedPaperId);
   }, [seedPaperId, loadSeedPaperData]);
 
+  const completed = useMemo(() => completedExecutions(executions), [executions]);
+
+  const visibleIds = useMemo(() => {
+    const start = (tablePage - 1) * tablePageSize;
+    return executions.slice(start, start + tablePageSize).map((ex) => ex.id).filter((id) => id != null);
+  }, [executions, tablePage, tablePageSize]);
+
+  visibleIdsRef.current = visibleIds;
+
+  const rebuildQueue = useCallback((completedList) => {
+    const ids = orderExecutionFetchIds(
+      (completedList || []).map((ex) => ex.id),
+      visibleIdsRef.current,
+      executionIdRef.current,
+    );
+    queueRef.current = ids.filter((id) => {
+      if (inFlightRef.current.has(id)) return false;
+      const vrMissing = !cacheHas(vrCacheRef.current, id);
+      const cmpMissing = !cacheHas(cmpCacheRef.current, id);
+      return vrMissing || cmpMissing;
+    });
+  }, []);
+
   useEffect(() => {
-    const completed = completedExecutions(executions);
-    if (!seedPaperId || completed.length === 0) {
-      setCitationLoading(false);
-      setPerRunLoading(false);
+    rebuildQueue(completed);
+  }, [visibleIds, executionId, completed, rebuildQueue]);
+
+  useEffect(() => {
+    const completedList = completedExecutions(executions);
+    if (!seedPaperId || completedList.length === 0) {
+      queueRef.current = [];
       return undefined;
     }
 
     let cancelled = false;
+    inFlightRef.current = new Set();
+    rebuildQueue(completedList);
 
-    const missingVr = completed.filter((ex) => vrCache[ex.id] === undefined);
-    const missingCmp = completed.filter((ex) => cmpCache[ex.id] === undefined);
-
-    (async () => {
-      if (missingVr.length > 0) {
-        setCitationLoading(true);
-        setCitationError(null);
-        try {
-          const results = await mapPool(missingVr, VR_FETCH_CONCURRENCY, async (ex) => {
-            try {
-              const payload = await apiService.getExecutionVerificationResults(ex.id);
-              return { id: ex.id, payload, error: null };
-            } catch (err) {
-              return { id: ex.id, payload: null, error: err?.message || String(err) };
-            }
-          });
-          if (cancelled) return;
-          const errors = results.filter((row) => row.error).map((row) => `#${row.id}: ${row.error}`);
-          if (errors.length) setCitationError(errors.slice(0, 3).join('; '));
-          setVrCache((prev) => {
-            const next = { ...prev };
-            for (const row of results) {
-              if (!row.error) next[row.id] = row.payload ?? [];
-            }
-            return next;
-          });
-        } finally {
-          if (!cancelled) setCitationLoading(false);
-        }
-      } else {
-        setCitationLoading(false);
+    const fetchOne = async (id) => {
+      const needVr = !cacheHas(vrCacheRef.current, id);
+      const needCmp = !cacheHas(cmpCacheRef.current, id);
+      const tasks = [];
+      if (needVr) {
+        tasks.push(
+          apiService
+            .getExecutionVerificationResults(id)
+            .then((payload) => {
+              if (cancelled) return;
+              setVrCache((prev) => ({ ...prev, [id]: payload ?? [] }));
+            })
+            .catch((err) => {
+              if (cancelled) return;
+              setVrCache((prev) => ({ ...prev, [id]: [] }));
+              const message = err?.message || String(err);
+              setCitationError((prev) => prev || `#${id}: ${message}`);
+            }),
+        );
       }
-
-      if (missingCmp.length > 0) {
-        setPerRunLoading(true);
-        try {
-          const results = await mapPool(missingCmp, VR_FETCH_CONCURRENCY, async (ex) => {
-            try {
-              const payload = await apiService.getExecutionComparisonResults(ex.id);
-              return { id: ex.id, payload };
-            } catch {
-              return { id: ex.id, payload: null };
-            }
-          });
-          if (cancelled) return;
-          setCmpCache((prev) => {
-            const next = { ...prev };
-            for (const row of results) next[row.id] = row.payload;
-            return next;
-          });
-        } finally {
-          if (!cancelled) setPerRunLoading(false);
-        }
-      } else {
-        setPerRunLoading(false);
+      if (needCmp) {
+        tasks.push(
+          apiService
+            .getExecutionComparisonResults(id)
+            .then((payload) => {
+              if (cancelled) return;
+              setCmpCache((prev) => ({ ...prev, [id]: payload ?? null }));
+            })
+            .catch(() => {
+              if (cancelled) return;
+              setCmpCache((prev) => ({ ...prev, [id]: null }));
+            }),
+        );
       }
-    })();
+      await Promise.all(tasks);
+    };
+
+    const worker = async () => {
+      while (!cancelled) {
+        rebuildQueue(completedList);
+        const id = queueRef.current.shift();
+        if (id == null) break;
+        if (inFlightRef.current.has(id)) continue;
+        inFlightRef.current.add(id);
+        try {
+          await fetchOne(id);
+        } finally {
+          inFlightRef.current.delete(id);
+        }
+      }
+    };
+
+    const n = Math.min(VR_FETCH_CONCURRENCY, Math.max(queueRef.current.length, 1));
+    Promise.all(Array.from({ length: n }, () => worker())).catch(() => {});
 
     return () => {
       cancelled = true;
+      queueRef.current = [];
+      inFlightRef.current = new Set();
     };
-    // Only refetch missing ids when the completed execution set changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seedPaperId, executions]);
+  }, [seedPaperId, executions, rebuildQueue]);
 
   const groupedByExecId = useMemo(() => {
     const map = {};
@@ -221,13 +270,13 @@ function SeedPaperCitationsTab() {
   }, [executions, vrCache]);
 
   const fastRollup = useMemo(
-    () => computeFastExistenceRollup(executions, groupedByExecId),
+    () => computeFastExistenceRollup(executions, groupedByExecId, { verificationOnly: true }),
     [executions, groupedByExecId],
   );
 
   const citationStats = useMemo(() => {
-    const groups = Object.entries(groupedByExecId).map(([executionId, citations]) => ({
-      executionId,
+    const groups = Object.entries(groupedByExecId).map(([id, citations]) => ({
+      executionId: id,
       citations,
     }));
     if (groups.length === 0) return null;
@@ -240,12 +289,24 @@ function SeedPaperCitationsTab() {
     [authorReport, groundTruth.length],
   );
   const perRunRollup = useMemo(() => {
-    const groups = completedExecutions(executions).map((ex) => ({
+    const groups = completed.map((ex) => ({
       executionId: ex.id,
-      payload: cmpCache[ex.id],
+      payload: cmpCache[ex.id] ?? cmpCache[String(ex.id)],
     }));
     return computePerRunGtRollup(groups, executions);
-  }, [executions, cmpCache]);
+  }, [executions, cmpCache, completed]);
+
+  const vrLoadedCount = useMemo(
+    () => completed.filter((ex) => cacheHas(vrCache, ex.id)).length,
+    [completed, vrCache],
+  );
+  const cmpLoadedCount = useMemo(
+    () => completed.filter((ex) => cacheHas(cmpCache, ex.id)).length,
+    [completed, cmpCache],
+  );
+  const completedTotal = completed.length;
+  const citationLoading = completedTotal > 0 && vrLoadedCount < completedTotal;
+  const perRunLoading = completedTotal > 0 && cmpLoadedCount < completedTotal;
 
   const listExecution = useMemo(
     () => executions.find((ex) => Number(ex.id) === Number(executionId)) || null,
@@ -348,8 +409,8 @@ function SeedPaperCitationsTab() {
           executionId={executionId}
           seedPaperId={seedPaperId}
           listExecution={listExecution}
-          cachedVerification={vrCache[executionId]}
-          cachedComparison={cmpCache[executionId]}
+          cachedVerification={vrCache[executionId] ?? vrCache[String(executionId)]}
+          cachedComparison={cmpCache[executionId] ?? cmpCache[String(executionId)]}
           onCacheResults={handleCacheResults}
           detailTab={detailTab}
           onDetailTabChange={handleDetailTabChange}
@@ -371,6 +432,8 @@ function SeedPaperCitationsTab() {
                 citationStats={citationStats}
                 citationLoading={citationLoading}
                 citationError={citationError}
+                loadedCount={vrLoadedCount}
+                totalCount={completedTotal}
               />
               <GtCoverageSummary
                 hasGroundTruth={hasGroundTruth}
@@ -379,12 +442,20 @@ function SeedPaperCitationsTab() {
                 authorReportLoading={authorReportLoading}
                 perRunRollup={perRunRollup}
                 perRunLoading={perRunLoading}
+                loadedCount={cmpLoadedCount}
+                totalCount={completedTotal}
               />
               <SeedPaperExecutionsTable
-                key={seedPaperId}
                 executions={executions}
                 groupedByExecId={groupedByExecId}
                 comparisonByExecId={cmpCache}
+                page={tablePage}
+                pageSize={tablePageSize}
+                onPageChange={setTablePage}
+                onPageSizeChange={(n) => {
+                  setTablePageSize(n);
+                  setTablePage(1);
+                }}
                 onSelectExecution={handleSelectExecution}
               />
             </>

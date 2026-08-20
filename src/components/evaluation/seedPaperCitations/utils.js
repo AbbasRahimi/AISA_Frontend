@@ -261,8 +261,9 @@ export function resolveExecutionExistenceCounts(execution, groupedCitations) {
   };
 }
 
-export function computeFastExistenceRollup(executions, citationsByExecutionId = null) {
+export function computeFastExistenceRollup(executions, citationsByExecutionId = null, options = {}) {
   const list = Array.isArray(executions) ? executions : [];
+  const verificationOnly = Boolean(options.verificationOnly);
   const byStatus = {};
   let sumTotal = 0;
   let totalSeen = false;
@@ -277,6 +278,9 @@ export function computeFastExistenceRollup(executions, citationsByExecutionId = 
     const st = ex?.status != null ? String(ex.status).toLowerCase() : 'unknown';
     byStatus[st] = (byStatus[st] || 0) + 1;
     const grouped = groupedCitationsForExecution(citationsByExecutionId, ex?.id);
+    if (verificationOnly && !Array.isArray(grouped)) {
+      continue;
+    }
     const counts = resolveExecutionExistenceCounts(ex, grouped);
     if (counts.source === 'verification') usedVerification = true;
     if (counts.total != null) {
@@ -306,6 +310,27 @@ export function computeFastExistenceRollup(executions, citationsByExecutionId = 
     scoredRunCount: scores.length,
     usedVerification,
   };
+}
+
+/** Visible + deep-linked ids first, then the rest. Dedupes. */
+export function orderExecutionFetchIds(completedIds, visibleIds = [], priorityId = null) {
+  const seen = new Set();
+  const out = [];
+  const add = (id) => {
+    const n = Number(id);
+    if (!Number.isFinite(n) || seen.has(n)) return;
+    seen.add(n);
+    out.push(n);
+  };
+  (visibleIds || []).forEach(add);
+  add(priorityId);
+  (completedIds || []).forEach(add);
+  return out;
+}
+
+export function cacheHas(cache, id) {
+  if (!cache || id == null) return false;
+  return cache[id] !== undefined || cache[String(id)] !== undefined;
 }
 
 /**

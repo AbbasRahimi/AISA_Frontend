@@ -29,6 +29,16 @@ function RefLine({ item }) {
   );
 }
 
+function FetchProgress({ loaded, total, label }) {
+  if (!total || loaded >= total) return null;
+  return (
+    <div className="text-muted small mb-2">
+      <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
+      {label}: {loaded} of {total} executions loaded
+    </div>
+  );
+}
+
 function GtCoverageSummary({
   hasGroundTruth,
   coverage,
@@ -36,6 +46,8 @@ function GtCoverageSummary({
   authorReportLoading,
   perRunRollup,
   perRunLoading,
+  loadedCount = 0,
+  totalCount = 0,
 }) {
   const [showRecovered, setShowRecovered] = useState(false);
   const [showMissed, setShowMissed] = useState(false);
@@ -154,12 +166,7 @@ function GtCoverageSummary({
 
             <hr />
             <h6 className="text-muted">Per-run instance rollup</h6>
-            {perRunLoading && (
-              <div className="text-muted small mb-2">
-                <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
-                Loading comparison results…
-              </div>
-            )}
+            <FetchProgress loaded={loadedCount} total={totalCount} label="Comparison results" />
             {perRunRollup && perRunRollup.runsWithComparison > 0 ? (
               <div className="row">
                 <StatCard

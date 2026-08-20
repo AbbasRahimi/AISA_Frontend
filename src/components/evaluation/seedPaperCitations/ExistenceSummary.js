@@ -17,7 +17,24 @@ function StatCard({ label, value, hint, border }) {
   );
 }
 
-function ExistenceSummary({ fastRollup, citationStats, citationLoading, citationError }) {
+function FetchProgress({ loaded, total, label }) {
+  if (!total || loaded >= total) return null;
+  return (
+    <div className="text-muted small mb-2">
+      <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
+      {label}: {loaded} of {total} executions loaded
+    </div>
+  );
+}
+
+function ExistenceSummary({
+  fastRollup,
+  citationStats,
+  citationLoading,
+  citationError,
+  loadedCount = 0,
+  totalCount = 0,
+}) {
   const statusEntries = Object.entries(fastRollup?.byStatus || {}).sort((a, b) => a[0].localeCompare(b[0]));
   const accuracyRatio =
     fastRollup?.meanAccuracyScore == null
@@ -39,6 +56,7 @@ function ExistenceSummary({ fastRollup, citationStats, citationLoading, citation
       </div>
       <div className="card-body">
         <h6 className="text-muted">Per-run instance totals</h6>
+        <FetchProgress loaded={loadedCount} total={totalCount} label="Verification rows" />
         <p className="small text-muted">
           The same paper in two runs is counted twice. When verification rows are loaded they are the
           source of truth — imported executions often leave <code>verified_publications</code> empty
@@ -84,6 +102,9 @@ function ExistenceSummary({ fastRollup, citationStats, citationLoading, citation
             {fastRollup?.usedVerification ? (
               <span className="badge bg-info me-2 mb-1">from verification rows</span>
             ) : null}
+            {totalCount > 0 && loadedCount >= totalCount ? (
+              <span className="badge bg-success me-2 mb-1">all executions loaded</span>
+            ) : null}
           </div>
         )}
         {(fastRollup?.existenceRate != null || accuracyRatio != null) && (
@@ -99,15 +120,10 @@ function ExistenceSummary({ fastRollup, citationStats, citationLoading, citation
 
         <hr />
         <h6 className="text-muted">Citation-level (preferred)</h6>
+        <FetchProgress loaded={loadedCount} total={totalCount} label="Citation-level totals" />
         {citationError && (
           <div className="alert alert-warning py-2">
             Could not load verification rows for all executions: {citationError}
-          </div>
-        )}
-        {citationLoading && (
-          <div className="text-muted small mb-2">
-            <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
-            Loading verification results for completed executions…
           </div>
         )}
         {citationStats && citationStats.totalInstances > 0 ? (
