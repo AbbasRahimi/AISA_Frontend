@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import apiService from '../../services/api';
 import ExecutionsTable from './ExecutionsTable';
 import SelectedExecutionDetails from './SelectedExecutionDetails';
@@ -6,10 +7,16 @@ import MetricsResults from './MetricsResults';
 import BatchEvaluation from './BatchEvaluation';
 import BatchEvaluationRecalculate from './BatchEvaluationRecalculate';
 import SeedPaperExecutionMetrics from './SeedPaperExecutionMetrics';
+import SeedPaperCitationsTab from './seedPaperCitations/SeedPaperCitationsTab';
 import ExecutionCompareTab from './ExecutionCompareTab';
 
 const EvaluationMetricsGuide = () => {
-  const [activeTab, setActiveTab] = useState('executions');
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(() => (
+    searchParams.get('seedPaperId') || searchParams.get('executionId')
+      ? 'seedPaperCitations'
+      : 'executions'
+  ));
   const [executions, setExecutions] = useState([]);
   const [selectedExecution, setSelectedExecution] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -134,6 +141,16 @@ const EvaluationMetricsGuide = () => {
             </li>
             <li className="nav-item" role="presentation">
               <button
+                className={`nav-link ${activeTab === 'seedPaperCitations' ? 'active' : ''}`}
+                onClick={() => setActiveTab('seedPaperCitations')}
+                type="button"
+                role="tab"
+              >
+                <i className="fas fa-check-double"></i> Existence & GT
+              </button>
+            </li>
+            <li className="nav-item" role="presentation">
+              <button
                 className={`nav-link ${activeTab === 'executionCompare' ? 'active' : ''}`}
                 onClick={() => setActiveTab('executionCompare')}
                 type="button"
@@ -216,6 +233,12 @@ const EvaluationMetricsGuide = () => {
             {activeTab === 'seedPaperMetrics' && (
               <div>
                 <SeedPaperExecutionMetrics />
+              </div>
+            )}
+
+            {activeTab === 'seedPaperCitations' && (
+              <div>
+                <SeedPaperCitationsTab />
               </div>
             )}
 
