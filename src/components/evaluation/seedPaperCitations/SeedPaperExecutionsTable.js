@@ -2,10 +2,10 @@ import React, { useMemo } from 'react';
 import { formatDate, getStatusBadgeClass } from '../helpers';
 import { formatLlmSystemLabel, parseLlmSystemFromExecution } from '../../../utils/llmSystem';
 import {
-  cacheHas,
+  existenceFromSummaryRow,
   formatAccuracyScore,
-  gtFoundCountFromComparison,
-  resolveExecutionExistenceCounts,
+  gtFromSummaryRow,
+  lookupById,
 } from './utils';
 
 function promptCell(execution) {
@@ -21,27 +21,16 @@ function promptCell(execution) {
   return '—';
 }
 
-function PendingCell({ label }) {
-  return (
-    <span className="spinner-border spinner-border-sm text-secondary" role="status" aria-label={label || 'Loading'} />
-  );
-}
-
-function isCompletedStatus(status) {
-  return String(status || '').toLowerCase() === 'completed';
-}
-
 function SeedPaperExecutionsTable({
   executions,
-  groupedByExecId,
-  comparisonByExecId,
+  summaryByExecId,
   page = 1,
   pageSize = 10,
   onPageChange,
   onPageSizeChange,
   onSelectExecution,
 }) {
-  const list = Array.isArray(executions) ? executions : [];
+  const list = useMemo(() => (Array.isArray(executions) ? executions : []), [executions]);
 
   const totalPages = Math.max(1, Math.ceil(list.length / pageSize));
   const safePage = Math.min(page, totalPages);
@@ -94,8 +83,8 @@ function SeedPaperExecutionsTable({
                 <th>Status</th>
                 <th>LLM</th>
                 <th>Prompt</th>
-                <th>Existence</th>
-                <th title="Exact + partial GT matches">#GT found</th>
+                <th title="found / total LLM citations">Existence</th>
+                <th title="exact / partial / missed GT">GT</th>
                 <th>Accuracy</th>
                 <th>Seed cited</th>
                 <th>Comment</th>
@@ -104,21 +93,22 @@ function SeedPaperExecutionsTable({
             <tbody>
               {pageRows.map((execution) => {
                 const llm = parseLlmSystemFromExecution(execution);
-                const grouped =
-                  groupedByExecId?.[execution.id] ?? groupedByExecId?.[String(execution.id)];
-                const vrReady = Array.isArray(grouped);
-                const cmpReady = cacheHas(comparisonByExecId, execution.id);
-                const waitingVr = isCompletedStatus(execution.status) && !vrReady;
-                const waitingCmp = isCompletedStatus(execution.status) && !cmpReady;
-                const counts = resolveExecutionExistenceCounts(execution, grouped);
-                const existence =
-                  counts.total != null || counts.verified != null
-                    ? `${counts.verified ?? '—'} / ${counts.total ?? '—'}`
+                const summary = lookupById(summaryByExecId, execution.id);
+                const existence = existenceFromSummaryRow(summary);
+                const gt = gtFromSummaryRow(summary);
+                const existenceLabel =
+                  existence.found != null || existence.total != null
+                    ? `${existence.found ?? '—'} / ${existence.total ?? '—'}`
                     : '—';
-                const cmpPayload =
-                  comparisonByExecId?.[execution.id] ?? comparisonByExecId?.[String(execution.id)];
-                const gtFound = gtFoundCountFromComparison(cmpPayload);
-                const seedCited = execution.seed_paper_found_by_llm;
+                const gtLabel = gt
+                  ? `${gt.exact} / ${gt.partial} / ${gt.missed}`
+                  : '—';
+                const accuracy =
+                  existence.total != null && existence.total > 0 && existence.found != null
+                    ? (existence.found / existence.total) * 100
+                    : execution.accuracy_score;
+                const seedCited =
+                  gt?.seedPaperFoundByLlm ?? execution.seed_paper_found_by_llm;
                 const comment = execution.comment != null ? String(execution.comment) : '';
                 return (
                   <tr
@@ -141,13 +131,9 @@ function SeedPaperExecutionsTable({
                     <td className="text-truncate" style={{ maxWidth: '180px' }} title={promptCell(execution)}>
                       {promptCell(execution)}
                     </td>
-                    <td title="verified / LLM citation count">
-                      {waitingVr ? <PendingCell label="Loading existence" /> : existence}
-                    </td>
-                    <td title="exact + partial">
-                      {waitingCmp ? <PendingCell label="Loading GT found" /> : gtFound == null ? '—' : gtFound}
-                    </td>
-                    <td>{waitingVr ? <PendingCell label="Loading accuracy" /> : formatAccuracyScore(counts.accuracy)}</td>
+                    <td title="found / total">{existenceLabel}</td>
+                    <td title="exact / partial / missed">{gtLabel}</td>
+                    <td>{formatAccuracyScore(accuracy)}</td>
                     <td>
                       {seedCited === true ? (
                         <span className="badge bg-success">Yes</span>

@@ -28,7 +28,14 @@ function DoiCell({ doi }) {
   );
 }
 
-function ExistenceCitationsPanel({ citations, loading, error, showGtJoin }) {
+function ExistenceCitationsPanel({
+  citations,
+  loading,
+  error,
+  showGtJoin,
+  onRequestApiResponse,
+  apiResponseLoading = false,
+}) {
   const [filter, setFilter] = useState('all');
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState(() => new Set());
@@ -54,8 +61,12 @@ function ExistenceCitationsPanel({ citations, loading, error, showGtJoin }) {
   const toggle = (id) => {
     setExpanded((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+        onRequestApiResponse?.();
+      }
       return next;
     });
   };
@@ -190,6 +201,9 @@ function ExistenceCitationsPanel({ citations, loading, error, showGtJoin }) {
                                       <span className="badge bg-secondary me-1">skipped</span>
                                     )}
                                     {hit.api_response?.error ? String(hit.api_response.error) : ''}
+                                    {apiResponseLoading && hit.api_response == null ? (
+                                      <span className="text-muted">Loading raw DB hit…</span>
+                                    ) : null}
                                   </td>
                                 </tr>
                               ))}

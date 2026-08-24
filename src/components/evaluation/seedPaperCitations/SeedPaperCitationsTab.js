@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import apiService from '../../../services/api';
 import SearchableSeedPaperSelect from './SearchableSeedPaperSelect';
@@ -7,19 +7,17 @@ import GtCoverageSummary from './GtCoverageSummary';
 import SeedPaperExecutionsTable from './SeedPaperExecutionsTable';
 import ExecutionDetailView from './ExecutionDetailView';
 import {
-  cacheHas,
-  completedExecutions,
-  computeCitationLevelExistence,
   computeFastExistenceRollup,
   computeGtCoverageFromAuthorReport,
-  computePerRunGtRollup,
-  groupVerificationByLiterature,
-  orderExecutionFetchIds,
+  computePerRunGtFromSummaries,
+  existenceCardsFromTotals,
+  foundByDatabaseRows,
+  gtInstanceCardsFromTotals,
+  indexSummariesByExecutionId,
+  summariesHaveGroundTruth,
   unwrapExecutionsList,
-  unwrapGroundTruthList,
+  unwrapExecutionSummaries,
 } from './utils';
-
-const VR_FETCH_CONCURRENCY = 6;
 
 function parsePositiveInt(value) {
   const n = parseInt(value, 10);
@@ -37,29 +35,20 @@ function SeedPaperCitationsTab() {
   const [seedPapersError, setSeedPapersError] = useState(null);
 
   const [executions, setExecutions] = useState([]);
-  const [groundTruth, setGroundTruth] = useState([]);
+  const [executionSummaries, setExecutionSummaries] = useState(null);
   const [authorReport, setAuthorReport] = useState(null);
   const [loadingSeedData, setLoadingSeedData] = useState(false);
   const [seedDataError, setSeedDataError] = useState(null);
+  const [summariesError, setSummariesError] = useState(null);
   const [authorReportError, setAuthorReportError] = useState(null);
   const [authorReportLoading, setAuthorReportLoading] = useState(false);
 
   const [vrCache, setVrCache] = useState({});
   const [cmpCache, setCmpCache] = useState({});
-  const [citationError, setCitationError] = useState(null);
 
   const [tablePage, setTablePage] = useState(1);
   const [tablePageSize, setTablePageSize] = useState(10);
-
-  const vrCacheRef = useRef(vrCache);
-  const cmpCacheRef = useRef(cmpCache);
-  const queueRef = useRef([]);
-  const inFlightRef = useRef(new Set());
-  const visibleIdsRef = useRef([]);
-  const executionIdRef = useRef(executionId);
-  vrCacheRef.current = vrCache;
-  cmpCacheRef.current = cmpCache;
-  executionIdRef.current = executionId;
+  const [detailRefreshKey, setDetailRefreshKey] = useState(0);
 
   const writeParams = useCallback(
     (next) => {
@@ -104,20 +93,21 @@ function SeedPaperCitationsTab() {
     try {
       setLoadingSeedData(true);
       setSeedDataError(null);
+      setSummariesError(null);
       setAuthorReportError(null);
       setAuthorReportLoading(true);
       setExecutions([]);
-      setGroundTruth([]);
+      setExecutionSummaries(null);
       setAuthorReport(null);
-      setCitationError(null);
       if (clearCaches) {
         setVrCache({});
         setCmpCache({});
       }
 
-      const [execRes, gtRes, reportRes] = await Promise.allSettled([
+      // Max ~3 calls on seed-paper select. Do not fan out verification/comparison per execution.
+      const [execRes, summaryRes, reportRes] = await Promise.allSettled([
         apiService.getExecutions(null, id),
-        apiService.getGroundTruthReferences(id),
+        apiService.getSeedPaperExecutionSummaries(id),
         apiService.getAuthorReport(id),
       ]);
 
@@ -128,10 +118,11 @@ function SeedPaperCitationsTab() {
         setSeedDataError(execRes.reason?.message || 'Failed to load executions');
       }
 
-      if (gtRes.status === 'fulfilled') {
-        setGroundTruth(unwrapGroundTruthList(gtRes.value));
+      if (summaryRes.status === 'fulfilled') {
+        setExecutionSummaries(unwrapExecutionSummaries(summaryRes.value));
       } else {
-        setGroundTruth([]);
+        setExecutionSummaries(null);
+        setSummariesError(summaryRes.reason?.message || 'Failed to load execution summaries');
       }
 
       if (reportRes.status === 'fulfilled') {
@@ -149,7 +140,7 @@ function SeedPaperCitationsTab() {
   useEffect(() => {
     if (!seedPaperId) {
       setExecutions([]);
-      setGroundTruth([]);
+      setExecutionSummaries(null);
       setAuthorReport(null);
       setVrCache({});
       setCmpCache({});
@@ -158,155 +149,45 @@ function SeedPaperCitationsTab() {
     loadSeedPaperData(seedPaperId);
   }, [seedPaperId, loadSeedPaperData]);
 
-  const completed = useMemo(() => completedExecutions(executions), [executions]);
-
-  const visibleIds = useMemo(() => {
-    const start = (tablePage - 1) * tablePageSize;
-    return executions.slice(start, start + tablePageSize).map((ex) => ex.id).filter((id) => id != null);
-  }, [executions, tablePage, tablePageSize]);
-
-  visibleIdsRef.current = visibleIds;
-
-  const rebuildQueue = useCallback((completedList) => {
-    const ids = orderExecutionFetchIds(
-      (completedList || []).map((ex) => ex.id),
-      visibleIdsRef.current,
-      executionIdRef.current,
-    );
-    queueRef.current = ids.filter((id) => {
-      if (inFlightRef.current.has(id)) return false;
-      const vrMissing = !cacheHas(vrCacheRef.current, id);
-      const cmpMissing = !cacheHas(cmpCacheRef.current, id);
-      return vrMissing || cmpMissing;
-    });
-  }, []);
-
-  useEffect(() => {
-    rebuildQueue(completed);
-  }, [visibleIds, executionId, completed, rebuildQueue]);
-
-  useEffect(() => {
-    const completedList = completedExecutions(executions);
-    if (!seedPaperId || completedList.length === 0) {
-      queueRef.current = [];
-      return undefined;
-    }
-
-    let cancelled = false;
-    inFlightRef.current = new Set();
-    rebuildQueue(completedList);
-
-    const fetchOne = async (id) => {
-      const needVr = !cacheHas(vrCacheRef.current, id);
-      const needCmp = !cacheHas(cmpCacheRef.current, id);
-      const tasks = [];
-      if (needVr) {
-        tasks.push(
-          apiService
-            .getExecutionVerificationResults(id)
-            .then((payload) => {
-              if (cancelled) return;
-              setVrCache((prev) => ({ ...prev, [id]: payload ?? [] }));
-            })
-            .catch((err) => {
-              if (cancelled) return;
-              setVrCache((prev) => ({ ...prev, [id]: [] }));
-              const message = err?.message || String(err);
-              setCitationError((prev) => prev || `#${id}: ${message}`);
-            }),
-        );
-      }
-      if (needCmp) {
-        tasks.push(
-          apiService
-            .getExecutionComparisonResults(id)
-            .then((payload) => {
-              if (cancelled) return;
-              setCmpCache((prev) => ({ ...prev, [id]: payload ?? null }));
-            })
-            .catch(() => {
-              if (cancelled) return;
-              setCmpCache((prev) => ({ ...prev, [id]: null }));
-            }),
-        );
-      }
-      await Promise.all(tasks);
-    };
-
-    const worker = async () => {
-      while (!cancelled) {
-        rebuildQueue(completedList);
-        const id = queueRef.current.shift();
-        if (id == null) break;
-        if (inFlightRef.current.has(id)) continue;
-        inFlightRef.current.add(id);
-        try {
-          await fetchOne(id);
-        } finally {
-          inFlightRef.current.delete(id);
-        }
-      }
-    };
-
-    const n = Math.min(VR_FETCH_CONCURRENCY, Math.max(queueRef.current.length, 1));
-    Promise.all(Array.from({ length: n }, () => worker())).catch(() => {});
-
-    return () => {
-      cancelled = true;
-      queueRef.current = [];
-      inFlightRef.current = new Set();
-    };
-  }, [seedPaperId, executions, rebuildQueue]);
-
-  const groupedByExecId = useMemo(() => {
-    const map = {};
-    for (const ex of executions) {
-      if (ex?.id == null) continue;
-      const payload = vrCache[ex.id] ?? vrCache[String(ex.id)];
-      if (payload == null) continue;
-      map[ex.id] = groupVerificationByLiterature(payload);
-    }
-    return map;
-  }, [executions, vrCache]);
-
-  const fastRollup = useMemo(
-    () => computeFastExistenceRollup(executions, groupedByExecId, { verificationOnly: true }),
-    [executions, groupedByExecId],
+  const summaryByExecId = useMemo(
+    () => indexSummariesByExecutionId(executionSummaries?.executions),
+    [executionSummaries],
   );
 
-  const citationStats = useMemo(() => {
-    const groups = Object.entries(groupedByExecId).map(([id, citations]) => ({
-      executionId: id,
-      citations,
-    }));
-    if (groups.length === 0) return null;
-    return computeCitationLevelExistence(groups);
-  }, [groupedByExecId]);
+  const statusRollup = useMemo(
+    () => computeFastExistenceRollup(executions),
+    [executions],
+  );
 
-  const hasGroundTruth = groundTruth.length > 0;
+  const existenceCards = useMemo(
+    () => existenceCardsFromTotals(executionSummaries?.totals),
+    [executionSummaries],
+  );
+
+  const foundByDbRows = useMemo(
+    () => foundByDatabaseRows(executionSummaries?.found_by_database),
+    [executionSummaries],
+  );
+
+  const gtInstanceCards = useMemo(
+    () => gtInstanceCardsFromTotals(executionSummaries?.totals),
+    [executionSummaries],
+  );
+
+  const hasGroundTruth = useMemo(
+    () => summariesHaveGroundTruth(executionSummaries, authorReport),
+    [executionSummaries, authorReport],
+  );
+
   const gtCoverage = useMemo(
-    () => computeGtCoverageFromAuthorReport(authorReport, groundTruth.length),
-    [authorReport, groundTruth.length],
+    () => computeGtCoverageFromAuthorReport(authorReport),
+    [authorReport],
   );
-  const perRunRollup = useMemo(() => {
-    const groups = completed.map((ex) => ({
-      executionId: ex.id,
-      payload: cmpCache[ex.id] ?? cmpCache[String(ex.id)],
-    }));
-    return computePerRunGtRollup(groups, executions);
-  }, [executions, cmpCache, completed]);
 
-  const vrLoadedCount = useMemo(
-    () => completed.filter((ex) => cacheHas(vrCache, ex.id)).length,
-    [completed, vrCache],
+  const perRunRollup = useMemo(
+    () => computePerRunGtFromSummaries(executionSummaries?.executions),
+    [executionSummaries],
   );
-  const cmpLoadedCount = useMemo(
-    () => completed.filter((ex) => cacheHas(cmpCache, ex.id)).length,
-    [completed, cmpCache],
-  );
-  const completedTotal = completed.length;
-  const citationLoading = completedTotal > 0 && vrLoadedCount < completedTotal;
-  const perRunLoading = completedTotal > 0 && cmpLoadedCount < completedTotal;
 
   const listExecution = useMemo(
     () => executions.find((ex) => Number(ex.id) === Number(executionId)) || null,
@@ -340,6 +221,7 @@ function SeedPaperCitationsTab() {
   const handleRefresh = () => {
     loadSeedPapers();
     if (seedPaperId) loadSeedPaperData(seedPaperId, { clearCaches: true });
+    setDetailRefreshKey((n) => n + 1);
   };
 
   const handleCacheResults = ({ executionId: id, verification, comparison }) => {
@@ -405,7 +287,7 @@ function SeedPaperCitationsTab() {
 
       {seedPaperId && executionId ? (
         <ExecutionDetailView
-          key={executionId}
+          key={`${executionId}-${detailRefreshKey}`}
           executionId={executionId}
           seedPaperId={seedPaperId}
           listExecution={listExecution}
@@ -428,27 +310,23 @@ function SeedPaperCitationsTab() {
           ) : (
             <>
               <ExistenceSummary
-                fastRollup={fastRollup}
-                citationStats={citationStats}
-                citationLoading={citationLoading}
-                citationError={citationError}
-                loadedCount={vrLoadedCount}
-                totalCount={completedTotal}
+                statusRollup={statusRollup}
+                existenceCards={existenceCards}
+                foundByDatabaseRows={foundByDbRows}
+                totalExecutions={executionSummaries?.total_executions ?? executions.length}
+                summariesError={summariesError}
               />
               <GtCoverageSummary
                 hasGroundTruth={hasGroundTruth}
                 coverage={gtCoverage}
                 authorReportError={authorReportError}
                 authorReportLoading={authorReportLoading}
+                gtInstanceCards={gtInstanceCards}
                 perRunRollup={perRunRollup}
-                perRunLoading={perRunLoading}
-                loadedCount={cmpLoadedCount}
-                totalCount={completedTotal}
               />
               <SeedPaperExecutionsTable
                 executions={executions}
-                groupedByExecId={groupedByExecId}
-                comparisonByExecId={cmpCache}
+                summaryByExecId={summaryByExecId}
                 page={tablePage}
                 pageSize={tablePageSize}
                 onPageChange={setTablePage}

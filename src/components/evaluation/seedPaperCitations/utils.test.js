@@ -4,19 +4,28 @@ import {
   computeCitationLevelExistence,
   computeFastExistenceRollup,
   computeGtCoverageFromAuthorReport,
+  computePerRunGtFromSummaries,
   computePerRunGtRollup,
   dbRank,
+  existenceCardsFromTotals,
+  existenceFromSummaryRow,
   groupVerificationByLiterature,
   gtComparisonSummaryCards,
   gtFoundCountFromComparison,
+  gtFromSummaryRow,
+  gtInstanceCardsFromTotals,
+  indexSummariesByExecutionId,
   isEmptyComparisonPayload,
   joinExistenceAndGt,
+  lookupById,
   normalizeDbKey,
   normalizeDoi,
   orderExecutionFetchIds,
   paperDedupeKey,
   pickWinningHit,
   seedPaperPickerLabel,
+  unwrapExecutionSummaries,
+  verificationPayloadHasApiResponse,
 } from './utils';
 
 describe('seedPaperPickerLabel', () => {
@@ -398,5 +407,100 @@ describe('computePerRunGtRollup', () => {
     expect(rollup.sumMatches).toBe(9);
     expect(rollup.meanRecall).toBeCloseTo((3 / 6 + 6 / 6) / 2);
     expect(rollup.seedPaperFoundRate).toBeCloseTo(0.5);
+  });
+});
+
+describe('execution summaries helpers', () => {
+  const payload = {
+    seed_paper_id: 7,
+    total_executions: 2,
+    totals: {
+      llm_citations: 10,
+      existence_found: 7,
+      existence_not_found: 3,
+      gt_exact: 4,
+      gt_partial: 1,
+      gt_missed: 2,
+      gt_llm_extras: 3,
+    },
+    found_by_database: { doi: 5, crossref: 2, pubmed: 0 },
+    executions: [
+      {
+        id: 11,
+        status: 'completed',
+        existence: { total: 6, found: 5, not_found: 1 },
+        comparison: {
+          exact: 3,
+          partial: 1,
+          missed_gt: 1,
+          llm_extras: 1,
+          total_generated: 6,
+          total_ground_truth: 5,
+          seed_paper_found_by_llm: true,
+        },
+      },
+      {
+        id: 12,
+        status: 'completed',
+        existence: { total: 4, found: 2, not_found: 2 },
+        comparison: null,
+      },
+    ],
+  };
+
+  it('unwraps totals and indexes executions by id', () => {
+    const summaries = unwrapExecutionSummaries(payload);
+    expect(summaries.total_executions).toBe(2);
+    expect(summaries.totals.existence_found).toBe(7);
+    const byId = indexSummariesByExecutionId(summaries.executions);
+    expect(lookupById(byId, 11).existence.found).toBe(5);
+    expect(lookupById(byId, '12').comparison).toBeNull();
+  });
+
+  it('maps existence and GT instance cards from totals', () => {
+    const existence = existenceCardsFromTotals(payload.totals);
+    expect(existence.found).toBe(7);
+    expect(existence.notFound).toBe(3);
+    expect(existence.existenceRate).toBeCloseTo(0.7);
+    const gt = gtInstanceCardsFromTotals(payload.totals);
+    expect(gt.exact).toBe(4);
+    expect(gt.partial).toBe(1);
+    expect(gt.missed).toBe(2);
+    expect(gt.llmExtras).toBe(3);
+    expect(gt.recovered).toBe(5);
+  });
+
+  it('joins per-execution summary rows without treating null comparison as zero', () => {
+    const row = payload.executions[0];
+    expect(existenceFromSummaryRow(row)).toEqual({
+      total: 6,
+      found: 5,
+      notFound: 1,
+      byDatabase: expect.any(Object),
+    });
+    expect(gtFromSummaryRow(row).found).toBe(4);
+    expect(gtFromSummaryRow(payload.executions[1])).toBeNull();
+  });
+
+  it('rolls up per-run GT from summary comparison objects only', () => {
+    const rollup = computePerRunGtFromSummaries(payload.executions);
+    expect(rollup.runsWithComparison).toBe(1);
+    expect(rollup.sumExact).toBe(3);
+    expect(rollup.sumPartial).toBe(1);
+    expect(rollup.meanRecall).toBeCloseTo(4 / 5);
+    expect(rollup.seedPaperFoundRate).toBe(1);
+  });
+});
+
+describe('slim verification-results without api_response', () => {
+  it('does not treat missing api_response as an error and exists if any found===true', () => {
+    const grouped = groupVerificationByLiterature([
+      { database_name: 'crossref', found: true, similarity_score: 0.8, literature: { id: 1, title: 'A' } },
+      { database_name: 'openalex', found: false, literature: { id: 1, title: 'A' } },
+    ]);
+    expect(grouped).toHaveLength(1);
+    expect(grouped[0].exists).toBe(true);
+    expect(grouped[0].hits.every((h) => !Object.prototype.hasOwnProperty.call(h, 'api_response'))).toBe(true);
+    expect(verificationPayloadHasApiResponse(grouped[0].hits)).toBe(false);
   });
 });

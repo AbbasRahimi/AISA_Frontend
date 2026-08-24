@@ -298,6 +298,20 @@ class ApiService {
   }
 
   /**
+   * Cumulative + per-execution existence/GT counts for a seed paper.
+   * No citation lists and no api_response. Join `executions[].id` to GET /api/executions.
+   * @param {number} seedPaperId
+   * @param {object} [options]
+   * @param {string} [options.status] e.g. "completed"
+   */
+  async getSeedPaperExecutionSummaries(seedPaperId, options = {}) {
+    const query = buildQueryParams({
+      status: options?.status,
+    });
+    return this.request(`/api/seed-papers/${seedPaperId}/execution-summaries${query}`);
+  }
+
+  /**
    * Compute/cache authoritative citation metadata + discrepancy checks for all deduplicated
    * LLM references associated with a seed paper.
    *
@@ -922,8 +936,17 @@ class ApiService {
     return this.request(`/api/executions/${executionId}`);
   }
 
-  async getExecutionVerificationResults(executionId) {
-    return this.request(`/api/executions/${executionId}/verification-results`);
+  /**
+   * Slim by default (no api_response). Pass includeApiResponse for expand/raw DB hit.
+   * @param {number} executionId
+   * @param {object} [options]
+   * @param {boolean} [options.includeApiResponse]
+   */
+  async getExecutionVerificationResults(executionId, options = {}) {
+    const query = buildQueryParams({
+      include_api_response: options?.includeApiResponse === true ? true : undefined,
+    });
+    return this.request(`/api/executions/${executionId}/verification-results${query}`);
   }
 
   async getExecutionComparisonResults(executionId) {

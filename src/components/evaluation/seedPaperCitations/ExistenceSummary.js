@@ -17,31 +17,20 @@ function StatCard({ label, value, hint, border }) {
   );
 }
 
-function FetchProgress({ loaded, total, label }) {
-  if (!total || loaded >= total) return null;
-  return (
-    <div className="text-muted small mb-2">
-      <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
-      {label}: {loaded} of {total} executions loaded
-    </div>
-  );
-}
-
 function ExistenceSummary({
-  fastRollup,
-  citationStats,
-  citationLoading,
-  citationError,
-  loadedCount = 0,
-  totalCount = 0,
+  statusRollup,
+  existenceCards,
+  foundByDatabaseRows = [],
+  totalExecutions = 0,
+  summariesError = null,
 }) {
-  const statusEntries = Object.entries(fastRollup?.byStatus || {}).sort((a, b) => a[0].localeCompare(b[0]));
+  const statusEntries = Object.entries(statusRollup?.byStatus || {}).sort((a, b) => a[0].localeCompare(b[0]));
   const accuracyRatio =
-    fastRollup?.meanAccuracyScore == null
+    statusRollup?.meanAccuracyScore == null
       ? null
-      : fastRollup.meanAccuracyScore > 1
-        ? fastRollup.meanAccuracyScore / 100
-        : fastRollup.meanAccuracyScore;
+      : statusRollup.meanAccuracyScore > 1
+        ? statusRollup.meanAccuracyScore / 100
+        : statusRollup.meanAccuracyScore;
 
   return (
     <div className="card mb-3">
@@ -55,38 +44,49 @@ function ExistenceSummary({
         </div>
       </div>
       <div className="card-body">
-        <h6 className="text-muted">Per-run instance totals</h6>
-        <FetchProgress loaded={loadedCount} total={totalCount} label="Verification rows" />
+        {summariesError && (
+          <div className="alert alert-warning py-2">Failed to load execution summaries: {summariesError}</div>
+        )}
+        <h6 className="text-muted">Instance totals</h6>
         <p className="small text-muted">
-          The same paper in two runs is counted twice. When verification rows are loaded they are the
-          source of truth — imported executions often leave <code>verified_publications</code> empty
-          on the executions list.
+          The same paper in two runs is counted twice. Counts come from the seed-paper execution-summaries
+          endpoint, not from per-execution verification-results.
         </p>
         <div className="row">
-          <StatCard label="Executions" value={formatInt(fastRollup?.executionCount)} border="#6c757d" />
+          <StatCard
+            label="Executions"
+            value={formatInt(totalExecutions || statusRollup?.executionCount)}
+            border="#6c757d"
+          />
           <StatCard
             label="LLM citations"
-            value={formatInt(fastRollup?.sumTotalPublicationsFound)}
+            value={formatInt(existenceCards?.llmCitations)}
             hint="instances"
             border="#007bff"
           />
           <StatCard
-            label="Verified (exist)"
-            value={formatInt(fastRollup?.sumVerifiedPublications)}
+            label="Found"
+            value={formatInt(existenceCards?.found)}
             hint="instances"
             border="#28a745"
           />
           <StatCard
+            label="Not found"
+            value={formatInt(existenceCards?.notFound)}
+            hint="instances"
+            border="#dc3545"
+          />
+          <StatCard
             label="Existence rate"
-            value={formatRatioAsPercent(fastRollup?.existenceRate)}
+            value={formatRatioAsPercent(existenceCards?.existenceRate)}
             border="#17a2b8"
           />
           <StatCard
             label="Mean accuracy"
-            value={formatAccuracyScore(fastRollup?.meanAccuracyScore)}
+            value={formatAccuracyScore(statusRollup?.meanAccuracyScore)}
             hint={
-              fastRollup?.scoredRunCount
-                ? `${fastRollup.scoredRunCount} completed run${fastRollup.scoredRunCount === 1 ? '' : 's'} with a score`
+              statusRollup?.scoredRunCount
+                ? `${statusRollup.scoredRunCount} completed run${statusRollup.scoredRunCount === 1 ? '' : 's'} with a score`
                 : 'completed runs with a score'
             }
             border="#ffc107"
@@ -99,18 +99,12 @@ function ExistenceSummary({
                 {status}: {count}
               </span>
             ))}
-            {fastRollup?.usedVerification ? (
-              <span className="badge bg-info me-2 mb-1">from verification rows</span>
-            ) : null}
-            {totalCount > 0 && loadedCount >= totalCount ? (
-              <span className="badge bg-success me-2 mb-1">all executions loaded</span>
-            ) : null}
           </div>
         )}
-        {(fastRollup?.existenceRate != null || accuracyRatio != null) && (
+        {(existenceCards?.existenceRate != null || accuracyRatio != null) && (
           <div className="row">
             <div className="col-md-6">
-              <MetricBar label="Existence rate" value={fastRollup?.existenceRate ?? undefined} />
+              <MetricBar label="Existence rate" value={existenceCards?.existenceRate ?? undefined} />
             </div>
             <div className="col-md-6">
               <MetricBar label="Mean accuracy" value={accuracyRatio ?? undefined} />
@@ -119,71 +113,30 @@ function ExistenceSummary({
         )}
 
         <hr />
-        <h6 className="text-muted">Citation-level (preferred)</h6>
-        <FetchProgress loaded={loadedCount} total={totalCount} label="Citation-level totals" />
-        {citationError && (
-          <div className="alert alert-warning py-2">
-            Could not load verification rows for all executions: {citationError}
+        <h6 className="text-muted">Found by database</h6>
+        <p className="small text-muted">Instance sums. The same paper found in two runs counts twice.</p>
+        {foundByDatabaseRows.length > 0 ? (
+          <div className="table-responsive">
+            <table className="table table-sm table-bordered mb-0">
+              <thead className="table-light">
+                <tr>
+                  <th>Database</th>
+                  <th className="text-end">Found (instances)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {foundByDatabaseRows.map((row) => (
+                  <tr key={row.key}>
+                    <td>{row.label}</td>
+                    <td className="text-end">{formatInt(row.count)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        )}
-        {citationStats && citationStats.totalInstances > 0 ? (
-          <>
-            <div className="row">
-              <StatCard
-                label="Found"
-                value={formatInt(citationStats.foundInstances)}
-                hint="instances"
-                border="#28a745"
-              />
-              <StatCard
-                label="Not found"
-                value={formatInt(citationStats.notFoundInstances)}
-                hint="instances"
-                border="#dc3545"
-              />
-              <StatCard
-                label="Unique papers"
-                value={formatInt(citationStats.uniquePapers)}
-                hint="DOI / title dedupe"
-                border="#6f42c1"
-              />
-              <StatCard
-                label="Unique found"
-                value={formatInt(citationStats.uniqueFound)}
-                border="#198754"
-              />
-              <StatCard
-                label="Unique never found"
-                value={formatInt(citationStats.uniqueNotFound)}
-                border="#fd7e14"
-              />
-            </div>
-            {citationStats.perDatabaseUniqueFound.length > 0 && (
-              <div className="table-responsive">
-                <table className="table table-sm table-bordered mb-0">
-                  <thead className="table-light">
-                    <tr>
-                      <th>Database</th>
-                      <th className="text-end">Unique citations found</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {citationStats.perDatabaseUniqueFound.map((row) => (
-                      <tr key={row.key}>
-                        <td>{row.label}</td>
-                        <td className="text-end">{formatInt(row.count)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
         ) : (
-          !citationLoading && (
-            <p className="text-muted small mb-0">
-              No verification rows yet (still running or imported without verification).
-            </p>
+          !summariesError && (
+            <p className="text-muted small mb-0">No per-database existence counts yet.</p>
           )
         )}
       </div>

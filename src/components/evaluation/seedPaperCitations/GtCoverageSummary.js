@@ -29,28 +29,20 @@ function RefLine({ item }) {
   );
 }
 
-function FetchProgress({ loaded, total, label }) {
-  if (!total || loaded >= total) return null;
-  return (
-    <div className="text-muted small mb-2">
-      <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
-      {label}: {loaded} of {total} executions loaded
-    </div>
-  );
-}
-
 function GtCoverageSummary({
   hasGroundTruth,
   coverage,
   authorReportError,
   authorReportLoading,
+  gtInstanceCards,
   perRunRollup,
-  perRunLoading,
-  loadedCount = 0,
-  totalCount = 0,
 }) {
   const [showRecovered, setShowRecovered] = useState(false);
   const [showMissed, setShowMissed] = useState(false);
+  const instance = gtInstanceCards || {};
+  const hasInstanceCounts =
+    (instance.exact || 0) + (instance.partial || 0) + (instance.missed || 0) + (instance.llmExtras || 0) > 0
+    || (perRunRollup?.runsWithComparison || 0) > 0;
 
   return (
     <div className="card mb-3">
@@ -115,8 +107,8 @@ function GtCoverageSummary({
                   />
                 </div>
                 <p className="small text-muted">
-                  <code>llm_not_in_gt</code> is filtered to verified/authoritative extras. Do not treat its
-                  length as a false-positive count.
+                  Unique recovered/missed GT comes from the author report. Do not treat{' '}
+                  <code>llm_not_in_gt</code> length as a false-positive count.
                 </p>
                 <div className="d-flex flex-wrap gap-2 mb-3">
                   <button
@@ -165,41 +157,42 @@ function GtCoverageSummary({
             )}
 
             <hr />
-            <h6 className="text-muted">Per-run instance rollup</h6>
-            <FetchProgress loaded={loadedCount} total={totalCount} label="Comparison results" />
-            {perRunRollup && perRunRollup.runsWithComparison > 0 ? (
-              <div className="row">
-                <StatCard
-                  label="Runs with comparison"
-                  value={formatInt(perRunRollup.runsWithComparison)}
-                  border="#6c757d"
-                />
-                <StatCard label="Sum exact" value={formatInt(perRunRollup.sumExact)} border="#28a745" />
-                <StatCard label="Sum partial" value={formatInt(perRunRollup.sumPartial)} border="#ffc107" />
-                <StatCard label="Sum recovered" value={formatInt(perRunRollup.sumMatches)} border="#20c997" />
-                <StatCard
-                  label="Mean recall"
-                  value={formatRatioAsPercent(perRunRollup.meanRecall)}
-                  hint="matches / GT size"
-                  border="#17a2b8"
-                />
-                <StatCard
-                  label="Seed cited by LLM"
-                  value={formatRatioAsPercent(perRunRollup.seedPaperFoundRate)}
-                  hint={
-                    perRunRollup.seedKnownCount
-                      ? `${perRunRollup.seedPaperFoundCount}/${perRunRollup.seedKnownCount} runs`
-                      : null
-                  }
-                  border="#0d6efd"
-                />
-              </div>
+            <h6 className="text-muted">Per-run instance totals</h6>
+            <p className="small text-muted">
+              Instance sums from execution-summaries. The same GT reference missed in two runs counts twice.
+            </p>
+            {hasInstanceCounts ? (
+              <>
+                <div className="row">
+                  <StatCard
+                    label="Runs with comparison"
+                    value={formatInt(perRunRollup?.runsWithComparison)}
+                    border="#6c757d"
+                  />
+                  <StatCard label="Exact" value={formatInt(instance.exact)} border="#28a745" />
+                  <StatCard label="Partial" value={formatInt(instance.partial)} border="#ffc107" />
+                  <StatCard label="Missed GT" value={formatInt(instance.missed)} border="#dc3545" />
+                  <StatCard label="LLM extras" value={formatInt(instance.llmExtras)} border="#fd7e14" />
+                  <StatCard
+                    label="Mean recall"
+                    value={formatRatioAsPercent(perRunRollup?.meanRecall)}
+                    hint="matches / GT size"
+                    border="#17a2b8"
+                  />
+                  <StatCard
+                    label="Seed cited by LLM"
+                    value={formatRatioAsPercent(perRunRollup?.seedPaperFoundRate)}
+                    hint={
+                      perRunRollup?.seedKnownCount
+                        ? `${perRunRollup.seedPaperFoundCount}/${perRunRollup.seedKnownCount} runs`
+                        : null
+                    }
+                    border="#0d6efd"
+                  />
+                </div>
+              </>
             ) : (
-              !perRunLoading && (
-                <p className="text-muted small mb-0">
-                  No persisted GT comparison for these runs yet.
-                </p>
-              )
+              <p className="text-muted small mb-0">No persisted GT comparison for these runs yet.</p>
             )}
           </>
         )}

@@ -197,7 +197,8 @@ export function groupVerificationByLiterature(rows) {
 
   return [...map.values()].map((citation) => {
     const usableHits = citation.hits.filter((h) => !isSkippedHit(h));
-    const exists = usableHits.some((h) => h.found === true);
+    // Citation exists iff any row has found === true (missing api_response is not an error).
+    const exists = citation.hits.some((h) => h.found === true);
     const winningHit = pickWinningHit(usableHits);
     return {
       ...citation,
@@ -331,6 +332,183 @@ export function orderExecutionFetchIds(completedIds, visibleIds = [], priorityId
 export function cacheHas(cache, id) {
   if (!cache || id == null) return false;
   return cache[id] !== undefined || cache[String(id)] !== undefined;
+}
+
+export const SUMMARY_DB_KEYS = [
+  'doi',
+  'crossref',
+  'pubmed',
+  'openalex',
+  'semantic_scholar',
+  'web_search',
+];
+
+export function emptyFoundByDatabase() {
+  return {
+    openalex: 0,
+    crossref: 0,
+    doi: 0,
+    pubmed: 0,
+    semantic_scholar: 0,
+    web_search: 0,
+  };
+}
+
+export function emptyExecutionSummaries() {
+  return {
+    seed_paper_id: null,
+    total_executions: 0,
+    totals: {
+      llm_citations: 0,
+      existence_found: 0,
+      existence_not_found: 0,
+      gt_exact: 0,
+      gt_partial: 0,
+      gt_missed: 0,
+      gt_llm_extras: 0,
+    },
+    found_by_database: emptyFoundByDatabase(),
+    executions: [],
+  };
+}
+
+/** Normalize GET /api/seed-papers/{id}/execution-summaries. */
+export function unwrapExecutionSummaries(payload) {
+  const empty = emptyExecutionSummaries();
+  if (!payload || typeof payload !== 'object') return empty;
+  const executions = Array.isArray(payload.executions) ? payload.executions : [];
+  const totals = payload.totals && typeof payload.totals === 'object' ? payload.totals : {};
+  const foundByDb =
+    payload.found_by_database && typeof payload.found_by_database === 'object'
+      ? payload.found_by_database
+      : {};
+  return {
+    seed_paper_id: payload.seed_paper_id ?? empty.seed_paper_id,
+    total_executions: optionalNumber(payload.total_executions) ?? executions.length,
+    totals: { ...empty.totals, ...totals },
+    found_by_database: { ...empty.found_by_database, ...foundByDb },
+    executions,
+  };
+}
+
+export function lookupById(map, id) {
+  if (!map || id == null) return undefined;
+  if (Object.prototype.hasOwnProperty.call(map, id)) return map[id];
+  const asString = String(id);
+  if (Object.prototype.hasOwnProperty.call(map, asString)) return map[asString];
+  return undefined;
+}
+
+export function indexSummariesByExecutionId(summaryExecutions) {
+  const map = {};
+  for (const row of Array.isArray(summaryExecutions) ? summaryExecutions : []) {
+    if (row?.id == null) continue;
+    map[row.id] = row;
+    map[String(row.id)] = row;
+  }
+  return map;
+}
+
+export function foundByDatabaseRows(counts) {
+  const src = counts && typeof counts === 'object' ? counts : {};
+  const keys = [...SUMMARY_DB_KEYS];
+  for (const key of Object.keys(src)) {
+    if (!keys.includes(key)) keys.push(key);
+  }
+  return keys
+    .map((key) => ({
+      key,
+      label: dbDisplayName(key),
+      count: optionalNumber(src[key]) ?? 0,
+    }))
+    .filter((row) => row.count > 0)
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+}
+
+export function existenceFromSummaryRow(row) {
+  const ex = row?.existence;
+  if (!ex || typeof ex !== 'object') {
+    return { total: null, found: null, notFound: null, byDatabase: emptyFoundByDatabase() };
+  }
+  return {
+    total: optionalNumber(ex.total),
+    found: optionalNumber(ex.found),
+    notFound: optionalNumber(ex.not_found),
+    byDatabase: ex.by_database && typeof ex.by_database === 'object' ? ex.by_database : emptyFoundByDatabase(),
+  };
+}
+
+export function gtFromSummaryRow(row) {
+  const cmp = row?.comparison;
+  if (!cmp || typeof cmp !== 'object') return null;
+  const exact = optionalNumber(cmp.exact) ?? 0;
+  const partial = optionalNumber(cmp.partial) ?? 0;
+  return {
+    exact,
+    partial,
+    missed: optionalNumber(cmp.missed_gt) ?? 0,
+    llmExtras: optionalNumber(cmp.llm_extras) ?? 0,
+    totalGenerated: optionalNumber(cmp.total_generated),
+    totalGroundTruth: optionalNumber(cmp.total_ground_truth),
+    found: exact + partial,
+    seedPaperFoundByLlm:
+      cmp.seed_paper_found_by_llm === true || cmp.seed_paper_found_by_llm === false
+        ? cmp.seed_paper_found_by_llm
+        : null,
+  };
+}
+
+export function existenceCardsFromTotals(totals) {
+  const t = totals && typeof totals === 'object' ? totals : {};
+  const llmCitations = optionalNumber(t.llm_citations);
+  const found = optionalNumber(t.existence_found);
+  const notFound = optionalNumber(t.existence_not_found);
+  const denom =
+    found != null && notFound != null
+      ? found + notFound
+      : llmCitations;
+  return {
+    llmCitations,
+    found,
+    notFound,
+    existenceRate: denom != null && denom > 0 && found != null ? found / denom : null,
+  };
+}
+
+export function gtInstanceCardsFromTotals(totals) {
+  const t = totals && typeof totals === 'object' ? totals : {};
+  const exact = optionalNumber(t.gt_exact) ?? 0;
+  const partial = optionalNumber(t.gt_partial) ?? 0;
+  const missed = optionalNumber(t.gt_missed) ?? 0;
+  const llmExtras = optionalNumber(t.gt_llm_extras) ?? 0;
+  return {
+    exact,
+    partial,
+    missed,
+    llmExtras,
+    recovered: exact + partial,
+  };
+}
+
+export function summariesHaveGroundTruth(summaries, authorReport = null) {
+  const fromReport =
+    (Array.isArray(authorReport?.gt_found_by_llm) ? authorReport.gt_found_by_llm.length : 0) +
+      (Array.isArray(authorReport?.gt_not_in_llm) ? authorReport.gt_not_in_llm.length : 0) >
+    0;
+  if (fromReport) return true;
+  const totals = summaries?.totals;
+  if (totals) {
+    const gtSum =
+      (Number(totals.gt_exact) || 0) + (Number(totals.gt_partial) || 0) + (Number(totals.gt_missed) || 0);
+    if (gtSum > 0) return true;
+  }
+  return (Array.isArray(summaries?.executions) ? summaries.executions : []).some((row) => row?.comparison);
+}
+
+export function verificationPayloadHasApiResponse(payload) {
+  return unwrapVerificationRows(payload).some(
+    (row) => row && Object.prototype.hasOwnProperty.call(row, 'api_response'),
+  );
 }
 
 /**
@@ -487,6 +665,57 @@ export function computePerRunGtRollup(comparisonByExecution, executions = []) {
     runsWithComparison,
     sumExact,
     sumPartial,
+    sumMatches,
+    sumTotalGt,
+    sumTotalGenerated,
+    meanRecall: mean(recalls),
+    seedPaperFoundRate: seedKnownCount > 0 ? seedFoundCount / seedKnownCount : null,
+    seedPaperFoundCount: seedFoundCount,
+    seedKnownCount,
+  };
+}
+
+/** Per-run GT rollup from execution-summaries[].comparison (no comparison-results fetch). */
+export function computePerRunGtFromSummaries(summaryExecutions) {
+  const list = Array.isArray(summaryExecutions) ? summaryExecutions : [];
+  let sumExact = 0;
+  let sumPartial = 0;
+  let sumMissed = 0;
+  let sumExtras = 0;
+  let sumMatches = 0;
+  let sumTotalGt = 0;
+  let sumTotalGenerated = 0;
+  const recalls = [];
+  let seedFoundCount = 0;
+  let seedKnownCount = 0;
+  let runsWithComparison = 0;
+
+  for (const row of list) {
+    const gt = gtFromSummaryRow(row);
+    if (!gt) continue;
+    runsWithComparison += 1;
+    sumExact += gt.exact;
+    sumPartial += gt.partial;
+    sumMissed += gt.missed;
+    sumExtras += gt.llmExtras;
+    sumMatches += gt.found;
+    if (gt.totalGenerated != null) sumTotalGenerated += gt.totalGenerated;
+    if (gt.totalGroundTruth != null && gt.totalGroundTruth > 0) {
+      sumTotalGt += gt.totalGroundTruth;
+      recalls.push(gt.found / gt.totalGroundTruth);
+    }
+    if (gt.seedPaperFoundByLlm === true || gt.seedPaperFoundByLlm === false) {
+      seedKnownCount += 1;
+      if (gt.seedPaperFoundByLlm === true) seedFoundCount += 1;
+    }
+  }
+
+  return {
+    runsWithComparison,
+    sumExact,
+    sumPartial,
+    sumMissed,
+    sumExtras,
     sumMatches,
     sumTotalGt,
     sumTotalGenerated,

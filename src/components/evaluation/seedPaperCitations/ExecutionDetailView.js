@@ -13,6 +13,7 @@ import {
   joinExistenceAndGt,
   unwrapExecutionDetails,
   unwrapVerificationRows,
+  verificationPayloadHasApiResponse,
 } from './utils';
 
 function formatEvalMetric(key, value) {
@@ -46,56 +47,78 @@ function ExecutionDetailView({
   const [error, setError] = useState(null);
   const [vrError, setVrError] = useState(null);
   const [cmpError, setCmpError] = useState(null);
+  const [apiResponseLoading, setApiResponseLoading] = useState(false);
   const pollRef = useRef(null);
+  const apiResponseRequestedRef = useRef(verificationPayloadHasApiResponse(cachedVerification));
 
-  const loadAll = async ({ silent = false } = {}) => {
+  const applyVerification = (payload) => {
+    setVerificationRows(unwrapVerificationRows(payload));
+    if (verificationPayloadHasApiResponse(payload)) {
+      apiResponseRequestedRef.current = true;
+    }
+  };
+
+  const loadCitationRows = async ({ silent = false, force = false } = {}) => {
     if (!executionId) return;
+    const needDetails = !listExecution;
+    const needVr = force || cachedVerification == null;
+    const needCmp = force || cachedComparison == null;
     try {
-      if (!silent) setLoading(true);
+      if (!silent && needDetails) setLoading(true);
+      if (needVr) setVrLoading(true);
+      if (needCmp) setCmpLoading(true);
       setError(null);
+
       const [detailRes, vrRes, cmpRes] = await Promise.allSettled([
-        apiService.getExecutionDetails(executionId),
-        apiService.getExecutionVerificationResults(executionId),
-        apiService.getExecutionComparisonResults(executionId),
+        needDetails ? apiService.getExecutionDetails(executionId) : Promise.resolve(listExecution),
+        needVr ? apiService.getExecutionVerificationResults(executionId) : Promise.resolve(cachedVerification),
+        needCmp ? apiService.getExecutionComparisonResults(executionId) : Promise.resolve(cachedComparison),
       ]);
 
       if (detailRes.status === 'fulfilled') {
-        setDetails(unwrapExecutionDetails(detailRes.value) || listExecution || null);
-      } else {
+        setDetails(
+          needDetails
+            ? unwrapExecutionDetails(detailRes.value) || listExecution || null
+            : listExecution || unwrapExecutionDetails(detailRes.value) || null,
+        );
+      } else if (needDetails) {
         setError(detailRes.reason?.message || 'Failed to load execution');
-        if (!details && listExecution) setDetails(listExecution);
+        if (listExecution) setDetails(listExecution);
       }
 
       if (vrRes.status === 'fulfilled') {
-        setVerificationRows(unwrapVerificationRows(vrRes.value));
+        if (vrRes.value != null) applyVerification(vrRes.value);
         setVrError(null);
       } else {
         setVrError(vrRes.reason?.message || 'Failed to load verification results');
       }
-      setVrLoading(false);
 
       if (cmpRes.status === 'fulfilled') {
-        setComparisonPayload(cmpRes.value || null);
+        setComparisonPayload(cmpRes.value ?? null);
         setCmpError(null);
       } else {
         setCmpError(cmpRes.reason?.message || 'Failed to load comparison results');
       }
-      setCmpLoading(false);
 
-      if (vrRes.status === 'fulfilled' || cmpRes.status === 'fulfilled') {
-        onCacheResults?.({
-          executionId,
-          verification: vrRes.status === 'fulfilled' ? vrRes.value : undefined,
-          comparison: cmpRes.status === 'fulfilled' ? cmpRes.value : undefined,
-        });
-      }
+      onCacheResults?.({
+        executionId,
+        verification: vrRes.status === 'fulfilled' && needVr ? vrRes.value : undefined,
+        comparison: cmpRes.status === 'fulfilled' && needCmp ? cmpRes.value : undefined,
+      });
     } finally {
       if (!silent) setLoading(false);
+      setVrLoading(false);
+      setCmpLoading(false);
     }
   };
 
   useEffect(() => {
-    loadAll();
+    if (listExecution) setDetails(listExecution);
+  }, [listExecution]);
+
+  useEffect(() => {
+    apiResponseRequestedRef.current = verificationPayloadHasApiResponse(cachedVerification);
+    loadCitationRows();
     return () => {
       if (pollRef.current) clearTimeout(pollRef.current);
     };
@@ -115,7 +138,7 @@ function ExecutionDetailView({
         const nextStatus = st?.status || st;
         setDetails((prev) => ({ ...(prev || {}), status: nextStatus, ...(typeof st === 'object' ? st : {}) }));
         if (!isLiveExecutionStatus(nextStatus)) {
-          loadAll({ silent: true });
+          loadCitationRows({ silent: true, force: true });
           return;
         }
       } catch {
@@ -132,6 +155,23 @@ function ExecutionDetailView({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [executionId, live]);
+
+  const requestApiResponse = async () => {
+    if (!executionId || apiResponseRequestedRef.current || apiResponseLoading) return;
+    apiResponseRequestedRef.current = true;
+    setApiResponseLoading(true);
+    try {
+      const payload = await apiService.getExecutionVerificationResults(executionId, {
+        includeApiResponse: true,
+      });
+      applyVerification(payload);
+      onCacheResults?.({ executionId, verification: payload });
+    } catch {
+      apiResponseRequestedRef.current = false;
+    } finally {
+      setApiResponseLoading(false);
+    }
+  };
 
   const citations = useMemo(
     () => groupVerificationByLiterature(verificationRows || []),
@@ -280,6 +320,8 @@ function ExecutionDetailView({
           loading={vrLoading}
           error={vrError}
           showGtJoin={gtRows.length > 0}
+          onRequestApiResponse={requestApiResponse}
+          apiResponseLoading={apiResponseLoading}
         />
       ) : (
         <GtComparisonPanel
