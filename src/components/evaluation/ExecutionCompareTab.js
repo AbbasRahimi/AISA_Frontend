@@ -335,7 +335,8 @@ function ExecutionCompareTab() {
           <i className="fas fa-info-circle me-1" />
           No stored execution evaluations matched these filters. Executions without a stored
           evaluation for the chosen include-partial setting are omitted. Use the
-          {' '}<strong>Batch recalculate</strong> tab to persist evaluations, then compare again.
+          {' '}<strong>Re-verify existence</strong> tab (or Calculate Evaluation Metrics on Select
+          Execution) to persist evaluations, then compare again.
         </div>
       )}
 

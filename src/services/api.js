@@ -1099,15 +1099,81 @@ class ApiService {
   }
 
   /**
-   * Batch recalculate metrics for all executions under a seed paper.
+   * List LLM citations that are not found (or never verified) for a seed paper.
+   * OpenAPI: GET /api/evaluation/seed-papers/{seed_paper_id}/not-found-citations
+   * @param {number} seedPaperId
+   * @returns {Promise<{
+   *   seed_paper_id: number,
+   *   count: number,
+   *   citations: Array<{
+   *     execution_id: number,
+   *     literature_id: number,
+   *     title?: string,
+   *     authors?: string,
+   *     year?: number,
+   *     doi?: string,
+   *     databases_queried?: string[],
+   *     database_results?: object,
+   *     reasons?: string[],
+   *   }>,
+   * }>}
+   */
+  async getSeedPaperNotFoundCitations(seedPaperId) {
+    if (seedPaperId == null) throw new Error('seed_paper_id is required.');
+    return this.request(
+      `/api/evaluation/seed-papers/${encodeURIComponent(seedPaperId)}/not-found-citations`
+    );
+  }
+
+  /**
+   * Queue existence re-verify + metrics recalculate for not-found citations under a seed paper.
    * OpenAPI: POST /api/evaluation/seed-papers/{seed_paper_id}/executions/recalculate
-   * Body (SeedPaperExecutionsRecalculateRequest): same fields as execution recalculate,
-   * including skip_if_evaluation_exists.
+   * Returns 202 with a job payload (not a synchronous recalculate result).
+   * @param {number} seedPaperId
+   * @param {object} [payload]
+   * @param {boolean} [payload.include_partial]
+   * @param {number} [payload.wmcc_weight]
+   * @param {number} [payload.validity_weight]
+   * @param {number} [payload.relevance_weight]
+   * @param {string|null} [payload.openalex_email]
+   * @param {number[]} [payload.literature_ids] - subset to re-verify; omit for all not-found
+   * @returns {Promise<{
+   *   job_id: number,
+   *   run_id: number,
+   *   status: string,
+   *   status_url?: string,
+   *   seed_paper_id: number,
+   *   candidates?: object[],
+   *   candidate_count?: number,
+   *   message?: string,
+   * }>}
    */
   async recalculateMetricsForSeedPaperExecutions(seedPaperId, payload = {}) {
     return this.request(`/api/evaluation/seed-papers/${seedPaperId}/executions/recalculate`, {
       method: 'POST',
       body: JSON.stringify(payload || {}),
+    });
+  }
+
+  /**
+   * Poll evaluation background job status.
+   * OpenAPI: GET /api/evaluation/jobs/{run_id}/status
+   * @param {number|string} runId
+   * @returns {Promise<{
+   *   run_id: number,
+   *   status: string,
+   *   progress?: number|null,
+   *   message?: string|null,
+   *   current_stage?: string|null,
+   *   error?: string|null,
+   *   job_type?: string|null,
+   *   execution_id?: number|null,
+   * }>}
+   */
+  async getEvaluationJobStatus(runId) {
+    if (runId == null) throw new Error('run_id is required.');
+    return this.request(`/api/evaluation/jobs/${encodeURIComponent(runId)}/status`, {
+      timeout: STATUS_POLL_TIMEOUT_MS,
     });
   }
 

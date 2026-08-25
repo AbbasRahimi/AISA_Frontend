@@ -5,7 +5,7 @@ import ExecutionsTable from './ExecutionsTable';
 import SelectedExecutionDetails from './SelectedExecutionDetails';
 import MetricsResults from './MetricsResults';
 import BatchEvaluation from './BatchEvaluation';
-import BatchEvaluationRecalculate from './BatchEvaluationRecalculate';
+import SeedPaperExistenceReverify from './SeedPaperExistenceReverify';
 import SeedPaperExecutionMetrics from './SeedPaperExecutionMetrics';
 import SeedPaperCitationsTab from './seedPaperCitations/SeedPaperCitationsTab';
 import ExecutionCompareTab from './ExecutionCompareTab';
@@ -176,7 +176,7 @@ const EvaluationMetricsGuide = () => {
                 type="button"
                 role="tab"
               >
-                <i className="fas fa-sync-alt"></i> Batch recalculate
+                <i className="fas fa-search"></i> Re-verify existence
               </button>
             </li>
           </ul>
@@ -257,7 +257,7 @@ const EvaluationMetricsGuide = () => {
 
             {activeTab === 'batchRecalculate' && (
               <div>
-                <BatchEvaluationRecalculate />
+                <SeedPaperExistenceReverify />
               </div>
             )}
           </div>
