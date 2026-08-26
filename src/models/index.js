@@ -395,6 +395,8 @@ export const NotFoundCitation = {
   reasons: [],
   raw_response_status: RawResponseStatus.OK,
   source_key: null,
+  llm_name: null,
+  prompt_alias: null,
 };
 
 export const SkippedRawUnavailableItem = {

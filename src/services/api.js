@@ -1117,6 +1117,8 @@ class ApiService {
    *     reasons?: string[],
    *     raw_response_status?: 'ok'|'missing'|'truncated',
    *     source_key?: string|null,
+   *     llm_name?: string|null,
+   *     prompt_alias?: string|null,
    *   }>,
    * }>}
    */

@@ -312,6 +312,8 @@ function SeedPaperExistenceReverifyView({
                       </th>
                       <th>Title</th>
                       <th>Raw</th>
+                      <th>LLM</th>
+                      <th>Prompt</th>
                       <th>DOI</th>
                       <th>Year</th>
                       <th>Execution</th>
@@ -361,6 +363,8 @@ function SeedPaperExistenceReverifyView({
                               {rawMeta.label}
                             </span>
                           </td>
+                          <td className="small">{c.llm_name || '—'}</td>
+                          <td className="small">{c.prompt_alias || 'No prompt alias'}</td>
                           <td className="small">{c.doi || '—'}</td>
                           <td>{c.year != null ? c.year : '—'}</td>
                           <td>{c.execution_id}</td>
