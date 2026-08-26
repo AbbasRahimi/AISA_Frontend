@@ -1149,6 +1149,8 @@ class ApiService {
    *   candidate_count?: number,
    *   skipped_raw_unavailable?: Array<{
    *     execution_id: number,
+   *     llm_name?: string|null,
+   *     prompt_alias?: string|null,
    *     literature_id: number,
    *     reason?: string,
    *     title?: string,

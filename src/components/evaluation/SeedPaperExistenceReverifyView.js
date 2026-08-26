@@ -61,6 +61,9 @@ function SkippedList({ items, emptyLabel }) {
       {list.map((item, idx) => (
         <li key={`${item.literature_id ?? 'x'}-${item.execution_id ?? idx}-${idx}`}>
           <strong>{item.title || `Literature ${item.literature_id ?? '—'}`}</strong>
+          <div className="text-muted">
+            {item.llm_name || 'Unknown LLM'} · {item.prompt_alias || 'No prompt alias'}
+          </div>
           {item.reason ? (
             <span className="text-muted"> — {formatReasonLabel(item.reason)}</span>
           ) : null}

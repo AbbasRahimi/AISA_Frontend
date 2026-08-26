@@ -399,6 +399,8 @@ export const NotFoundCitation = {
 
 export const SkippedRawUnavailableItem = {
   execution_id: null,
+  llm_name: null,
+  prompt_alias: null,
   literature_id: null,
   reason: null,
   title: null,
