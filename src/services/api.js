@@ -1115,6 +1115,8 @@ class ApiService {
    *     databases_queried?: string[],
    *     database_results?: object,
    *     reasons?: string[],
+   *     raw_response_status?: 'ok'|'missing'|'truncated',
+   *     source_key?: string|null,
    *   }>,
    * }>}
    */
@@ -1145,6 +1147,14 @@ class ApiService {
    *   seed_paper_id: number,
    *   candidates?: object[],
    *   candidate_count?: number,
+   *   skipped_raw_unavailable?: Array<{
+   *     execution_id: number,
+   *     literature_id: number,
+   *     reason?: string,
+   *     title?: string,
+   *     raw_response_status?: string,
+   *   }>,
+   *   skipped_raw_unavailable_count?: number,
    *   message?: string,
    * }>}
    */
@@ -1158,6 +1168,8 @@ class ApiService {
   /**
    * Poll evaluation background job status.
    * OpenAPI: GET /api/evaluation/jobs/{run_id}/status
+   * On completed, may include result keys: reparsed, literature_updated,
+   * skipped_raw_unavailable, skipped_reparse_match_failed.
    * @param {number|string} runId
    * @returns {Promise<{
    *   run_id: number,
@@ -1168,6 +1180,11 @@ class ApiService {
    *   error?: string|null,
    *   job_type?: string|null,
    *   execution_id?: number|null,
+   *   reparsed?: number,
+   *   literature_updated?: number,
+   *   skipped_raw_unavailable?: object[],
+   *   skipped_reparse_match_failed?: object[],
+   *   result?: object,
    * }>}
    */
   async getEvaluationJobStatus(runId) {

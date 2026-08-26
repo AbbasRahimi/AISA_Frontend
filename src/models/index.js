@@ -376,6 +376,71 @@ export const HTTPValidationError = {
   detail: []
 };
 
+/** Raw LLM response text availability for existence re-verify */
+export const RawResponseStatus = {
+  OK: 'ok',
+  MISSING: 'missing',
+  TRUNCATED: 'truncated',
+};
+
+export const NotFoundCitation = {
+  execution_id: null,
+  literature_id: null,
+  title: null,
+  authors: null,
+  year: null,
+  doi: null,
+  databases_queried: [],
+  database_results: null,
+  reasons: [],
+  raw_response_status: RawResponseStatus.OK,
+  source_key: null,
+};
+
+export const SkippedRawUnavailableItem = {
+  execution_id: null,
+  literature_id: null,
+  reason: null,
+  title: null,
+  raw_response_status: null,
+};
+
+export const SeedPaperExistenceReverifyJobQueueResponse = {
+  job_id: null,
+  run_id: null,
+  status: ExecutionStatus.PENDING,
+  status_url: null,
+  seed_paper_id: null,
+  candidates: [],
+  candidate_count: 0,
+  skipped_raw_unavailable: [],
+  skipped_raw_unavailable_count: 0,
+  message: null,
+};
+
+export const SeedPaperExistenceReverifyJobResult = {
+  reparsed: 0,
+  literature_updated: 0,
+  skipped_raw_unavailable: [],
+  skipped_reparse_match_failed: [],
+};
+
+export const EvaluationJobStatusResponse = {
+  run_id: null,
+  status: ExecutionStatus.PENDING,
+  progress: null,
+  message: null,
+  current_stage: null,
+  error: null,
+  job_type: null,
+  execution_id: null,
+  reparsed: null,
+  literature_updated: null,
+  skipped_raw_unavailable: null,
+  skipped_reparse_match_failed: null,
+  result: null,
+};
+
 // Helper functions for creating model instances
 export const createSeedPaper = (data = {}) => ({ ...SeedPaperResponse, ...data });
 export const createGroundTruth = (data = {}) => ({ ...GroundTruthResponse, ...data });
@@ -404,7 +469,26 @@ export const createComparisonSummary = (data = {}) => ({ ...ComparisonSummary, .
 export const createComparisonResult = (data = {}) => ({ ...ComparisonResult, ...data });
 export const createValidationError = (data = {}) => ({ ...ValidationError, ...data });
 export const createHTTPValidationError = (data = {}) => ({ ...HTTPValidationError, ...data });
+export const createNotFoundCitation = (data = {}) => ({ ...NotFoundCitation, ...data });
+export const createSkippedRawUnavailableItem = (data = {}) => ({ ...SkippedRawUnavailableItem, ...data });
+export const createSeedPaperExistenceReverifyJobQueueResponse = (data = {}) => ({
+  ...SeedPaperExistenceReverifyJobQueueResponse,
+  ...data,
+});
+export const createSeedPaperExistenceReverifyJobResult = (data = {}) => ({
+  ...SeedPaperExistenceReverifyJobResult,
+  ...data,
+});
+export const createEvaluationJobStatusResponse = (data = {}) => ({
+  ...EvaluationJobStatusResponse,
+  ...data,
+});
 
+/** True when citation raw text can be re-verified (not missing/truncated). */
+export const isRawResponseAvailable = (status) => {
+  const s = String(status || '').toLowerCase();
+  return s === '' || s === RawResponseStatus.OK;
+};
 // Helper functions for enums
 export const getExecutionStatus = (status) => ExecutionStatus[status?.toUpperCase()] || ExecutionStatus.PENDING;
 export const getLLMProvider = (provider) => LLMProvider[provider?.toUpperCase()] || LLMProvider.CHATGPT;
