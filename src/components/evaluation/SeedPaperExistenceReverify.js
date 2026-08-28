@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import apiService from '../../services/api';
-import { ExecutionStatus, isRawResponseAvailable } from '../../models';
+import { ExecutionStatus } from '../../models';
 import { POLL_INITIAL_DELAY_MS, POLL_INTERVAL_MS } from '../../utils';
 import SeedPaperExistenceReverifyView from './SeedPaperExistenceReverifyView';
 
@@ -22,16 +22,11 @@ function chunkSelectedIds(ids, batchSize) {
   return chunks;
 }
 
-function citationIsReverifiable(citation) {
-  return isRawResponseAvailable(citation?.raw_response_status);
-}
-
 function extractJobResultPayload(response) {
   if (!response || typeof response !== 'object') {
     return {
       reparsed: 0,
       literature_updated: 0,
-      skipped_raw_unavailable: [],
       skipped_reparse_match_failed: [],
     };
   }
@@ -43,19 +38,13 @@ function extractJobResultPayload(response) {
     if (!Number.isNaN(n) && value != null && value !== '') return n;
     return fallbackList.length;
   };
-  const skippedRaw = asList(src.skipped_raw_unavailable ?? response.skipped_raw_unavailable);
   const skippedMatch = asList(
     src.skipped_reparse_match_failed ?? response.skipped_reparse_match_failed
   );
   return {
     reparsed: asCount(src.reparsed ?? response.reparsed, []),
     literature_updated: asCount(src.literature_updated ?? response.literature_updated, []),
-    skipped_raw_unavailable: skippedRaw,
     skipped_reparse_match_failed: skippedMatch,
-    skipped_raw_unavailable_count: asCount(
-      src.skipped_raw_unavailable_count ?? response.skipped_raw_unavailable_count,
-      skippedRaw
-    ),
     skipped_reparse_match_failed_count: asCount(
       src.skipped_reparse_match_failed_count ?? response.skipped_reparse_match_failed_count,
       skippedMatch
@@ -67,17 +56,13 @@ function emptyRunSummary() {
   return {
     reparsed: 0,
     literature_updated: 0,
-    skipped_raw_unavailable: [],
     skipped_reparse_match_failed: [],
-    skipped_raw_unavailable_count: 0,
     skipped_reparse_match_failed_count: 0,
     candidate_count: 0,
-    queue_skipped: [],
   };
 }
 
 function mergeRunSummary(acc, next) {
-  const skippedRaw = [...(acc.skipped_raw_unavailable || []), ...(next.skipped_raw_unavailable || [])];
   const skippedMatch = [
     ...(acc.skipped_reparse_match_failed || []),
     ...(next.skipped_reparse_match_failed || []),
@@ -85,16 +70,11 @@ function mergeRunSummary(acc, next) {
   return {
     reparsed: (acc.reparsed || 0) + (next.reparsed || 0),
     literature_updated: (acc.literature_updated || 0) + (next.literature_updated || 0),
-    skipped_raw_unavailable: skippedRaw,
     skipped_reparse_match_failed: skippedMatch,
-    skipped_raw_unavailable_count:
-      (acc.skipped_raw_unavailable_count || 0) +
-      (next.skipped_raw_unavailable_count ?? next.skipped_raw_unavailable?.length ?? 0),
     skipped_reparse_match_failed_count:
       (acc.skipped_reparse_match_failed_count || 0) +
       (next.skipped_reparse_match_failed_count ?? next.skipped_reparse_match_failed?.length ?? 0),
     candidate_count: (acc.candidate_count || 0) + (next.candidate_count || 0),
-    queue_skipped: [...(acc.queue_skipped || []), ...(next.queue_skipped || [])],
   };
 }
 
@@ -198,12 +178,7 @@ const SeedPaperExistenceReverify = () => {
       const rows = Array.isArray(data?.citations) ? data.citations : [];
       setCitations(rows);
       setSelectedLiteratureIds(
-        new Set(
-          rows
-            .filter(citationIsReverifiable)
-            .map((c) => c.literature_id)
-            .filter((x) => x != null)
-        )
+        new Set(rows.map((c) => c.literature_id).filter((x) => x != null))
       );
     } catch (err) {
       setCitations([]);
@@ -234,33 +209,17 @@ const SeedPaperExistenceReverify = () => {
     }
   };
 
-  const reverifiableLiteratureIds = useMemo(
-    () =>
-      citations
-        .filter(citationIsReverifiable)
-        .map((c) => c.literature_id)
-        .filter((x) => x != null),
-    [citations]
-  );
-
-  const unavailableCount = useMemo(
-    () => citations.filter((c) => !citationIsReverifiable(c)).length,
+  const allLiteratureIds = useMemo(
+    () => citations.map((c) => c.literature_id).filter((x) => x != null),
     [citations]
   );
 
   const allSelected =
-    reverifiableLiteratureIds.length > 0 &&
-    reverifiableLiteratureIds.every((id) => selectedLiteratureIds.has(id));
-  const selectedCount = reverifiableLiteratureIds.filter((id) =>
-    selectedLiteratureIds.has(id)
-  ).length;
+    allLiteratureIds.length > 0 && allLiteratureIds.every((id) => selectedLiteratureIds.has(id));
+  const selectedCount = allLiteratureIds.filter((id) => selectedLiteratureIds.has(id)).length;
   const jobInFlight = submitting;
 
   const toggleLiteratureId = (literatureId) => {
-    const citation = citations.find((c) => c.literature_id === literatureId);
-    if (citation && !citationIsReverifiable(citation)) {
-      return;
-    }
     setSelectedLiteratureIds((prev) => {
       const next = new Set(prev);
       if (next.has(literatureId)) {
@@ -273,7 +232,7 @@ const SeedPaperExistenceReverify = () => {
   };
 
   const selectAll = () => {
-    setSelectedLiteratureIds(new Set(reverifiableLiteratureIds));
+    setSelectedLiteratureIds(new Set(allLiteratureIds));
   };
 
   const clearSelection = () => {
@@ -362,15 +321,11 @@ const SeedPaperExistenceReverify = () => {
       return;
     }
     if (selectedCount === 0) {
-      setError(
-        unavailableCount > 0 && reverifiableLiteratureIds.length === 0
-          ? 'No citations have full raw text available. Re-import the execution file, then re-run.'
-          : 'Select at least one citation with available raw text to re-verify'
-      );
+      setError('Select at least one citation to re-verify.');
       return;
     }
 
-    const selectedIds = reverifiableLiteratureIds.filter((lid) => selectedLiteratureIds.has(lid));
+    const selectedIds = allLiteratureIds.filter((lid) => selectedLiteratureIds.has(lid));
     const uniqueIds = [...new Set(selectedIds)];
     const batchSize = getReverifyBatchSize(uniqueIds.length);
     const chunks = chunkSelectedIds(uniqueIds, batchSize);
@@ -424,55 +379,24 @@ const SeedPaperExistenceReverify = () => {
           throw new Error('Re-verify cancelled.');
         }
 
-        const skippedQueue = Array.isArray(data?.skipped_raw_unavailable)
-          ? data.skipped_raw_unavailable
-          : [];
-        const skippedQueueCount =
-          data?.skipped_raw_unavailable_count ?? skippedQueue.length;
-        const candidateCount = data?.candidate_count ?? chunk.length - skippedQueueCount;
+        const candidateCount = data?.candidate_count ?? chunk.length;
 
         summaryAcc = mergeRunSummary(summaryAcc, {
           candidate_count: Math.max(0, Number(candidateCount) || 0),
-          queue_skipped: skippedQueue,
-          skipped_raw_unavailable: skippedQueue,
-          skipped_raw_unavailable_count: Number(skippedQueueCount) || 0,
         });
 
-        if (skippedQueueCount > 0) {
-          setQueueWarning({
-            candidate_count: Math.max(0, Number(candidateCount) || 0),
-            skipped_raw_unavailable_count: Number(skippedQueueCount) || 0,
-            skipped_raw_unavailable: skippedQueue,
-            message: data?.message || null,
-            batchIndex,
-            batchTotal: chunks.length,
-          });
-        } else if (i === 0) {
-          setQueueWarning({
-            candidate_count: Math.max(0, Number(candidateCount) || 0),
-            skipped_raw_unavailable_count: 0,
-            skipped_raw_unavailable: [],
-            message: data?.message || null,
-            batchIndex,
-            batchTotal: chunks.length,
-          });
-        }
+        setQueueWarning({
+          candidate_count: Math.max(0, Number(candidateCount) || 0),
+          message: data?.message || null,
+          batchIndex,
+          batchTotal: chunks.length,
+        });
 
         const runId = data?.run_id ?? data?.job_id;
         if (runId == null) {
-          if (skippedQueueCount > 0 && Number(candidateCount) === 0) {
-            // Entire chunk skipped at queue time — nothing to poll.
-            completedBatches += 1;
-            continue;
-          }
           throw new Error(
             `Batch ${batchIndex} of ${chunks.length}: re-verify job was queued but no run_id was returned.`
           );
-        }
-
-        if (Number(candidateCount) === 0) {
-          completedBatches += 1;
-          continue;
         }
 
         setActiveRunId(Number(runId));
@@ -521,40 +445,28 @@ const SeedPaperExistenceReverify = () => {
 
       const reparsed = summaryAcc.reparsed || 0;
       const updated = summaryAcc.literature_updated || 0;
-      const skippedRaw = summaryAcc.skipped_raw_unavailable_count || 0;
       const skippedMatch = summaryAcc.skipped_reparse_match_failed_count || 0;
-      const hadWork = (summaryAcc.candidate_count || 0) > 0 || reparsed > 0 || updated > 0;
 
-      if (!hadWork && skippedRaw > 0) {
-        setSuccessMessage(null);
-        setError(
-          `No citations were re-verified. ${skippedRaw} skipped because full original text is not in the DB ` +
-            '(truncated or missing). Re-import the execution file, then re-run.'
-        );
+      const parts = [];
+      if (chunks.length > 1) {
+        parts.push(`Finished ${chunks.length} batches for ${uniqueIds.length} selected citations.`);
       } else {
-        const parts = [];
-        if (chunks.length > 1) {
-          parts.push(
-            `Finished ${chunks.length} batches for ${uniqueIds.length} selected citations.`
-          );
-        } else {
-          parts.push('Existence re-verify finished.');
-        }
-        if (reparsed > 0 || updated > 0) {
-          parts.push(
-            `Re-parsed ${reparsed}; ${updated} citation${updated === 1 ? '' : 's'} updated (e.g. flipped to found).`
-          );
-        }
-        if (skippedRaw > 0 || skippedMatch > 0) {
-          parts.push(
-            `Skipped: ${skippedRaw} raw unavailable, ${skippedMatch} reparse match failed.`
-          );
-        }
-        parts.push(
-          'Refresh Existence & GT, Seed paper metrics, or Compare executions if those tabs are open.'
-        );
-        setSuccessMessage(parts.join(' '));
+        parts.push('Existence re-verify finished.');
       }
+      if (reparsed > 0 || updated > 0) {
+        parts.push(
+          `Re-parsed ${reparsed}; ${updated} citation${updated === 1 ? '' : 's'} updated (e.g. flipped to found).`
+        );
+      }
+      if (skippedMatch > 0) {
+        parts.push(
+          `Skipped: ${skippedMatch} reparse match failed.`
+        );
+      }
+      parts.push(
+        'Refresh Existence & GT, Seed paper metrics, or Compare executions if those tabs are open.'
+      );
+      setSuccessMessage(parts.join(' '));
 
       const seedId = selectedSeedPaperIdRef.current;
       if (seedId && runGenerationRef.current === generation) {
@@ -617,11 +529,10 @@ const SeedPaperExistenceReverify = () => {
       onIncludePartialChange={setIncludePartial}
       loadingCitations={loadingCitations}
       citations={citations}
-      literatureIds={reverifiableLiteratureIds}
+      literatureIds={allLiteratureIds}
       selectedLiteratureIds={selectedLiteratureIds}
       allSelected={allSelected}
       selectedCount={selectedCount}
-      unavailableCount={unavailableCount}
       onRefreshCitations={() => loadNotFoundCitations(selectedSeedPaperId)}
       onSelectAll={selectAll}
       onClearSelection={clearSelection}

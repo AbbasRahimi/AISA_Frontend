@@ -1115,7 +1115,7 @@ class ApiService {
    *     databases_queried?: string[],
    *     database_results?: object,
    *     reasons?: string[],
-   *     raw_response_status?: 'ok'|'missing'|'truncated',
+   *     raw_response_status?: 'ok'|'missing'|'truncated', // informational only; does not block re-verify
    *     source_key?: string|null,
    *     llm_name?: string|null,
    *     prompt_alias?: string|null,
@@ -1149,17 +1149,9 @@ class ApiService {
    *   seed_paper_id: number,
    *   candidates?: object[],
    *   candidate_count?: number,
-   *   skipped_raw_unavailable?: Array<{
-   *     execution_id: number,
-   *     llm_name?: string|null,
-   *     prompt_alias?: string|null,
-   *     literature_id: number,
-   *     reason?: string,
-   *     title?: string,
-   *     raw_response_status?: string,
-   *   }>,
-   *   skipped_raw_unavailable_count?: number,
-   *   message?: string,
+   *   skipped_raw_unavailable?: object[], // always [] (schema-compatible)
+   *   skipped_raw_unavailable_count?: number, // always 0
+   *   message?: string, // always "Existence re-verify job queued"
    * }>}
    */
   async recalculateMetricsForSeedPaperExecutions(seedPaperId, payload = {}) {
@@ -1173,7 +1165,7 @@ class ApiService {
    * Poll evaluation background job status.
    * OpenAPI: GET /api/evaluation/jobs/{run_id}/status
    * On completed, may include result keys: reparsed, literature_updated,
-   * skipped_raw_unavailable, skipped_reparse_match_failed.
+   * skipped_reparse_match_failed (skipped_raw_unavailable no longer returned).
    * @param {number|string} runId
    * @returns {Promise<{
    *   run_id: number,

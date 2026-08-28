@@ -376,7 +376,7 @@ export const HTTPValidationError = {
   detail: []
 };
 
-/** Raw LLM response text availability for existence re-verify */
+/** Informational raw LLM response status on not-found citations (not a re-verify gate). */
 export const RawResponseStatus = {
   OK: 'ok',
   MISSING: 'missing',
@@ -409,6 +409,7 @@ export const SkippedRawUnavailableItem = {
   raw_response_status: null,
 };
 
+/** Queue response; skipped_raw_unavailable is schema-compatible but always empty from API. */
 export const SeedPaperExistenceReverifyJobQueueResponse = {
   job_id: null,
   run_id: null,
@@ -422,6 +423,7 @@ export const SeedPaperExistenceReverifyJobQueueResponse = {
   message: null,
 };
 
+/** Completed job result; skipped_reparse_match_failed may still be populated. */
 export const SeedPaperExistenceReverifyJobResult = {
   reparsed: 0,
   literature_updated: 0,
@@ -488,11 +490,6 @@ export const createEvaluationJobStatusResponse = (data = {}) => ({
   ...data,
 });
 
-/** True when citation raw text can be re-verified (not missing/truncated). */
-export const isRawResponseAvailable = (status) => {
-  const s = String(status || '').toLowerCase();
-  return s === '' || s === RawResponseStatus.OK;
-};
 // Helper functions for enums
 export const getExecutionStatus = (status) => ExecutionStatus[status?.toUpperCase()] || ExecutionStatus.PENDING;
 export const getLLMProvider = (provider) => LLMProvider[provider?.toUpperCase()] || LLMProvider.CHATGPT;

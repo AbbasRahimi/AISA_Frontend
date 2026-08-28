@@ -1,5 +1,5 @@
 import React from 'react';
-import { ExecutionStatus, RawResponseStatus, isRawResponseAvailable } from '../../models';
+import { ExecutionStatus, RawResponseStatus } from '../../models';
 
 function citationRowKey(citation) {
   return `${citation.literature_id}-${citation.execution_id}`;
@@ -32,22 +32,19 @@ function rawStatusMeta(status) {
       label: 'Truncated',
       className: 'bg-warning text-dark',
       icon: 'fa-exclamation-triangle',
-      available: false,
     };
   }
   if (s === RawResponseStatus.MISSING) {
     return {
       label: 'Missing',
-      className: 'bg-danger',
-      icon: 'fa-times-circle',
-      available: false,
+      className: 'bg-secondary',
+      icon: 'fa-info-circle',
     };
   }
   return {
     label: 'OK',
     className: 'bg-success',
     icon: 'fa-check-circle',
-    available: true,
   };
 }
 
@@ -99,7 +96,6 @@ function SeedPaperExistenceReverifyView({
   selectedLiteratureIds,
   allSelected,
   selectedCount,
-  unavailableCount,
   onRefreshCitations,
   onSelectAll,
   onClearSelection,
@@ -123,8 +119,7 @@ function SeedPaperExistenceReverifyView({
           Lists LLM citations that are not found (or never verified) for the selected seed paper.
           Confirming queues a background job that re-runs existence verification, then writes new
           evaluation metrics. Selections over 10 citations are sent in batches of 10; over 100 in
-          batches of 100. Truncated or missing raw text cannot be re-verified — re-import the
-          execution file, then re-run.
+          batches of 100.
         </p>
       </div>
 
@@ -143,12 +138,7 @@ function SeedPaperExistenceReverifyView({
       )}
 
       {queueWarning && (
-        <div
-          className={`alert ${
-            queueWarning.skipped_raw_unavailable_count > 0 ? 'alert-warning' : 'alert-secondary'
-          } alert-dismissible fade show`}
-          role="alert"
-        >
+        <div className="alert alert-secondary alert-dismissible fade show" role="alert">
           <div className="mb-1">
             Will re-verify:{' '}
             <strong>{queueWarning.candidate_count ?? 0}</strong>
@@ -159,20 +149,7 @@ function SeedPaperExistenceReverifyView({
               </span>
             ) : null}
           </div>
-          {queueWarning.message ? <p className="small mb-2">{queueWarning.message}</p> : null}
-          {queueWarning.skipped_raw_unavailable_count > 0 ? (
-            <>
-              <p className="mb-1">
-                <strong>{queueWarning.skipped_raw_unavailable_count}</strong> skipped — full original
-                text is not in the DB (truncated/missing). Re-import the execution file, then re-run.
-                This is not a successful re-verify for those citations.
-              </p>
-              <SkippedList
-                items={queueWarning.skipped_raw_unavailable}
-                emptyLabel="No skip details returned."
-              />
-            </>
-          ) : null}
+          {queueWarning.message ? <p className="small mb-0">{queueWarning.message}</p> : null}
           <button
             type="button"
             className="btn-close"
@@ -267,7 +244,7 @@ function SeedPaperExistenceReverifyView({
                 onClick={onSelectAll}
                 disabled={loadingCitations || jobInFlight || literatureIds.length === 0}
               >
-                Select all available
+                Select all
               </button>
               <button
                 type="button"
@@ -280,14 +257,6 @@ function SeedPaperExistenceReverifyView({
             </div>
           </div>
           <div className="card-body">
-            {unavailableCount > 0 && !loadingCitations && (
-              <div className="alert alert-warning py-2 small">
-                <i className="fas fa-exclamation-triangle me-1" />
-                {unavailableCount} citation{unavailableCount === 1 ? ' has' : 's have'} truncated or
-                missing raw text (full original text not in DB). Those rows are not selectable —
-                re-import the execution file, then re-run.
-              </div>
-            )}
             {loadingCitations ? (
               <div className="text-center py-4">
                 <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
@@ -307,7 +276,7 @@ function SeedPaperExistenceReverifyView({
                           checked={allSelected}
                           onChange={(e) => (e.target.checked ? onSelectAll() : onClearSelection())}
                           disabled={jobInFlight || literatureIds.length === 0}
-                          aria-label="Select all available citations"
+                          aria-label="Select all citations"
                         />
                       </th>
                       <th>Title</th>
@@ -322,31 +291,18 @@ function SeedPaperExistenceReverifyView({
                   </thead>
                   <tbody>
                     {citations.map((c) => {
-                      const available = isRawResponseAvailable(c.raw_response_status);
                       const rawMeta = rawStatusMeta(c.raw_response_status);
-                      const checked = available && selectedLiteratureIds.has(c.literature_id);
+                      const checked = selectedLiteratureIds.has(c.literature_id);
                       return (
-                        <tr
-                          key={citationRowKey(c)}
-                          className={available ? undefined : 'table-secondary'}
-                          title={
-                            available
-                              ? undefined
-                              : 'Full original text not in DB — re-import the execution file, then re-run'
-                          }
-                        >
+                        <tr key={citationRowKey(c)}>
                           <td>
                             <input
                               type="checkbox"
                               className="form-check-input"
                               checked={checked}
                               onChange={() => onToggleLiteratureId(c.literature_id)}
-                              disabled={jobInFlight || !available}
-                              aria-label={
-                                available
-                                  ? `Select literature ${c.literature_id}`
-                                  : `Literature ${c.literature_id} unavailable for re-verify`
-                              }
+                              disabled={jobInFlight || c.literature_id == null}
+                              aria-label={`Select literature ${c.literature_id}`}
                             />
                           </td>
                           <td>
@@ -415,14 +371,14 @@ function SeedPaperExistenceReverifyView({
                   <>
                     <i className="fas fa-search"></i>{' '}
                     {allSelected || selectedCount === literatureIds.length
-                      ? 'Re-verify all available'
+                      ? 'Re-verify all'
                       : `Re-verify selected (${selectedCount})`}
                   </>
                 )}
               </button>
               {selectedCount > 0 && !jobInFlight && (
                 <span className="small text-muted">
-                  {selectedCount} of {literatureIds.length} available selected
+                  {selectedCount} of {literatureIds.length} selected
                   {selectedCount > 10
                     ? ` · will run in batches of ${getReverifyBatchSize(selectedCount)}`
                     : ''}
@@ -571,30 +527,13 @@ function SeedPaperExistenceReverifyView({
               </div>
               <div className="col-sm-6 col-md-3">
                 <div className="border rounded p-2 h-100">
-                  <div className="small text-muted">Skipped (raw / match)</div>
+                  <div className="small text-muted">Skipped (reparse match failed)</div>
                   <div className="fs-5 fw-semibold">
-                    {runSummary.skipped_raw_unavailable_count ?? 0}
-                    {' / '}
                     {runSummary.skipped_reparse_match_failed_count ?? 0}
                   </div>
                 </div>
               </div>
             </div>
-
-            {(runSummary.skipped_raw_unavailable_count > 0 ||
-              (runSummary.skipped_raw_unavailable || []).length > 0) && (
-              <div className="mb-3">
-                <h6 className="text-warning">Skipped — raw unavailable</h6>
-                <p className="small text-muted">
-                  Full original text not in DB. Re-import the execution file, then re-run. Not counted
-                  as a successful re-verify.
-                </p>
-                <SkippedList
-                  items={runSummary.skipped_raw_unavailable}
-                  emptyLabel="No skip details returned."
-                />
-              </div>
-            )}
 
             {(runSummary.skipped_reparse_match_failed_count > 0 ||
               (runSummary.skipped_reparse_match_failed || []).length > 0) && (
