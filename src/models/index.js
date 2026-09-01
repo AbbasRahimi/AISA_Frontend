@@ -423,6 +423,16 @@ export const SeedPaperExistenceReverifyJobQueueResponse = {
   message: null,
 };
 
+/** 202 from POST /api/evaluation/seed-papers/{id}/reverify-not-found (no candidates/status_url). */
+export const SeedPaperExistenceReverifyAcceptedResponse = {
+  job_id: null,
+  run_id: null,
+  status: ExecutionStatus.PENDING,
+  seed_paper_id: null,
+  candidate_count: 0,
+  message: null,
+};
+
 /** Completed job result; skipped_reparse_match_failed may still be populated. */
 export const SeedPaperExistenceReverifyJobResult = {
   reparsed: 0,
@@ -479,6 +489,10 @@ export const createNotFoundCitation = (data = {}) => ({ ...NotFoundCitation, ...
 export const createSkippedRawUnavailableItem = (data = {}) => ({ ...SkippedRawUnavailableItem, ...data });
 export const createSeedPaperExistenceReverifyJobQueueResponse = (data = {}) => ({
   ...SeedPaperExistenceReverifyJobQueueResponse,
+  ...data,
+});
+export const createSeedPaperExistenceReverifyAcceptedResponse = (data = {}) => ({
+  ...SeedPaperExistenceReverifyAcceptedResponse,
   ...data,
 });
 export const createSeedPaperExistenceReverifyJobResult = (data = {}) => ({

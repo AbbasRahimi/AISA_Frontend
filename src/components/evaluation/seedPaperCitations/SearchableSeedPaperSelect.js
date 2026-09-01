@@ -7,6 +7,8 @@ function SearchableSeedPaperSelect({
   onSeedPaperChange,
   disabled = false,
   loading = false,
+  searchInputId = 'seedPaperCitationsSearch',
+  selectInputId = 'seedPaperCitationsSelect',
 }) {
   const [query, setQuery] = useState('');
 
@@ -28,11 +30,11 @@ function SearchableSeedPaperSelect({
   return (
     <div className="row g-2 align-items-end">
       <div className="col-md-4">
-        <label className="form-label" htmlFor="seedPaperCitationsSearch">
+        <label className="form-label" htmlFor={searchInputId}>
           Search
         </label>
         <input
-          id="seedPaperCitationsSearch"
+          id={searchInputId}
           type="search"
           className="form-control"
           placeholder="Filter by alias, title, year, DOI…"
@@ -42,11 +44,11 @@ function SearchableSeedPaperSelect({
         />
       </div>
       <div className="col-md-8">
-        <label className="form-label" htmlFor="seedPaperCitationsSelect">
+        <label className="form-label" htmlFor={selectInputId}>
           Seed paper <span className="text-danger">*</span>
         </label>
         <select
-          id="seedPaperCitationsSelect"
+          id={selectInputId}
           className="form-select"
           value={selectedStillVisible ? String(selectedSeedPaperId || '') : ''}
           onChange={(e) => onSeedPaperChange(e.target.value)}

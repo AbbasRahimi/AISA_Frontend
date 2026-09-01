@@ -128,7 +128,7 @@ class ApiService {
     const isFormData = options.body instanceof FormData;
     // Pull headers out so spreading ...restOptions does not overwrite merged headers
     // (FormData calls use headers: {} only to avoid setting Content-Type; that must not drop Bearer auth).
-    const { headers: optionHeaders = {}, ...restOptions } = options;
+    const { headers: optionHeaders = {}, json, ...restOptions } = options;
     let token = null;
     if (this.accessTokenGetter) {
       try {
@@ -137,10 +137,11 @@ class ApiService {
         token = null;
       }
     }
+    const useJsonContentType = json !== false && !isFormData;
     const config = {
       ...restOptions,
       headers: {
-        ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+        ...(useJsonContentType ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...optionHeaders,
       },
@@ -1159,6 +1160,28 @@ class ApiService {
       method: 'POST',
       body: JSON.stringify(payload || {}),
     });
+  }
+
+  /**
+   * Fire-and-forget existence re-verify for all not-found citations under a seed paper.
+   * OpenAPI: POST /api/evaluation/seed-papers/{seed_paper_id}/reverify-not-found
+   * No request body (no JSON, literature_ids, or metric weights). Returns 202.
+   * @param {number} seedPaperId
+   * @returns {Promise<{
+   *   job_id: number,
+   *   run_id: number,
+   *   status: string,
+   *   seed_paper_id: number,
+   *   candidate_count: number,
+   *   message: string,
+   * }>}
+   */
+  async queueSeedPaperNotFoundReverify(seedPaperId) {
+    if (seedPaperId == null) throw new Error('seed_paper_id is required.');
+    return this.request(
+      `/api/evaluation/seed-papers/${encodeURIComponent(seedPaperId)}/reverify-not-found`,
+      { method: 'POST', json: false }
+    );
   }
 
   /**

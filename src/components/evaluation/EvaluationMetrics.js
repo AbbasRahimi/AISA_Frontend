@@ -6,6 +6,7 @@ import SelectedExecutionDetails from './SelectedExecutionDetails';
 import MetricsResults from './MetricsResults';
 import BatchEvaluation from './BatchEvaluation';
 import SeedPaperExistenceReverify from './SeedPaperExistenceReverify';
+import SilentSeedPaperExistenceReverify from './SilentSeedPaperExistenceReverify';
 import SeedPaperExecutionMetrics from './SeedPaperExecutionMetrics';
 import SeedPaperCitationsTab from './seedPaperCitations/SeedPaperCitationsTab';
 import ExecutionCompareTab from './ExecutionCompareTab';
@@ -179,6 +180,16 @@ const EvaluationMetricsGuide = () => {
                 <i className="fas fa-search"></i> Re-verify existence
               </button>
             </li>
+            <li className="nav-item" role="presentation">
+              <button
+                className={`nav-link ${activeTab === 'silentReverify' ? 'active' : ''}`}
+                onClick={() => setActiveTab('silentReverify')}
+                type="button"
+                role="tab"
+              >
+                <i className="fas fa-paper-plane"></i> Queue re-verify
+              </button>
+            </li>
           </ul>
 
           {/* Tab Content */}
@@ -258,6 +269,12 @@ const EvaluationMetricsGuide = () => {
             {activeTab === 'batchRecalculate' && (
               <div>
                 <SeedPaperExistenceReverify />
+              </div>
+            )}
+
+            {activeTab === 'silentReverify' && (
+              <div>
+                <SilentSeedPaperExistenceReverify />
               </div>
             )}
           </div>
