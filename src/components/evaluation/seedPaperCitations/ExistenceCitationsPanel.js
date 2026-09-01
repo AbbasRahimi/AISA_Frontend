@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { getDatabaseBadgeClass } from '../../verification/helpers';
-import { doiHref, formatSimilarity, matchesSearch } from './utils';
+import { doiHref, formatSimilarity, formatVerificationApiResponseNotes, matchesSearch } from './utils';
 
 function ExistenceBadge({ exists }) {
   return exists ? (
@@ -200,9 +200,9 @@ function ExistenceCitationsPanel({
                                     {hit.api_response?.skipped === true && (
                                       <span className="badge bg-secondary me-1">skipped</span>
                                     )}
-                                    {hit.api_response?.error ? String(hit.api_response.error) : ''}
+                                    {formatVerificationApiResponseNotes(hit.api_response)}
                                     {apiResponseLoading && hit.api_response == null ? (
-                                      <span className="text-muted">Loading raw DB hit…</span>
+                                      <span className="text-muted">Loading DB hit…</span>
                                     ) : null}
                                   </td>
                                 </tr>

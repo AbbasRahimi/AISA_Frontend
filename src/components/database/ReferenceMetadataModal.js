@@ -59,9 +59,17 @@ function formatAuthorsValue(authors) {
   return renderPrettyValue(authors);
 }
 
+function payloadForDisplay(authoritative, discrepancies) {
+  const auth =
+    authoritative && typeof authoritative === 'object'
+      ? Object.fromEntries(Object.entries(authoritative).filter(([key]) => key !== 'raw'))
+      : authoritative;
+  return { authoritative: auth ?? null, discrepancies: discrepancies ?? null };
+}
+
 export function buildReferenceMetadataPayload(authoritative, discrepancies) {
   if (authoritative == null && discrepancies == null) return null;
-  return { authoritative: authoritative ?? null, discrepancies: discrepancies ?? null };
+  return payloadForDisplay(authoritative, discrepancies);
 }
 
 export default function ReferenceMetadataModal({ isOpen, title, payload, onClose }) {
@@ -70,7 +78,7 @@ export default function ReferenceMetadataModal({ isOpen, title, payload, onClose
 
   const computed = useMemo(() => {
     const authTitle = pickFirst(authoritative, ['title', 'display_name', 'name']) ?? null;
-    const authAuthors = pickFirst(authoritative, ['authors', 'author', 'raw_authors']) ?? null;
+    const authAuthors = pickFirst(authoritative, ['authors', 'author']) ?? null;
     const authYear = pickFirst(authoritative, ['year', 'publication_year', 'published_year']) ?? null;
     const authVenue = pickFirst(authoritative, ['journal', 'venue', 'booktitle', 'source', 'container_title']) ?? null;
     const authDoi = pickFirst(authoritative, ['doi', 'resolved_doi', 'DOI']) ?? null;
@@ -85,9 +93,32 @@ export default function ReferenceMetadataModal({ isOpen, title, payload, onClose
       return entries.map(([k, v]) => ({ key: k, ok: v }));
     })();
 
-    const rawJson = safeStringify(payload) ?? 'Metadata present (unable to stringify).';
+    const diffs =
+      discrepancies?.diffs && typeof discrepancies.diffs === 'object' ? discrepancies.diffs : null;
+    const preferredSource = discrepancies?.preferred_source ?? null;
+    const sourcesTried = Array.isArray(discrepancies?.sources_tried)
+      ? discrepancies.sources_tried
+      : [];
+    const resolvedDoi =
+      discrepancies?.resolved_doi ?? pickFirst(authoritative, ['resolved_doi', 'doi']) ?? null;
 
-    return { authTitle, authAuthors, authYear, authVenue, authDoi, discrepancyChecks, rawJson };
+    const rawJson =
+      safeStringify(payloadForDisplay(authoritative, discrepancies)) ??
+      'Metadata present (unable to stringify).';
+
+    return {
+      authTitle,
+      authAuthors,
+      authYear,
+      authVenue,
+      authDoi,
+      discrepancyChecks,
+      diffs,
+      preferredSource,
+      sourcesTried,
+      resolvedDoi,
+      rawJson,
+    };
   }, [authoritative, discrepancies, payload]);
 
   if (!isOpen) return null;
@@ -143,7 +174,7 @@ export default function ReferenceMetadataModal({ isOpen, title, payload, onClose
                 {discrepancies ? (
                   <>
                     {computed.discrepancyChecks.length > 0 ? (
-                      <div className="border rounded p-2">
+                      <div className="border rounded p-2 mb-2">
                         <div className="small text-muted mb-2">Checks</div>
                         <div className="d-flex flex-wrap gap-2">
                           {computed.discrepancyChecks.map((c) => (
@@ -157,11 +188,51 @@ export default function ReferenceMetadataModal({ isOpen, title, payload, onClose
                           ))}
                         </div>
                       </div>
-                    ) : (
-                      <div className="border rounded p-2 bg-light text-muted">
-                        Discrepancy payload present (no boolean checks detected).
+                    ) : null}
+                    {(computed.preferredSource ||
+                      computed.sourcesTried.length > 0 ||
+                      computed.resolvedDoi ||
+                      computed.diffs) && (
+                      <div className="border rounded p-2 bg-light mb-2">
+                        <dl className="row mb-0">
+                          {computed.preferredSource ? (
+                            <>
+                              <dt className="col-sm-4">Preferred source</dt>
+                              <dd className="col-sm-8">{renderPrettyValue(computed.preferredSource)}</dd>
+                            </>
+                          ) : null}
+                          {computed.sourcesTried.length > 0 ? (
+                            <>
+                              <dt className="col-sm-4">Sources tried</dt>
+                              <dd className="col-sm-8">{computed.sourcesTried.join(', ')}</dd>
+                            </>
+                          ) : null}
+                          {computed.resolvedDoi ? (
+                            <>
+                              <dt className="col-sm-4">Resolved DOI</dt>
+                              <dd className="col-sm-8">{renderPrettyValue(computed.resolvedDoi)}</dd>
+                            </>
+                          ) : null}
+                        </dl>
+                        {computed.diffs ? (
+                          <details className="mt-2">
+                            <summary className="small fw-semibold">Diffs</summary>
+                            <pre className="small mb-0 mt-1" style={{ whiteSpace: 'pre-wrap' }}>
+                              {safeStringify(computed.diffs)}
+                            </pre>
+                          </details>
+                        ) : null}
                       </div>
                     )}
+                    {computed.discrepancyChecks.length === 0 &&
+                    !computed.preferredSource &&
+                    computed.sourcesTried.length === 0 &&
+                    !computed.resolvedDoi &&
+                    !computed.diffs ? (
+                      <div className="border rounded p-2 bg-light text-muted">
+                        Discrepancy payload present (no structured checks detected).
+                      </div>
+                    ) : null}
                   </>
                 ) : (
                   <div className="text-muted">No discrepancies provided.</div>

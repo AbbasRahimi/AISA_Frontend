@@ -490,12 +490,7 @@ export function gtInstanceCardsFromTotals(totals) {
   };
 }
 
-export function summariesHaveGroundTruth(summaries, authorReport = null) {
-  const fromReport =
-    (Array.isArray(authorReport?.gt_found_by_llm) ? authorReport.gt_found_by_llm.length : 0) +
-      (Array.isArray(authorReport?.gt_not_in_llm) ? authorReport.gt_not_in_llm.length : 0) >
-    0;
-  if (fromReport) return true;
+export function summariesHaveGroundTruth(summaries) {
   const totals = summaries?.totals;
   if (totals) {
     const gtSum =
@@ -509,6 +504,30 @@ export function verificationPayloadHasApiResponse(payload) {
   return unwrapVerificationRows(payload).some(
     (row) => row && Object.prototype.hasOwnProperty.call(row, 'api_response'),
   );
+}
+
+/** Human-readable notes for slim or legacy api_response on verification rows. */
+export function formatVerificationApiResponseNotes(apiResponse) {
+  if (apiResponse == null) return '';
+  if (typeof apiResponse !== 'object') return String(apiResponse);
+  if (apiResponse.skipped === true) return 'skipped';
+  if (apiResponse.error != null && String(apiResponse.error).trim() !== '') {
+    return String(apiResponse.error);
+  }
+
+  const parts = [];
+  for (const key of ['title', 'best_match_title', 'doi', 'year', 'authors', 'journal', 'match_type']) {
+    const value = apiResponse[key];
+    if (value != null && String(value).trim() !== '') {
+      parts.push(`${key}: ${value}`);
+    }
+  }
+  for (const key of ['found', 'exact_match', 'partial_match']) {
+    if (typeof apiResponse[key] === 'boolean') {
+      parts.push(`${key}: ${apiResponse[key]}`);
+    }
+  }
+  return parts.join(' · ');
 }
 
 /**

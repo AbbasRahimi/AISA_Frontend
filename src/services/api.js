@@ -71,7 +71,7 @@ export function appendWorkflowAuthQuery(url, token) {
  * @property {number|null} year
  * @property {string|null} doi
  * @property {string|null} journal
- * @property {Record<string, unknown>|null} [authoritative]
+ * @property {Record<string, unknown>|null} [authoritative] - title, authors, year, doi, journal (no embedded raw API document)
  * @property {Record<string, unknown>|null} [discrepancies]
  */
 

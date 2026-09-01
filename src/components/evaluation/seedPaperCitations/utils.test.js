@@ -9,6 +9,7 @@ import {
   dbRank,
   existenceCardsFromTotals,
   existenceFromSummaryRow,
+  formatVerificationApiResponseNotes,
   groupVerificationByLiterature,
   gtComparisonSummaryCards,
   gtFoundCountFromComparison,
@@ -502,5 +503,21 @@ describe('slim verification-results without api_response', () => {
     expect(grouped[0].exists).toBe(true);
     expect(grouped[0].hits.every((h) => !Object.prototype.hasOwnProperty.call(h, 'api_response'))).toBe(true);
     expect(verificationPayloadHasApiResponse(grouped[0].hits)).toBe(false);
+  });
+});
+
+describe('formatVerificationApiResponseNotes', () => {
+  it('formats slim api_response fields without assuming full OpenAlex/Crossref documents', () => {
+    expect(
+      formatVerificationApiResponseNotes({
+        title: 'Example paper',
+        doi: '10.1234/example',
+        year: 2020,
+        found: true,
+        match_type: 'doi',
+      }),
+    ).toContain('title: Example paper');
+    expect(formatVerificationApiResponseNotes({ skipped: true })).toBe('skipped');
+    expect(formatVerificationApiResponseNotes({ error: 'timeout' })).toBe('timeout');
   });
 });

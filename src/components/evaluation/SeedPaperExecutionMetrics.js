@@ -53,13 +53,11 @@ const SeedPaperExecutionMetrics = () => {
       setAuthorReport(null);
       setExecutionsIndex({});
 
-      const [payload, report, executionsResponse] = await Promise.all([
+      const [payload, executionsResponse] = await Promise.all([
         apiService.evaluateBatchExecutions(seedPaperId, null, null, true),
-        apiService.getAuthorReport(seedPaperId),
         apiService.getExecutions(null, seedPaperId),
       ]);
       setBatchPayload(payload || null);
-      setAuthorReport(report || null);
 
       const list = Array.isArray(executionsResponse)
         ? executionsResponse
@@ -71,6 +69,13 @@ const SeedPaperExecutionMetrics = () => {
           if (id != null) idx[String(id)] = ex;
         }
         setExecutionsIndex(idx);
+      }
+
+      try {
+        const report = await apiService.getAuthorReport(seedPaperId);
+        setAuthorReport(report || null);
+      } catch (reportErr) {
+        setAuthorReport(null);
       }
     } catch (err) {
       setError('Failed to load metrics: ' + (err.message || String(err)));

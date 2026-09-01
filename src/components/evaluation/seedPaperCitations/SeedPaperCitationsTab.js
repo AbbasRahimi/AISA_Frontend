@@ -88,54 +88,69 @@ function SeedPaperCitationsTab() {
     setTablePage((p) => (p > totalPages ? totalPages : p));
   }, [executions.length, tablePageSize]);
 
-  const loadSeedPaperData = useCallback(async (id, { clearCaches = true } = {}) => {
+  const loadAuthorReport = useCallback(async (id) => {
     if (!id) return;
     try {
-      setLoadingSeedData(true);
-      setSeedDataError(null);
-      setSummariesError(null);
-      setAuthorReportError(null);
       setAuthorReportLoading(true);
-      setExecutions([]);
-      setExecutionSummaries(null);
+      setAuthorReportError(null);
+      const report = await apiService.getAuthorReport(id);
+      setAuthorReport(report || null);
+    } catch (err) {
       setAuthorReport(null);
-      if (clearCaches) {
-        setVrCache({});
-        setCmpCache({});
-      }
-
-      // Max ~3 calls on seed-paper select. Do not fan out verification/comparison per execution.
-      const [execRes, summaryRes, reportRes] = await Promise.allSettled([
-        apiService.getExecutions(null, id),
-        apiService.getSeedPaperExecutionSummaries(id),
-        apiService.getAuthorReport(id),
-      ]);
-
-      if (execRes.status === 'fulfilled') {
-        setExecutions(unwrapExecutionsList(execRes.value));
-      } else {
-        setExecutions([]);
-        setSeedDataError(execRes.reason?.message || 'Failed to load executions');
-      }
-
-      if (summaryRes.status === 'fulfilled') {
-        setExecutionSummaries(unwrapExecutionSummaries(summaryRes.value));
-      } else {
-        setExecutionSummaries(null);
-        setSummariesError(summaryRes.reason?.message || 'Failed to load execution summaries');
-      }
-
-      if (reportRes.status === 'fulfilled') {
-        setAuthorReport(reportRes.value || null);
-      } else {
-        setAuthorReport(null);
-        setAuthorReportError(reportRes.reason?.message || 'Failed to load author report');
-      }
+      setAuthorReportError(err?.message || 'Failed to load author report');
     } finally {
-      setLoadingSeedData(false);
       setAuthorReportLoading(false);
     }
   }, []);
+
+  const loadSeedPaperData = useCallback(
+    async (id, { clearCaches = true } = {}) => {
+      if (!id) return;
+      try {
+        setLoadingSeedData(true);
+        setSeedDataError(null);
+        setSummariesError(null);
+        setAuthorReportError(null);
+        setAuthorReportLoading(false);
+        setExecutions([]);
+        setExecutionSummaries(null);
+        setAuthorReport(null);
+        if (clearCaches) {
+          setVrCache({});
+          setCmpCache({});
+        }
+
+        const [execRes, summaryRes] = await Promise.allSettled([
+          apiService.getExecutions(null, id),
+          apiService.getSeedPaperExecutionSummaries(id),
+        ]);
+
+        let summariesPayload = null;
+
+        if (execRes.status === 'fulfilled') {
+          setExecutions(unwrapExecutionsList(execRes.value));
+        } else {
+          setExecutions([]);
+          setSeedDataError(execRes.reason?.message || 'Failed to load executions');
+        }
+
+        if (summaryRes.status === 'fulfilled') {
+          summariesPayload = unwrapExecutionSummaries(summaryRes.value);
+          setExecutionSummaries(summariesPayload);
+        } else {
+          setExecutionSummaries(null);
+          setSummariesError(summaryRes.reason?.message || 'Failed to load execution summaries');
+        }
+
+        if (summariesHaveGroundTruth(summariesPayload)) {
+          await loadAuthorReport(id);
+        }
+      } finally {
+        setLoadingSeedData(false);
+      }
+    },
+    [loadAuthorReport],
+  );
 
   useEffect(() => {
     if (!seedPaperId) {
@@ -175,8 +190,8 @@ function SeedPaperCitationsTab() {
   );
 
   const hasGroundTruth = useMemo(
-    () => summariesHaveGroundTruth(executionSummaries, authorReport),
-    [executionSummaries, authorReport],
+    () => summariesHaveGroundTruth(executionSummaries),
+    [executionSummaries],
   );
 
   const gtCoverage = useMemo(
