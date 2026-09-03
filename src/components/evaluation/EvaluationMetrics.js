@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import apiService from '../../services/api';
 import ExecutionsTable from './ExecutionsTable';
@@ -10,14 +10,21 @@ import SilentSeedPaperExistenceReverify from './SilentSeedPaperExistenceReverify
 import SeedPaperExecutionMetrics from './SeedPaperExecutionMetrics';
 import SeedPaperCitationsTab from './seedPaperCitations/SeedPaperCitationsTab';
 import ExecutionCompareTab from './ExecutionCompareTab';
+import ReportsTab from '../reports/ReportsTab';
+import {
+  isLegacyCitationsDeepLink,
+  isReportsDeepLink,
+} from '../reports/reportsUrlState';
+
+function resolveInitialTab(searchParams) {
+  if (isLegacyCitationsDeepLink(searchParams)) return 'seedPaperCitations';
+  if (searchParams.get('metricsTab') === 'reports' || isReportsDeepLink(searchParams)) return 'reports';
+  return 'reports';
+}
 
 const EvaluationMetricsGuide = () => {
-  const [searchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState(() => (
-    searchParams.get('seedPaperId') || searchParams.get('executionId')
-      ? 'seedPaperCitations'
-      : 'executions'
-  ));
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(() => resolveInitialTab(searchParams));
   const [executions, setExecutions] = useState([]);
   const [selectedExecution, setSelectedExecution] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -28,6 +35,23 @@ const EvaluationMetricsGuide = () => {
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  const handleTabChange = useCallback((tabId) => {
+    setActiveTab(tabId);
+    const params = new URLSearchParams(searchParams);
+    if (tabId === 'reports') {
+      params.set('metricsTab', 'reports');
+    } else {
+      params.delete('metricsTab');
+      params.delete('reportHubTab');
+      if (tabId !== 'seedPaperCitations') {
+        params.delete('seedPaperId');
+        params.delete('executionId');
+        params.delete('reportTab');
+      }
+    }
+    setSearchParams(params, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   // Load executions on component mount
   useEffect(() => {
@@ -112,8 +136,18 @@ const EvaluationMetricsGuide = () => {
           <ul className="nav nav-tabs mb-4" role="tablist">
             <li className="nav-item" role="presentation">
               <button
+                className={`nav-link ${activeTab === 'reports' ? 'active' : ''}`}
+                onClick={() => handleTabChange('reports')}
+                type="button"
+                role="tab"
+              >
+                <i className="fas fa-file-alt"></i> Reports
+              </button>
+            </li>
+            <li className="nav-item" role="presentation">
+              <button
                 className={`nav-link ${activeTab === 'executions' ? 'active' : ''}`}
-                onClick={() => setActiveTab('executions')}
+                onClick={() => handleTabChange('executions')}
                 type="button"
                 role="tab"
               >
@@ -123,7 +157,7 @@ const EvaluationMetricsGuide = () => {
             <li className="nav-item" role="presentation">
               <button
                 className={`nav-link ${activeTab === 'metrics' ? 'active' : ''}`}
-                onClick={() => setActiveTab('metrics')}
+                onClick={() => handleTabChange('metrics')}
                 type="button"
                 role="tab"
               >
@@ -133,7 +167,7 @@ const EvaluationMetricsGuide = () => {
             <li className="nav-item" role="presentation">
               <button
                 className={`nav-link ${activeTab === 'seedPaperMetrics' ? 'active' : ''}`}
-                onClick={() => setActiveTab('seedPaperMetrics')}
+                onClick={() => handleTabChange('seedPaperMetrics')}
                 type="button"
                 role="tab"
               >
@@ -143,7 +177,7 @@ const EvaluationMetricsGuide = () => {
             <li className="nav-item" role="presentation">
               <button
                 className={`nav-link ${activeTab === 'seedPaperCitations' ? 'active' : ''}`}
-                onClick={() => setActiveTab('seedPaperCitations')}
+                onClick={() => handleTabChange('seedPaperCitations')}
                 type="button"
                 role="tab"
               >
@@ -153,7 +187,7 @@ const EvaluationMetricsGuide = () => {
             <li className="nav-item" role="presentation">
               <button
                 className={`nav-link ${activeTab === 'executionCompare' ? 'active' : ''}`}
-                onClick={() => setActiveTab('executionCompare')}
+                onClick={() => handleTabChange('executionCompare')}
                 type="button"
                 role="tab"
               >
@@ -163,7 +197,7 @@ const EvaluationMetricsGuide = () => {
             <li className="nav-item" role="presentation">
               <button
                 className={`nav-link ${activeTab === 'batch' ? 'active' : ''}`}
-                onClick={() => setActiveTab('batch')}
+                onClick={() => handleTabChange('batch')}
                 type="button"
                 role="tab"
               >
@@ -173,7 +207,7 @@ const EvaluationMetricsGuide = () => {
             <li className="nav-item" role="presentation">
               <button
                 className={`nav-link ${activeTab === 'batchRecalculate' ? 'active' : ''}`}
-                onClick={() => setActiveTab('batchRecalculate')}
+                onClick={() => handleTabChange('batchRecalculate')}
                 type="button"
                 role="tab"
               >
@@ -183,7 +217,7 @@ const EvaluationMetricsGuide = () => {
             <li className="nav-item" role="presentation">
               <button
                 className={`nav-link ${activeTab === 'silentReverify' ? 'active' : ''}`}
-                onClick={() => setActiveTab('silentReverify')}
+                onClick={() => handleTabChange('silentReverify')}
                 type="button"
                 role="tab"
               >
@@ -194,6 +228,12 @@ const EvaluationMetricsGuide = () => {
 
           {/* Tab Content */}
           <div className="tab-content">
+            {activeTab === 'reports' && (
+              <div>
+                <ReportsTab />
+              </div>
+            )}
+
             {/* Executions Tab */}
             {activeTab === 'executions' && (
               <div>

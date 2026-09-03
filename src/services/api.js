@@ -151,7 +151,12 @@ class ApiService {
     const timeout = options.timeout || 300000; // Default 5 minutes
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
-    
+    const externalSignal = options.signal;
+    if (externalSignal) {
+      if (externalSignal.aborted) controller.abort();
+      else externalSignal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
+
     try {
       const response = await fetch(url, { ...config, signal: controller.signal });
       clearTimeout(timeoutId);
@@ -1564,6 +1569,199 @@ class ApiService {
     };
 
     return ws;
+  }
+
+  // --- Reports API (/api/reports) ---
+
+  /**
+   * @param {{ seedPaperId?: number, seedPaperIds?: number[], includePartial?: boolean }} opts
+   */
+  async getReportsLlmMetrics({ seedPaperId, seedPaperIds, includePartial = true } = {}) {
+    const ids = seedPaperIds?.length
+      ? seedPaperIds
+      : seedPaperId != null
+        ? [seedPaperId]
+        : [];
+    if (ids.length === 0) {
+      throw new Error('At least one seed paper is required.');
+    }
+    const query = buildQueryParams({
+      seed_paper_id: ids.length === 1 ? ids[0] : null,
+      seed_paper_ids: ids.length > 1 ? ids.join(',') : null,
+      include_partial: includePartial,
+    });
+    return this.request(`/api/reports/metrics/llm-systems${query}`);
+  }
+
+  /**
+   * @param {{ seedPaperId: number, includePartial?: boolean }} opts
+   */
+  async getReportsPromptMetrics({ seedPaperId, includePartial = true }) {
+    const query = buildQueryParams({
+      seed_paper_id: seedPaperId,
+      include_partial: includePartial,
+    });
+    return this.request(`/api/reports/metrics/prompts${query}`);
+  }
+
+  /**
+   * @param {number} seedPaperId
+   * @param {{
+   *   status?: string,
+   *   llmSystemId?: number|null,
+   *   promptId?: number|null,
+   *   executionId?: number|null,
+   *   latestOnly?: boolean,
+   *   useCache?: boolean,
+   *   signal?: AbortSignal,
+   * }} [filters]
+   */
+  async getExistenceSeedSummary(seedPaperId, filters = {}) {
+    const query = buildQueryParams({
+      status: filters.status ?? 'completed',
+      llm_system_id: filters.llmSystemId,
+      prompt_id: filters.promptId,
+      execution_id: filters.executionId,
+      latest_only: filters.latestOnly ?? false,
+      use_cache: filters.useCache ?? true,
+    });
+    return this.request(`/api/reports/existence/seed-papers/${seedPaperId}/summary${query}`, {
+      signal: filters.signal,
+    });
+  }
+
+  async getExistenceDoiDiffSummary(seedPaperId, filters = {}) {
+    const query = buildQueryParams({
+      status: filters.status ?? 'completed',
+      llm_system_id: filters.llmSystemId,
+      prompt_id: filters.promptId,
+      execution_id: filters.executionId,
+      latest_only: filters.latestOnly ?? false,
+      use_cache: filters.useCache ?? true,
+    });
+    return this.request(`/api/reports/existence/seed-papers/${seedPaperId}/doi-diffs/summary${query}`, {
+      signal: filters.signal,
+    });
+  }
+
+  async getGtComparisonSeedSummary(seedPaperId, filters = {}) {
+    const query = buildQueryParams({
+      status: filters.status ?? 'completed',
+      llm_system_id: filters.llmSystemId,
+      prompt_id: filters.promptId,
+      execution_id: filters.executionId,
+      latest_only: filters.latestOnly ?? false,
+      use_cache: filters.useCache ?? true,
+    });
+    return this.request(`/api/reports/gt-comparison/seed-papers/${seedPaperId}/summary${query}`, {
+      signal: filters.signal,
+    });
+  }
+
+  async getExistenceGroups(seedPaperId, { groupBy, status = 'completed', ...rest } = {}) {
+    const query = buildQueryParams({
+      group_by: groupBy,
+      status,
+      llm_system_id: rest.llmSystemId,
+      prompt_id: rest.promptId,
+      execution_id: rest.executionId,
+      latest_only: rest.latestOnly ?? false,
+      use_cache: rest.useCache ?? true,
+    });
+    return this.request(`/api/reports/existence/seed-papers/${seedPaperId}/groups${query}`, {
+      signal: rest.signal,
+    });
+  }
+
+  async getGtComparisonGroups(seedPaperId, { groupBy, status = 'completed', ...rest } = {}) {
+    const query = buildQueryParams({
+      group_by: groupBy,
+      status,
+      llm_system_id: rest.llmSystemId,
+      prompt_id: rest.promptId,
+      execution_id: rest.executionId,
+      latest_only: rest.latestOnly ?? false,
+      use_cache: rest.useCache ?? true,
+    });
+    return this.request(`/api/reports/gt-comparison/seed-papers/${seedPaperId}/groups${query}`, {
+      signal: rest.signal,
+    });
+  }
+
+  async getGtComparisonByReference(seedPaperId, filters = {}) {
+    const query = buildQueryParams({
+      status: filters.status ?? 'completed',
+      page: filters.page ?? 1,
+      page_size: filters.page_size ?? filters.pageSize ?? 50,
+      latest_only: filters.latestOnly ?? false,
+      use_cache: filters.useCache ?? true,
+    });
+    return this.request(`/api/reports/gt-comparison/seed-papers/${seedPaperId}/by-gt-reference${query}`, {
+      signal: filters.signal,
+    });
+  }
+
+  async getExistenceExecutionCitations(executionId, filters = {}) {
+    const query = buildQueryParams({
+      page: filters.page ?? 1,
+      page_size: filters.page_size ?? filters.pageSize ?? 50,
+      classification: filters.classification,
+      found: filters.found,
+      sort: filters.sort,
+      order: filters.order,
+    });
+    return this.request(`/api/reports/existence/executions/${executionId}/citations${query}`, {
+      signal: filters.signal,
+    });
+  }
+
+  async getGtComparisonExecutionCitations(executionId, filters = {}) {
+    const query = buildQueryParams({
+      page: filters.page ?? 1,
+      page_size: filters.page_size ?? filters.pageSize ?? 50,
+      classification: filters.classification,
+      gt_reference_id: filters.gt_reference_id ?? filters.gtReferenceId,
+      sort: filters.sort,
+      order: filters.order,
+    });
+    return this.request(`/api/reports/gt-comparison/executions/${executionId}/citations${query}`, {
+      signal: filters.signal,
+    });
+  }
+
+  async getExistenceCitationDetail(executionId, literatureId, options = {}) {
+    return this.request(
+      `/api/reports/existence/executions/${executionId}/citations/${literatureId}`,
+      { signal: options.signal },
+    );
+  }
+
+  async getGtComparisonCitationDetail(executionId, gtReferenceId, options = {}) {
+    return this.request(
+      `/api/reports/gt-comparison/executions/${executionId}/citations/${gtReferenceId}`,
+      { signal: options.signal },
+    );
+  }
+
+  async createReportExport({ reportKind, executionId }) {
+    return this.request('/api/reports/exports', {
+      method: 'POST',
+      body: JSON.stringify({
+        report_kind: reportKind,
+        execution_id: executionId,
+      }),
+    });
+  }
+
+  async getReportExportStatus(runId) {
+    return this.request(`/api/reports/exports/${runId}`);
+  }
+
+  /** Download completed export file (if backend exposes this route). */
+  async downloadReportExport(runId) {
+    return this.request(`/api/reports/exports/${runId}/download`, {
+      responseType: 'blob',
+    });
   }
 }
 

@@ -647,3 +647,26 @@ main {
 .scoring-rules-table td {
   vertical-align: middle;
 }
+
+/* Reports citation table tier labels: 2 green, 1 yellow, 0 red, ∅ gray */
+.reports-tier-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.reports-tier-text.scoring-tier-2 {
+  color: #198754;
+}
+
+.reports-tier-text.scoring-tier-1 {
+  color: #997404;
+}
+
+.reports-tier-text.scoring-tier-0 {
+  color: #dc3545;
+}
+
+.reports-tier-text.scoring-tier-empty {
+  color: #6c757d;
+}

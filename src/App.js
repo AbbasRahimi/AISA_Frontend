@@ -8,6 +8,7 @@ import FileUploadModal from './components/dashboard/FileUploadModal';
 import PublicationVerifier from './components/verification/PublicationVerifier';
 import ReferenceComparer from './components/comparer/ReferenceComparer';
 import EvaluationMetricsGuide from './components/evaluation/EvaluationMetrics';
+import ReportsSeedPaperRedirect from './components/reports/ReportsSeedPaperRedirect';
 import ImportExecution from './components/import/ImportExecution';
 import DatabaseView from './components/database/DatabaseView';
 import ComparisonProfilesPage from './components/comparisonProfiles/ComparisonProfilesPage';
@@ -746,6 +747,16 @@ function App() {
               <RequireAuth>
                 <RequirePermission permission="evaluation">
                   <EvaluationMetricsGuide />
+                </RequirePermission>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/reports/seed-papers/:seedPaperId"
+            element={
+              <RequireAuth>
+                <RequirePermission permission="evaluation">
+                  <ReportsSeedPaperRedirect />
                 </RequirePermission>
               </RequireAuth>
             }
