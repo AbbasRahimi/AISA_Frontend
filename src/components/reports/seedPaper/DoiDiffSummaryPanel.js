@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import apiService from '../../../services/api';
 import useReportsQuery from '../../../hooks/useReportsQuery';
+import { normalizeDoiDiffSummary } from '../../../models/reports';
 import ReportsStatCard from '../shared/ReportsStatCard';
 
 export default function DoiDiffSummaryPanel({ seedPaperId }) {
@@ -8,7 +9,10 @@ export default function DoiDiffSummaryPanel({ seedPaperId }) {
   const cacheKey = open ? `doi-diff:${seedPaperId}` : null;
 
   const fetchFn = useCallback(
-    (signal) => apiService.getExistenceDoiDiffSummary(seedPaperId, { signal }),
+    (signal) =>
+      apiService
+        .getExistenceDoiDiffSummary(seedPaperId, { signal })
+        .then(normalizeDoiDiffSummary),
     [seedPaperId],
   );
 

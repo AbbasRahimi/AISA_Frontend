@@ -46,6 +46,19 @@ export function normalizeExistenceBlock(raw) {
   };
 }
 
+/** @param {unknown} raw */
+export function normalizeDoiDiffSummary(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return { with_doi: 0, metadata_mismatch: 0, has_diffs: 0 };
+  }
+  const summary = raw.doi_diff_summary ?? raw;
+  return {
+    with_doi: Number(summary.with_doi) || 0,
+    metadata_mismatch: Number(summary.metadata_mismatch) || 0,
+    has_diffs: Number(summary.has_diffs) || 0,
+  };
+}
+
 /** @param {unknown} response */
 export function normalizeExistenceSeedSummary(response) {
   if (!response || typeof response !== 'object') return null;
@@ -53,7 +66,9 @@ export function normalizeExistenceSeedSummary(response) {
     scope: response.scope ?? {},
     existence: normalizeExistenceBlock(response.existence),
     classification_summary: normalizeClassificationSummary(response.classification_summary),
-    doi_diff_summary: response.doi_diff_summary ?? null,
+    doi_diff_summary: response.doi_diff_summary
+      ? normalizeDoiDiffSummary(response.doi_diff_summary)
+      : null,
     drill_down: response.drill_down ?? {},
   };
 }
