@@ -4,6 +4,7 @@ import useSeedPapersAndPrompts, { seedPaperLabel } from '../../../hooks/useSeedP
 import SearchableSeedPaperSelect from '../../evaluation/seedPaperCitations/SearchableSeedPaperSelect';
 import LlmScorecardsPanel from './LlmScorecardsPanel';
 import PromptScorecardsPanel from './PromptScorecardsPanel';
+import ExecutionCoveragePanel from './ExecutionCoveragePanel';
 
 export default function ReportsHub({
   reportHubTab,
@@ -11,6 +12,7 @@ export default function ReportsHub({
   includePartial,
   onIncludePartialChange,
   onDrillIntoSeed,
+  onOpenExecution,
 }) {
   const { permissions } = useAuthz();
   const hasExecutions = permissions.has('executions');
@@ -25,6 +27,8 @@ export default function ReportsHub({
     onDrillIntoSeed(drillSeedPaperId, reportTab);
   };
 
+  const showIncludePartial = reportHubTab === 'llm' || reportHubTab === 'prompt';
+
   return (
     <div>
       <ul className="nav nav-pills mb-4 flex-wrap gap-1">
@@ -33,6 +37,7 @@ export default function ReportsHub({
           { id: 'prompt', label: 'Prompt scorecards', icon: 'fas fa-comment-dots' },
           { id: 'existence', label: 'Existence', icon: 'fas fa-search' },
           { id: 'gt', label: 'GT comparison', icon: 'fas fa-balance-scale' },
+          { id: 'coverage', label: 'Execution coverage matrix', icon: 'fas fa-th' },
         ].map((tab) => (
           <li className="nav-item" key={tab.id}>
             <button
@@ -47,18 +52,20 @@ export default function ReportsHub({
         ))}
       </ul>
 
-      <div className="form-check form-switch mb-4">
-        <input
-          className="form-check-input"
-          type="checkbox"
-          id="reportsIncludePartial"
-          checked={includePartial}
-          onChange={(e) => onIncludePartialChange(e.target.checked)}
-        />
-        <label className="form-check-label" htmlFor="reportsIncludePartial">
-          Include partial matches in metrics scorecards
-        </label>
-      </div>
+      {showIncludePartial && (
+        <div className="form-check form-switch mb-4">
+          <input
+            className="form-check-input"
+            type="checkbox"
+            id="reportsIncludePartial"
+            checked={includePartial}
+            onChange={(e) => onIncludePartialChange(e.target.checked)}
+          />
+          <label className="form-check-label" htmlFor="reportsIncludePartial">
+            Include partial matches in metrics scorecards
+          </label>
+        </div>
+      )}
 
       {reportHubTab === 'llm' && (
         <LlmScorecardsPanel
@@ -73,6 +80,13 @@ export default function ReportsHub({
           includePartial={includePartial}
           selectedSeedPaperId={promptSeedPaperId}
           onSeedPaperIdChange={setPromptSeedPaperId}
+        />
+      )}
+
+      {reportHubTab === 'coverage' && (
+        <ExecutionCoveragePanel
+          disabled={!hasExecutions}
+          onOpenExecution={onOpenExecution}
         />
       )}
 

@@ -4,10 +4,7 @@ import ReportsStatCard from '../shared/ReportsStatCard';
 
 function groupLabel(group) {
   const key = group.group_key;
-  const by = group.group_by;
-  if (by === 'execution') return `Execution #${key}`;
-  if (by === 'llm_system') return `LLM system #${key}`;
-  if (by === 'prompt') return `Prompt #${key}`;
+  if (group.group_by === 'execution') return `Execution #${key}`;
   return String(key ?? '—');
 }
 

@@ -27,6 +27,19 @@ export default function ReportsTab() {
     [patchParams],
   );
 
+  const handleOpenExecution = useCallback(
+    (seedPaperId, executionId) => {
+      patchParams({
+        seedPaperId,
+        reportTab: 'existence',
+        executionId,
+        clearTable: true,
+        page: 1,
+      });
+    },
+    [patchParams],
+  );
+
   const handleBackToHub = useCallback(() => {
     patchParams({ clearDrillDown: true });
   }, [patchParams]);
@@ -48,6 +61,7 @@ export default function ReportsTab() {
       includePartial={params.includePartial}
       onIncludePartialChange={(v) => patchParams({ includePartial: v })}
       onDrillIntoSeed={handleDrillIntoSeed}
+      onOpenExecution={handleOpenExecution}
     />
   );
 }

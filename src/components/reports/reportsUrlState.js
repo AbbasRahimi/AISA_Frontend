@@ -1,6 +1,6 @@
 import { clampCitationPageSize } from '../../models/reports';
 
-const HUB_TABS = new Set(['llm', 'prompt', 'existence', 'gt']);
+const HUB_TABS = new Set(['llm', 'prompt', 'existence', 'gt', 'coverage']);
 const REPORT_TABS = new Set(['existence', 'gt']);
 const GROUP_BY = new Set(['llm_system', 'prompt', 'execution']);
 const CLASSIFICATIONS = new Set(['FULL', 'PARTIAL', 'NO_MATCH']);
@@ -134,6 +134,10 @@ export function writeReportsParams(current, patch) {
     params.delete('literatureId');
     params.delete('gtReferenceId');
     params.delete('gtRefFilter');
+    // Re-apply values set in the same patch (e.g. open a specific execution).
+    if (patch.executionId !== undefined) setOrDelete('executionId', patch.executionId);
+    if (patch.page != null) setOrDelete('page', patch.page);
+    if (patch.pageSize != null) setOrDelete('page_size', patch.pageSize);
   }
 
   return params;

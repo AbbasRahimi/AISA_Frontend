@@ -1605,6 +1605,18 @@ class ApiService {
   }
 
   /**
+   * Execution coverage matrix: LLM systems × seed papers × prompts.
+   * @param {{ status?: string, seedPaperIds?: number[], signal?: AbortSignal }} [opts]
+   */
+  async getExecutionCoverage({ status = 'completed', seedPaperIds, signal } = {}) {
+    const query = buildQueryParams({
+      status,
+      seed_paper_ids: seedPaperIds?.length ? seedPaperIds.join(',') : null,
+    });
+    return this.request(`/api/reports/execution-coverage${query}`, { signal });
+  }
+
+  /**
    * @param {number} seedPaperId
    * @param {{
    *   status?: string,
