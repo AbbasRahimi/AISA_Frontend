@@ -1,0 +1,24 @@
+.citation-detail-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1060;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.citation-detail-modal-dialog {
+  position: fixed;
+  margin: 0;
+  pointer-events: auto;
+}
+
+.citation-detail-modal-dialog .modal-content {
+  max-height: inherit;
+  display: flex;
+  flex-direction: column;
+}
+
+.citation-detail-modal-dialog .modal-body {
+  overflow-y: auto;
+}

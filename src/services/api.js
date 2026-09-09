@@ -1646,20 +1646,6 @@ class ApiService {
     });
   }
 
-  async getExistenceDoiDiffSummary(seedPaperId, filters = {}) {
-    const query = buildQueryParams({
-      status: filters.status ?? 'completed',
-      llm_system_id: filters.llmSystemId,
-      prompt_id: filters.promptId,
-      execution_id: filters.executionId,
-      latest_only: filters.latestOnly ?? false,
-      use_cache: filters.useCache ?? true,
-    });
-    return this.request(`/api/reports/existence/seed-papers/${seedPaperId}/doi-diffs/summary${query}`, {
-      signal: filters.signal,
-    });
-  }
-
   async getGtComparisonSeedSummary(seedPaperId, filters = {}) {
     const query = buildQueryParams({
       status: filters.status ?? 'completed',

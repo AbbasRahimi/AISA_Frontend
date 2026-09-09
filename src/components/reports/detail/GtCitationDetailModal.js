@@ -3,6 +3,7 @@ import apiService from '../../../services/api';
 import useReportsQuery from '../../../hooks/useReportsQuery';
 import ClassificationBadge from '../shared/ClassificationBadge';
 import { FieldTierRow } from '../shared/FieldTierBadge';
+import CitationDetailModalShell from './CitationDetailModalShell';
 
 function RefBlock({ title, ref }) {
   if (!ref) return null;
@@ -43,10 +44,8 @@ export default function GtCitationDetailModal({ executionId, gtReferenceId, onCl
   const matched = data?.matched_literature;
 
   return (
-    <>
-      <div className="modal fade show d-block" tabIndex={-1} role="dialog" aria-modal="true">
-        <div className="modal-dialog modal-xl modal-dialog-scrollable" role="document">
-          <div className="modal-content">
+    <CitationDetailModalShell onClose={onClose}>
+      <div className="modal-content">
             <div className="modal-header">
               <h5 className="modal-title">
                 GT citation detail — reference #{gtReferenceId}
@@ -103,10 +102,7 @@ export default function GtCitationDetailModal({ executionId, gtReferenceId, onCl
             <div className="modal-footer">
               <button type="button" className="btn btn-secondary" onClick={onClose}>Close</button>
             </div>
-          </div>
-        </div>
       </div>
-      <div className="modal-backdrop fade show" />
-    </>
+    </CitationDetailModalShell>
   );
 }

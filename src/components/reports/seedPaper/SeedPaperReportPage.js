@@ -9,7 +9,6 @@ import {
 } from '../../../models/reports';
 import ExistenceSummaryPanel from './ExistenceSummaryPanel';
 import GtComparisonSummaryPanel from './GtComparisonSummaryPanel';
-import DoiDiffSummaryPanel from './DoiDiffSummaryPanel';
 import GroupedBreakdownPanel from '../groups/GroupedBreakdownPanel';
 import GtReferenceRecoveryTable from '../groups/GtReferenceRecoveryTable';
 import ExistenceCitationsTable from '../citations/ExistenceCitationsTable';
@@ -148,8 +147,6 @@ export default function SeedPaperReportPage({ params, onPatchParams, onBack }) {
       ) : (
         <GtComparisonSummaryPanel summary={summary} loading={summaryLoading} />
       )}
-
-      {isExistence && seedPaperId && <DoiDiffSummaryPanel seedPaperId={seedPaperId} />}
 
       <GroupedBreakdownPanel
         seedPaperId={seedPaperId}

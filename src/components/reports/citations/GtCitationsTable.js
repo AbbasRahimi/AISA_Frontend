@@ -7,6 +7,7 @@ import ClassificationBadge from '../shared/ClassificationBadge';
 import { FieldTierRow } from '../shared/FieldTierBadge';
 import { formatConfidence } from '../shared/reportsFormatters';
 import { getPerExecPageNumbers } from '../../evaluation/seedPaperExecutionMetrics/perExecTableUtils';
+import { REPORTS_CITATIONS_TABLE_ID } from '../detail/CitationDetailModalShell';
 
 const CLASSIFICATION_CHIPS = [
   { id: null, label: 'All' },
@@ -58,7 +59,7 @@ export default function GtCitationsTable({
   const summary = data?.summary_for_scope;
 
   return (
-    <div className="card mt-4">
+    <div className="card mt-4" id={REPORTS_CITATIONS_TABLE_ID}>
       <div className="card-header d-flex flex-wrap align-items-center gap-2">
         <h6 className="mb-0">
           <i className="fas fa-list me-2" />
