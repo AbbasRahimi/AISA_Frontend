@@ -2,16 +2,25 @@ import React, { useCallback, useMemo, useState } from 'react';
 import apiService from '../../../services/api';
 import useSeedPapersAndPrompts, { seedPaperLabel } from '../../../hooks/useSeedPapersAndPrompts';
 import SearchableSeedPaperSelect from '../../evaluation/seedPaperCitations/SearchableSeedPaperSelect';
+import { normalizeCompareResponse } from '../../comparer/batchResultsUtils';
 import BatchCompareGroupedStats from '../../comparer/BatchCompareGroupedStats';
 import BatchCompareStatsCharts from '../../comparer/BatchCompareStatsCharts';
 import BatchCompareRowsTable from '../../comparer/BatchCompareRowsTable';
 import CollapsibleCard from '../../comparer/CollapsibleCard';
+import ExcelExportButton from '../../comparer/ExcelExportButton';
+import {
+  canExportCompareMetrics,
+  exportCompareMetricsToExcel,
+} from '../../comparer/compareMetricsExcelExport';
+import { downloadBlob } from '../../../utils';
 
 export default function PromptScorecardsPanel({ includePartial, selectedSeedPaperId, onSeedPaperIdChange }) {
   const { seedPapers, loading: entitiesLoading, error: entitiesError } = useSeedPapersAndPrompts();
   const [promptData, setPromptData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState(null);
 
   const runLoad = useCallback(async () => {
     if (!selectedSeedPaperId) {
@@ -25,7 +34,7 @@ export default function PromptScorecardsPanel({ includePartial, selectedSeedPape
         seedPaperId: selectedSeedPaperId,
         includePartial,
       });
-      setPromptData(response || null);
+      setPromptData(response ? normalizeCompareResponse(response) : null);
     } catch (err) {
       setPromptData(null);
       setError(err?.message || 'Failed to load prompt metrics');
@@ -43,6 +52,24 @@ export default function PromptScorecardsPanel({ includePartial, selectedSeedPape
     [promptData],
   );
   const rows = useMemo(() => promptData?.rows ?? [], [promptData]);
+
+  const handleExportExcel = useCallback(async () => {
+    if (!promptData || isExporting) return;
+    setIsExporting(true);
+    setExportError(null);
+    try {
+      const { blob, filename } = await exportCompareMetricsToExcel({
+        compareData: promptData,
+        seedPapers,
+        filenamePrefix: 'prompt_scorecards',
+      });
+      downloadBlob(blob, filename);
+    } catch (err) {
+      setExportError(err?.message || 'Failed to export Excel file.');
+    } finally {
+      setIsExporting(false);
+    }
+  }, [promptData, isExporting, seedPapers]);
 
   return (
     <div>
@@ -92,11 +119,19 @@ export default function PromptScorecardsPanel({ includePartial, selectedSeedPape
 
       {promptData && (
         <>
-          <div className="alert alert-light border mb-4 py-2 small">
-            Seed paper: <strong>{seedPaperLabel(seedPapers.find((p) => p.id === selectedSeedPaperId))}</strong>
-            {' · '}
-            Partial matches: <strong>{includePartial ? 'included' : 'excluded'}</strong>
+          <div className="alert alert-light border mb-4 py-2 small d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+              Seed paper: <strong>{seedPaperLabel(seedPapers.find((p) => p.id === selectedSeedPaperId))}</strong>
+              {' · '}
+              Partial matches: <strong>{includePartial ? 'included' : 'excluded'}</strong>
+            </div>
+            <ExcelExportButton
+              onClick={handleExportExcel}
+              disabled={!canExportCompareMetrics(promptData)}
+              isExporting={isExporting}
+            />
           </div>
+          {exportError && <div className="alert alert-danger py-2">{exportError}</div>}
 
           <CollapsibleCard title="Stats by prompt alias" iconClass="fas fa-chart-bar">
             <BatchCompareGroupedStats

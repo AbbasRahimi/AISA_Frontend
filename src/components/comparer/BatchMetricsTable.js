@@ -3,7 +3,7 @@ import PerExecSortTh from '../evaluation/seedPaperExecutionMetrics/PerExecSortTh
 import { formatPercent, formatInt } from '../evaluation/seedPaperExecutionMetrics/formatters';
 import { profileLabel } from '../comparisonProfiles/profileFieldMeta';
 import { seedPaperLabel } from '../../hooks/useSeedPapersAndPrompts';
-import { normalizeMatrixRow, storedResultRowKey } from './batchResultsUtils';
+import { normalizeMatrixRow, storedResultRowKey, SCORECARD_METRIC_COLUMNS } from './batchResultsUtils';
 
 const TABLE_COLUMNS = [
   { key: 'seed_paper_id', label: 'Seed paper' },
@@ -11,9 +11,7 @@ const TABLE_COLUMNS = [
   { key: 'comparison_profile_id', label: 'Profile' },
   { key: 'system_key', label: 'System key' },
   { key: 'total_llm_papers', label: 'Total  papers' },
-  { key: 'precision', label: 'Precision' },
-  { key: 'recall', label: 'Recall' },
-  { key: 'f1_score', label: 'F1 score' },
+  ...SCORECARD_METRIC_COLUMNS,
   { key: 'true_positives', label: 'TP' },
   { key: 'false_positives', label: 'FP' },
   { key: 'false_negatives', label: 'FN' },
@@ -52,6 +50,7 @@ function formatCell(row, key, { seedPapers, profiles }) {
     case 'precision':
     case 'recall':
     case 'f1_score':
+    case 'existence_precision':
       return formatPercent(row[key]);
     case 'true_positives':
     case 'false_positives':

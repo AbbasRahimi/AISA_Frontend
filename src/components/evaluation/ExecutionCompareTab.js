@@ -340,7 +340,11 @@ function ExecutionCompareTab() {
         </div>
       )}
 
-      <CompareMetricsResults compareData={compareData} seedPapers={seedPapers} />
+      <CompareMetricsResults
+        compareData={compareData}
+        seedPapers={seedPapers}
+        filenamePrefix="execution_compare"
+      />
     </div>
   );
 }

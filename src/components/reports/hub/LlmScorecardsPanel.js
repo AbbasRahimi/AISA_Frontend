@@ -86,7 +86,13 @@ export default function LlmScorecardsPanel({ includePartial, selectedSeedPaperId
         </div>
       )}
 
-      {compareData && <CompareMetricsResults compareData={compareData} seedPapers={seedPapers} />}
+      {compareData && (
+        <CompareMetricsResults
+          compareData={compareData}
+          seedPapers={seedPapers}
+          filenamePrefix="llm_scorecards"
+        />
+      )}
     </div>
   );
 }

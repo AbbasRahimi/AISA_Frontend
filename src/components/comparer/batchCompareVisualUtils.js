@@ -7,6 +7,14 @@ const METRIC_DISPLAY_NAMES = {
   precision: 'Precision',
   recall: 'Recall',
   f1_score: 'F1',
+  existence_precision: 'Existence Precision',
+};
+
+const CHART_DATA_KEY_TO_METRIC = {
+  Precision: 'precision',
+  Recall: 'recall',
+  F1: 'f1_score',
+  'Existence Precision': 'existence_precision',
 };
 
 export function getGroupLabel(group, groupKey) {
@@ -49,6 +57,7 @@ export function buildCompareMetricsChartData(groups, groupKey) {
     Precision: toChartPercent(group.stats?.precision?.nz_avg),
     Recall: toChartPercent(group.stats?.recall?.nz_avg),
     F1: toChartPercent(group.stats?.f1_score?.nz_avg),
+    'Existence Precision': toChartPercent(group.stats?.existence_precision?.nz_avg),
     stats: group.stats,
   }));
 }
@@ -83,13 +92,7 @@ export function buildCompareBoxPlotData(groups, groupKey, metricKey = 'f1_score'
 }
 
 export function formatCompareMetricTooltipLine(stats, dataKey, chartValue) {
-  const metricKey = dataKey === 'Precision'
-    ? 'precision'
-    : dataKey === 'Recall'
-      ? 'recall'
-      : dataKey === 'F1'
-        ? 'f1_score'
-        : null;
+  const metricKey = CHART_DATA_KEY_TO_METRIC[dataKey] ?? null;
   const displayName = metricKey ? METRIC_DISPLAY_NAMES[metricKey] : dataKey;
   const metric = metricKey ? stats?.[metricKey] : null;
   const valueText = Number(chartValue).toFixed(1);

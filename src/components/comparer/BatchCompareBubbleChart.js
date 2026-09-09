@@ -53,6 +53,10 @@ function BubbleTooltip({ active, payload }) {
         <span>{p.f1 != null ? `${p.f1.toFixed(1)}%` : '—'}</span>
       </div>
       <div className="d-flex justify-content-between">
+        <span className="text-muted me-2">Existence Precision</span>
+        <span>{p.existencePrecision != null ? `${p.existencePrecision.toFixed(1)}%` : '—'}</span>
+      </div>
+      <div className="d-flex justify-content-between">
         <span className="text-muted me-2">Count</span>
         <span>{p.count != null ? formatInt(p.count) : '—'}</span>
       </div>
@@ -78,6 +82,7 @@ function BatchCompareBubbleChart({ groups = [], groupKey, title = 'Precision vs 
         const precision = toChartPercent(g.stats?.precision?.nz_avg);
         const recall = toChartPercent(g.stats?.recall?.nz_avg);
         const f1 = toChartPercent(g.stats?.f1_score?.nz_avg);
+        const existencePrecision = toChartPercent(g.stats?.existence_precision?.nz_avg);
         const count = safeNumber(g.stats?.count);
         const totalPapers = safeNumber(g.stats?.total_llm_papers_sum);
         if (precision == null || recall == null) return null;
@@ -87,6 +92,7 @@ function BatchCompareBubbleChart({ groups = [], groupKey, title = 'Precision vs 
           precision,
           recall,
           f1,
+          existencePrecision,
           count: count ?? 0,
           totalPapers: totalPapers ?? 0,
           stats: g.stats,

@@ -14,9 +14,10 @@ import { getGroupLabel, truncateChartLabel } from './batchCompareVisualUtils';
 const PERCENT_TICK = (value) => `${value}%`;
 
 const DOT_COLORS = {
-  precision: '#16a085', // blue
+  precision: '#16a085', // teal
   recall: '#f97316', // orange
   f1: '#a855f7', // purple (more distinct from blue/orange)
+  existencePrecision: '#6f42c1', // bootstrap purple, distinct from GT precision
 };
 
 function toPercent(v) {
@@ -43,6 +44,22 @@ function DiamondDot({ cx, cy, fill }) {
   return <polygon points={points} fill={fill} stroke="rgba(0,0,0,0.35)" strokeWidth={1} />;
 }
 
+function SquareDot({ cx, cy, fill }) {
+  if (cx == null || cy == null) return null;
+  const r = 5;
+  return (
+    <rect
+      x={cx - r}
+      y={cy - r}
+      width={r * 2}
+      height={r * 2}
+      fill={fill}
+      stroke="rgba(0,0,0,0.35)"
+      strokeWidth={1}
+    />
+  );
+}
+
 function LegendMarker({ name, color }) {
   const stroke = 'rgba(0,0,0,0.35)';
   if (name === 'Precision') {
@@ -63,6 +80,13 @@ function LegendMarker({ name, color }) {
     return (
       <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
         <polygon points="7,1 1,7 7,13 13,7" fill={color} stroke={stroke} strokeWidth="1" />
+      </svg>
+    );
+  }
+  if (name === 'Existence Precision') {
+    return (
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
+        <rect x="2" y="2" width="10" height="10" fill={color} stroke={stroke} strokeWidth="1" />
       </svg>
     );
   }
@@ -117,7 +141,7 @@ function DotTooltip({ active, payload, label }) {
 function BatchCompareMetricsDotPlot({
   groups = [],
   groupKey,
-  title = 'Top systems: precision, recall, and F1 (NZ avg)',
+  title = 'Top systems: precision, recall, F1, and existence precision (NZ avg)',
   topN = 25,
 }) {
   const data = useMemo(() => {
@@ -131,6 +155,7 @@ function BatchCompareMetricsDotPlot({
           Precision: toPercent(g.stats?.precision?.nz_avg),
           Recall: toPercent(g.stats?.recall?.nz_avg),
           F1: toPercent(g.stats?.f1_score?.nz_avg),
+          'Existence Precision': toPercent(g.stats?.existence_precision?.nz_avg),
         };
       });
   }, [groups, groupKey, topN]);
@@ -181,6 +206,13 @@ function BatchCompareMetricsDotPlot({
             dataKey="F1"
             fill={DOT_COLORS.f1}
             shape={<DiamondDot />}
+            isAnimationActive={false}
+          />
+          <Scatter
+            name="Existence Precision"
+            dataKey="Existence Precision"
+            fill={DOT_COLORS.existencePrecision}
+            shape={SquareDot}
             isAnimationActive={false}
           />
         </ScatterChart>

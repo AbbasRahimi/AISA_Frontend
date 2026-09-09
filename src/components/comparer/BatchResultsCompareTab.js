@@ -262,7 +262,11 @@ function BatchResultsCompareTab() {
         <div className="alert alert-danger">{error}</div>
       )}
 
-      <CompareMetricsResults compareData={compareData} seedPapers={seedPapers} />
+      <CompareMetricsResults
+        compareData={compareData}
+        seedPapers={seedPapers}
+        filenamePrefix="batch_results_compare"
+      />
     </div>
   );
 }

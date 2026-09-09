@@ -21,6 +21,7 @@ const METRIC_OPTIONS = [
   { key: 'precision', label: 'Precision', color: METRIC_CHART_COLORS.precision },
   { key: 'recall', label: 'Recall', color: METRIC_CHART_COLORS.recall },
   { key: 'f1_score', label: 'F1', color: METRIC_CHART_COLORS.f1 },
+  { key: 'existence_precision', label: 'Existence Precision', color: METRIC_CHART_COLORS.existencePrecision },
 ];
 
 function formatChartPercent(value) {

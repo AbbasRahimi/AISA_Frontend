@@ -14,6 +14,9 @@ import {
   normalizeBatchRunsListResponse,
   normalizePromptAliasesResponse,
 } from './batchResultsUtils';
+import ExcelExportButton from './ExcelExportButton';
+import { exportStoredResultsToExcel } from './compareMetricsExcelExport';
+import { downloadBlob } from '../../utils';
 
 function BatchResultsBrowseTab() {
   const { seedPapers, loading: entitiesLoading, error: entitiesError } = useSeedPapersAndPrompts();
@@ -44,6 +47,8 @@ function BatchResultsBrowseTab() {
   const [loading, setLoading] = useState(false);
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [error, setError] = useState(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState(null);
 
   useEffect(() => {
     if (defaultProfileId != null && comparisonProfileId == null) {
@@ -96,6 +101,25 @@ function BatchResultsBrowseTab() {
       setLoadingRuns(false);
     }
   }, []);
+
+  const handleExportExcel = async () => {
+    if (!results.length || isExporting) return;
+    setIsExporting(true);
+    setExportError(null);
+    try {
+      const { blob, filename } = await exportStoredResultsToExcel({
+        rows: results,
+        seedPapers,
+        profiles,
+        filenamePrefix: 'stored_results',
+      });
+      downloadBlob(blob, filename);
+    } catch (err) {
+      setExportError(err?.message || 'Failed to export Excel file.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   useEffect(() => {
     if (showRunHistory) {
@@ -347,10 +371,18 @@ function BatchResultsBrowseTab() {
       {error && (
         <div className="alert alert-danger">{error}</div>
       )}
+      {exportError && (
+        <div className="alert alert-danger py-2">{exportError}</div>
+      )}
 
       <div className="card">
-        <div className="card-header">
+        <div className="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
           <h5 className="mb-0"><i className="fas fa-table" /> Stored results ({results.length})</h5>
+          <ExcelExportButton
+            onClick={handleExportExcel}
+            disabled={!results.length}
+            isExporting={isExporting}
+          />
         </div>
         <div className="card-body p-0">
           <BatchMetricsTable

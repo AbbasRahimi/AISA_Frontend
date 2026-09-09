@@ -20,6 +20,12 @@ export const STORED_RESULT_METRICS = [
     chartKey: 'F1',
     color: METRIC_CHART_COLORS.f1,
   },
+  {
+    key: 'existence_precision',
+    label: 'Existence Precision',
+    chartKey: 'Existence Precision',
+    color: METRIC_CHART_COLORS.existencePrecision,
+  },
 ];
 
 export function storedResultChartLabel(row) {

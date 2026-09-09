@@ -3,7 +3,7 @@ import PerExecSortTh from '../evaluation/seedPaperExecutionMetrics/PerExecSortTh
 import { getPerExecPageNumbers } from '../evaluation/seedPaperExecutionMetrics/perExecTableUtils';
 import { formatPercent, formatInt } from '../evaluation/seedPaperExecutionMetrics/formatters';
 import { seedPaperLabel } from '../../hooks/useSeedPapersAndPrompts';
-import { normalizeCompareRow, storedResultRowKey } from './batchResultsUtils';
+import { normalizeCompareRow, storedResultRowKey, SCORECARD_METRIC_COLUMNS } from './batchResultsUtils';
 
 const DEFAULT_PAGE_SIZE = 20;
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
@@ -13,9 +13,7 @@ const TABLE_COLUMNS = [
   { key: 'prompt_alias', label: 'Prompt alias' },
   { key: 'system_key', label: 'System key' },
   { key: 'total_llm_papers', label: 'Total papers' },
-  { key: 'precision', label: 'Precision' },
-  { key: 'recall', label: 'Recall' },
-  { key: 'f1_score', label: 'F1 score' },
+  ...SCORECARD_METRIC_COLUMNS,
   { key: 'run_id', label: 'Run' },
   { key: 'created_at', label: 'Created' },
 ];
@@ -51,6 +49,7 @@ function getRowFilterBlob(row, seedPapers) {
     row.precision != null ? String(row.precision) : '',
     row.recall != null ? String(row.recall) : '',
     row.f1_score != null ? String(row.f1_score) : '',
+    row.existence_precision != null ? String(row.existence_precision) : '',
     row.run_id != null ? String(row.run_id) : '',
     row.created_at ? new Date(row.created_at).toLocaleString() : '',
   ];
@@ -70,6 +69,7 @@ function formatCell(row, key, seedPapers) {
     case 'precision':
     case 'recall':
     case 'f1_score':
+    case 'existence_precision':
       return formatPercent(row[key]);
     case 'created_at':
       return row.created_at ? new Date(row.created_at).toLocaleString() : '—';

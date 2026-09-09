@@ -780,8 +780,10 @@ class ApiService {
    * @typedef {Object} BatchComparisonMetricStats
    * @property {number|null} min
    * @property {number|null} max
-   * @property {number|null} nz_avg - Mean over non-zero, non-null values only
-   * @property {number|null} nz_median - Median of non-zero values
+   * @property {number|null} nz_avg - Mean of non-null values (zeros count; nulls excluded)
+   * @property {number|null} nz_median - Median of non-null values
+   * @property {number|null} std_dev
+   * @property {number|null} iqr
    */
 
   /**
@@ -793,6 +795,7 @@ class ApiService {
    * @property {BatchComparisonMetricStats|null} precision
    * @property {BatchComparisonMetricStats|null} recall
    * @property {BatchComparisonMetricStats|null} f1_score
+   * @property {BatchComparisonMetricStats|null} existence_precision - Share of LLM citations verified in academic databases
    */
 
   /**
@@ -807,6 +810,7 @@ class ApiService {
    * @property {number|null} precision
    * @property {number|null} recall
    * @property {number|null} f1_score
+   * @property {number|null} existence_precision - 0..1, or null if not stored
    * @property {number|null} true_positives
    * @property {number|null} false_positives
    * @property {number|null} false_negatives

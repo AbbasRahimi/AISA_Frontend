@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import BatchCompareRowsTable from './BatchCompareRowsTable';
 import BatchCompareGroupedStats from './BatchCompareGroupedStats';
 import BatchCompareStatsCharts from './BatchCompareStatsCharts';
@@ -6,12 +6,25 @@ import BatchCompareBubbleChart from './BatchCompareBubbleChart';
 import BatchCompareMetricsDotPlot from './BatchCompareMetricsDotPlot';
 import BatchCompareBoxPlot from './BatchCompareBoxPlot';
 import CollapsibleCard from './CollapsibleCard';
+import ExcelExportButton from './ExcelExportButton';
+import {
+  canExportCompareMetrics,
+  exportCompareMetricsToExcel,
+} from './compareMetricsExcelExport';
+import { downloadBlob } from '../../utils';
 
 /**
  * Shared compare dashboard: per-seed + overall prompt/system stats and matching rows.
  * Expects a normalized compare response (normalizeCompareResponse).
  */
-function CompareMetricsResults({ compareData, seedPapers = [] }) {
+function CompareMetricsResults({
+  compareData,
+  seedPapers = [],
+  filenamePrefix = 'compare_metrics',
+}) {
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState(null);
+
   if (!compareData) return null;
 
   const {
@@ -24,21 +37,49 @@ function CompareMetricsResults({ compareData, seedPapers = [] }) {
     include_partial: includePartial = true,
   } = compareData;
 
+  const canExport = canExportCompareMetrics(compareData);
+
+  const handleExportExcel = async () => {
+    if (!canExport || isExporting) return;
+    setIsExporting(true);
+    setExportError(null);
+    try {
+      const { blob, filename } = await exportCompareMetricsToExcel({
+        compareData,
+        seedPapers,
+        filenamePrefix,
+      });
+      downloadBlob(blob, filename);
+    } catch (err) {
+      setExportError(err?.message || 'Failed to export Excel file.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <>
-      <div className="alert alert-light border mb-4 py-2 small">
-        <span className="me-3">
-          <strong>{rows.length}</strong> matching row{rows.length === 1 ? '' : 's'}
-        </span>
-        {resultProfileId != null && (
+      <div className="alert alert-light border mb-4 py-2 small d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
           <span className="me-3">
-            Profile: <code>#{resultProfileId}</code>
+            <strong>{rows.length}</strong> matching row{rows.length === 1 ? '' : 's'}
           </span>
-        )}
-        <span>
-          Partial matches: <strong>{includePartial ? 'included' : 'excluded'}</strong>
-        </span>
+          {resultProfileId != null && (
+            <span className="me-3">
+              Profile: <code>#{resultProfileId}</code>
+            </span>
+          )}
+          <span>
+            Partial matches: <strong>{includePartial ? 'included' : 'excluded'}</strong>
+          </span>
+        </div>
+        <ExcelExportButton
+          onClick={handleExportExcel}
+          disabled={!canExport}
+          isExporting={isExporting}
+        />
       </div>
+      {exportError && <div className="alert alert-danger py-2">{exportError}</div>}
 
       <CollapsibleCard title="Stats by prompt alias" iconClass="fas fa-chart-bar">
         <BatchCompareGroupedStats

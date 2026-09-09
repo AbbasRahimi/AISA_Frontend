@@ -111,7 +111,7 @@ function BatchCompareStatsCharts({ groups = [], groupKey, groupLabel }) {
 
       <div className="col-lg-7">
         <div className="border rounded p-3 h-100 bg-white">
-          <h6 className="text-muted mb-1">Precision, recall &amp; F1 comparison (NZ avg)</h6>
+          <h6 className="text-muted mb-1">Precision, recall, F1 &amp; existence precision (NZ avg)</h6>
           <p className="small text-muted mb-3">
             Non-zero average metrics per {groupLabel.toLowerCase()} across all selected seed papers
           </p>
@@ -136,6 +136,7 @@ function BatchCompareStatsCharts({ groups = [], groupKey, groupLabel }) {
               <Bar dataKey="Precision" fill={METRIC_CHART_COLORS.precision} radius={[4, 4, 0, 0]} />
               <Bar dataKey="Recall" fill={METRIC_CHART_COLORS.recall} radius={[4, 4, 0, 0]} />
               <Bar dataKey="F1" fill={METRIC_CHART_COLORS.f1} radius={[4, 4, 0, 0]} />
+              <Bar dataKey="Existence Precision" fill={METRIC_CHART_COLORS.existencePrecision} radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>

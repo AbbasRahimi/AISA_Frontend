@@ -9,6 +9,13 @@ import {
   resolveComparisonSummary,
 } from './helpers';
 
+export const SCORECARD_METRIC_COLUMNS = [
+  { key: 'precision', label: 'Precision' },
+  { key: 'recall', label: 'Recall' },
+  { key: 'f1_score', label: 'F1 score' },
+  { key: 'existence_precision', label: 'Existence Precision' },
+];
+
 export function normalizePromptAliasesResponse(response) {
   if (!response) return [];
   if (Array.isArray(response)) return response.filter((a) => a != null && String(a).trim() !== '');
@@ -187,6 +194,7 @@ export function normalizeMetricStats(stats) {
     precision: norm(stats.precision),
     recall: norm(stats.recall),
     f1_score: norm(stats.f1_score ?? stats.f1),
+    existence_precision: norm(stats.existence_precision),
   };
 }
 
@@ -226,6 +234,7 @@ export function normalizeCompareRow(row) {
     precision: row.precision ?? row.metrics?.precision,
     recall: row.recall ?? row.metrics?.recall,
     f1_score: row.f1_score ?? row.f1 ?? row.metrics?.f1_score,
+    existence_precision: row.existence_precision ?? row.metrics?.existence_precision ?? null,
   };
 }
 
@@ -377,6 +386,7 @@ export function normalizeMatrixRow(row) {
     precision: row.precision ?? row.metrics?.precision,
     recall: row.recall ?? row.metrics?.recall,
     f1_score: row.f1_score ?? row.f1 ?? row.metrics?.f1_score,
+    existence_precision: row.existence_precision ?? row.metrics?.existence_precision ?? null,
     true_positives: row.true_positives ?? row.tp,
     false_positives: row.false_positives ?? row.fp,
     false_negatives: row.false_negatives ?? row.fn,

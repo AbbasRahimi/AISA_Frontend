@@ -2,12 +2,9 @@ import React, { useMemo, useState } from 'react';
 import PerExecSortTh from '../evaluation/seedPaperExecutionMetrics/PerExecSortTh';
 import { formatPercent, formatInt } from '../evaluation/seedPaperExecutionMetrics/formatters';
 import { seedPaperLabel } from '../../hooks/useSeedPapersAndPrompts';
+import { SCORECARD_METRIC_COLUMNS } from './batchResultsUtils';
 
-const METRIC_COLUMNS = [
-  { key: 'precision', label: 'Precision' },
-  { key: 'recall', label: 'Recall' },
-  { key: 'f1_score', label: 'F1 score' },
-];
+const METRIC_COLUMNS = SCORECARD_METRIC_COLUMNS;
 
 const METRIC_SUB_COLUMNS = [
   { key: 'min', label: 'Min' },

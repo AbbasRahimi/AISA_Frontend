@@ -10,6 +10,7 @@ export const METRIC_CHART_COLORS = {
   precision: '#0d6efd',
   recall: '#17a2b8',
   f1: '#198754',
+  existencePrecision: '#6f42c1',
 };
 
 export function systemSummaryRowKey(row) {
