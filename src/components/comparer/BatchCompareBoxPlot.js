@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import {
+  Bar,
   CartesianGrid,
   ComposedChart,
-  Customized,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -15,6 +15,7 @@ import {
 } from './batchCompareVisualUtils';
 
 const PERCENT_TICK = (value) => `${value}%`;
+const AXIS_SPAN = 100;
 
 const METRIC_OPTIONS = [
   { key: 'precision', label: 'Precision', color: METRIC_CHART_COLORS.precision },
@@ -27,59 +28,55 @@ function formatChartPercent(value) {
   return `${Number(value).toFixed(1)}%`;
 }
 
-function HorizontalBoxPlotLayer({ xAxisMap, yAxisMap, data, color }) {
-  if (!xAxisMap || !yAxisMap || !data?.length) return null;
+function isFiniteNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value);
+}
 
-  const xAxis = Object.values(xAxisMap)[0];
-  const yAxis = Object.values(yAxisMap)[0];
-  if (!xAxis?.scale || !yAxis?.scale) return null;
+function BoxPlotShape({ x, y, width, height, payload, background, color }) {
+  const box = payload?.box;
+  if (!box || !isFiniteNumber(y)) return null;
 
-  const xScale = xAxis.scale;
-  const yScale = yAxis.scale;
-  const bandwidth = typeof yScale.bandwidth === 'function' ? yScale.bandwidth() : 20;
-  const boxHeight = Math.min(18, Math.max(10, bandwidth * 0.55));
+  const plotLeft = isFiniteNumber(background?.x) ? background.x : x;
+  const plotWidth = isFiniteNumber(background?.width) && background.width > 0
+    ? background.width
+    : width;
+  if (!isFiniteNumber(plotLeft) || !isFiniteNumber(plotWidth) || plotWidth <= 0) return null;
+
+  const xOf = (value) => plotLeft + (Number(value) / AXIS_SPAN) * plotWidth;
+  const xMin = xOf(box.min);
+  const xQ1 = xOf(box.q1);
+  const xMed = xOf(box.median);
+  const xQ3 = xOf(box.q3);
+  const xMax = xOf(box.max);
+  const xAvg = box.nzAvg != null ? xOf(box.nzAvg) : null;
+
+  if ([xMin, xQ1, xMed, xQ3, xMax].some((value) => !isFiniteNumber(value))) return null;
+
+  const bandHeight = isFiniteNumber(height) && height > 0 ? height : 20;
+  const boxHeight = Math.min(18, Math.max(10, bandHeight * 0.55));
+  const yCenter = y + bandHeight / 2;
+  const yTop = yCenter - boxHeight / 2;
 
   return (
-    <g className="box-plot-layer">
-      {data.map((entry) => {
-        const box = entry.box;
-        if (!box) return null;
-
-        const yCenter = yScale(entry.labelShort) + bandwidth / 2;
-        const yTop = yCenter - boxHeight / 2;
-        const xMin = xScale(box.min);
-        const xQ1 = xScale(box.q1);
-        const xMed = xScale(box.median);
-        const xQ3 = xScale(box.q3);
-        const xMax = xScale(box.max);
-        const xAvg = box.nzAvg != null ? xScale(box.nzAvg) : null;
-
-        if ([xMin, xQ1, xMed, xQ3, xMax].some((v) => v == null || Number.isNaN(v))) {
-          return null;
-        }
-
-        return (
-          <g key={entry.label}>
-            <line x1={xMin} y1={yCenter} x2={xMax} y2={yCenter} stroke={color} strokeWidth={1} />
-            <line x1={xMin} y1={yTop} x2={xMin} y2={yTop + boxHeight} stroke={color} strokeWidth={1.5} />
-            <line x1={xMax} y1={yTop} x2={xMax} y2={yTop + boxHeight} stroke={color} strokeWidth={1.5} />
-            <rect
-              x={Math.min(xQ1, xQ3)}
-              y={yTop}
-              width={Math.max(1, Math.abs(xQ3 - xQ1))}
-              height={boxHeight}
-              fill={color}
-              fillOpacity={0.22}
-              stroke={color}
-              strokeWidth={1.5}
-            />
-            <line x1={xMed} y1={yTop} x2={xMed} y2={yTop + boxHeight} stroke={color} strokeWidth={2.5} />
-            {xAvg != null && !Number.isNaN(xAvg) && (
-              <circle cx={xAvg} cy={yCenter} r={4} fill="#fff" stroke={color} strokeWidth={2} />
-            )}
-          </g>
-        );
-      })}
+    <g className="box-plot-shape">
+      <rect x={plotLeft} y={y} width={plotWidth} height={bandHeight} fill="transparent" />
+      <line x1={xMin} y1={yCenter} x2={xMax} y2={yCenter} stroke={color} strokeWidth={1} />
+      <line x1={xMin} y1={yTop} x2={xMin} y2={yTop + boxHeight} stroke={color} strokeWidth={1.5} />
+      <line x1={xMax} y1={yTop} x2={xMax} y2={yTop + boxHeight} stroke={color} strokeWidth={1.5} />
+      <rect
+        x={Math.min(xQ1, xQ3)}
+        y={yTop}
+        width={Math.max(1, Math.abs(xQ3 - xQ1))}
+        height={boxHeight}
+        fill={color}
+        fillOpacity={0.22}
+        stroke={color}
+        strokeWidth={1.5}
+      />
+      <line x1={xMed} y1={yTop} x2={xMed} y2={yTop + boxHeight} stroke={color} strokeWidth={2.5} />
+      {xAvg != null && isFiniteNumber(xAvg) && (
+        <circle cx={xAvg} cy={yCenter} r={4} fill="#fff" stroke={color} strokeWidth={2} />
+      )}
     </g>
   );
 }
@@ -124,7 +121,11 @@ function BatchCompareBoxPlot({
   const metricOption = METRIC_OPTIONS.find((option) => option.key === metricKey) ?? METRIC_OPTIONS[2];
 
   const data = useMemo(
-    () => buildCompareBoxPlotData(groups, groupKey, metricKey, topN),
+    () => buildCompareBoxPlotData(groups, groupKey, metricKey, topN).map((row, index) => ({
+      ...row,
+      rowIndex: index,
+      axisSpan: AXIS_SPAN,
+    })),
     [groups, groupKey, metricKey, topN],
   );
 
@@ -132,6 +133,7 @@ function BatchCompareBoxPlot({
 
   const height = Math.max(280, data.length * 40 + 96);
   const yAxisWidth = groupKey === 'system_key' ? 200 : 140;
+  const tickLabel = (index) => data[index]?.labelShort ?? '';
 
   return (
     <div className="border rounded p-3 bg-white mb-4">
@@ -165,17 +167,21 @@ function BatchCompareBoxPlot({
           <XAxis type="number" domain={[0, 100]} tickFormatter={PERCENT_TICK} />
           <YAxis
             type="category"
-            dataKey="labelShort"
+            dataKey="rowIndex"
+            tickFormatter={tickLabel}
             width={yAxisWidth}
             tick={{ fontSize: 12 }}
             interval={0}
             padding={{ top: 16, bottom: 16 }}
           />
           <Tooltip content={<BoxPlotTooltip metricLabel={metricOption.label} />} />
-          <Customized
-            component={(props) => (
-              <HorizontalBoxPlotLayer {...props} data={data} color={metricOption.color} />
-            )}
+          <Bar
+            dataKey="axisSpan"
+            isAnimationActive={false}
+            legendType="none"
+            fill="none"
+            maxBarSize={22}
+            shape={(props) => <BoxPlotShape {...props} color={metricOption.color} />}
           />
         </ComposedChart>
       </ResponsiveContainer>
