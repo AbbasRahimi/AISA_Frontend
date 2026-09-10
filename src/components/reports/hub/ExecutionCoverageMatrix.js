@@ -42,6 +42,8 @@ export default function ExecutionCoverageMatrix({ coverage, gapKeys, onOpenExecu
   const [headerRow2Height, setHeaderRow2Height] = useState(32);
   const [llmColWidthPx, setLlmColWidthPx] = useState(180);
   const [maximized, setMaximized] = useState(false);
+  /** @type {[null|'asc'|'desc', function]} */
+  const [nSort, setNSort] = useState(null);
 
   const columns = useMemo(() => {
     const out = [];
@@ -71,6 +73,20 @@ export default function ExecutionCoverageMatrix({ coverage, gapKeys, onOpenExecu
     }
     return map;
   }, [coverage, llmSystems, columns]);
+
+  const sortedLlmSystems = useMemo(() => {
+    if (!nSort) return llmSystems;
+    return [...llmSystems].sort((a, b) => {
+      const na = presentCountByLlmId.get(a.id) ?? 0;
+      const nb = presentCountByLlmId.get(b.id) ?? 0;
+      if (na !== nb) return nSort === 'asc' ? na - nb : nb - na;
+      return String(a.label || '').localeCompare(String(b.label || ''));
+    });
+  }, [llmSystems, presentCountByLlmId, nSort]);
+
+  const toggleNSort = () => {
+    setNSort((prev) => (prev === null ? 'desc' : prev === 'desc' ? 'asc' : null));
+  };
 
   const presentCountByColumn = useMemo(
     () => columns.map(({ seed, prompt }) => {
@@ -233,12 +249,35 @@ export default function ExecutionCoverageMatrix({ coverage, gapKeys, onOpenExecu
             LLM system
           </div>
           <div
-            className="ecm-cell ecm-head ecm-count ecm-sticky-corner ecm-sticky-corner-count ecm-sticky-top"
+            className={`ecm-cell ecm-head ecm-count ecm-sortable ecm-sticky-corner ecm-sticky-corner-count ecm-sticky-top${
+              nSort ? ' ecm-sorted' : ''
+            }`}
             role="columnheader"
-            title="Present executions for this LLM"
+            title="Sort by present executions (click to toggle)"
+            aria-sort={
+              nSort === 'asc' ? 'ascending' : nSort === 'desc' ? 'descending' : 'none'
+            }
             style={{ gridColumn: 3, gridRow: 1 }}
+            onClick={toggleNSort}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggleNSort();
+              }
+            }}
+            tabIndex={0}
           >
             n
+            <i
+              className={`fas ms-1 ${
+                nSort === 'asc'
+                  ? 'fa-sort-up'
+                  : nSort === 'desc'
+                    ? 'fa-sort-down'
+                    : 'fa-sort'
+              }`}
+              aria-hidden="true"
+            />
           </div>
           {seedSpans.map(({ seed, start, colCount, isLastSeed }) => (
             <div
@@ -336,7 +375,7 @@ export default function ExecutionCoverageMatrix({ coverage, gapKeys, onOpenExecu
           })}
 
           {/* Body rows */}
-          {llmSystems.map((llm, rowIdx) => {
+          {sortedLlmSystems.map((llm, rowIdx) => {
             const gridRow = rowIdx + HEADER_ROW_COUNT + 1;
             const presentCount = presentCountByLlmId.get(llm.id) ?? 0;
             return (

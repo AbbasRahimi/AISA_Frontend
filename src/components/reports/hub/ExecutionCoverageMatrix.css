@@ -109,6 +109,27 @@
   min-width: 2.5rem;
 }
 
+.ecm-cell.ecm-sortable {
+  cursor: pointer;
+  user-select: none;
+  gap: 0.15rem;
+}
+
+.ecm-cell.ecm-sortable:hover,
+.ecm-cell.ecm-sortable:focus-visible {
+  background: #e9ecef;
+  outline: none;
+}
+
+.ecm-cell.ecm-sortable.ecm-sorted {
+  color: #0d6efd;
+}
+
+.ecm-cell.ecm-sortable .fas {
+  font-size: 0.7em;
+  opacity: 0.75;
+}
+
 .ecm-cell.ecm-gap {
   background: #fff3cd;
 }
