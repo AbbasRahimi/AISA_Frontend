@@ -156,6 +156,7 @@ export default function ExecutionCoveragePanel({ disabled = false, onOpenExecuti
         <ExecutionCoverageMatrix
           coverage={coverage}
           gapKeys={gapKeys}
+          gaps={gaps}
           onOpenExecution={onOpenExecution}
         />
       )}

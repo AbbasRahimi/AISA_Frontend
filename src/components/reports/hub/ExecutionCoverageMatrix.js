@@ -1,6 +1,8 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { coverageGapKey, lookupExecutionId } from '../../../models/reports';
+import { downloadBlob } from '../../../utils';
+import { exportExecutionCoverageToExcel } from './executionCoverageExcelExport';
 import './ExecutionCoverageMatrix.css';
 
 const ROW_COL_WIDTH = '2.5rem';
@@ -25,7 +27,7 @@ function isLastPromptInSeed(seed, prompt) {
  * Hierarchical LLM × seed × prompt coverage matrix.
  * CSS grid (not <table>) so sticky top/left axes work reliably in all browsers.
  */
-export default function ExecutionCoverageMatrix({ coverage, gapKeys, onOpenExecution }) {
+export default function ExecutionCoverageMatrix({ coverage, gapKeys, gaps = [], onOpenExecution }) {
   const llmSystems = useMemo(
     () => coverage?.llm_systems ?? [],
     [coverage?.llm_systems],
@@ -44,6 +46,8 @@ export default function ExecutionCoverageMatrix({ coverage, gapKeys, onOpenExecu
   const [maximized, setMaximized] = useState(false);
   /** @type {[null|'asc'|'desc', function]} */
   const [nSort, setNSort] = useState(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState(null);
 
   const columns = useMemo(() => {
     const out = [];
@@ -86,6 +90,23 @@ export default function ExecutionCoverageMatrix({ coverage, gapKeys, onOpenExecu
 
   const toggleNSort = () => {
     setNSort((prev) => (prev === null ? 'desc' : prev === 'desc' ? 'asc' : null));
+  };
+
+  const handleExportXlsx = async () => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const { blob, filename } = await exportExecutionCoverageToExcel({
+        coverage,
+        gaps,
+        gapKeys,
+      });
+      downloadBlob(blob, filename);
+    } catch (err) {
+      setExportError(err?.message || 'Failed to export Excel');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const presentCountByColumn = useMemo(
@@ -207,6 +228,31 @@ export default function ExecutionCoverageMatrix({ coverage, gapKeys, onOpenExecu
             Execution coverage matrix — press Esc to exit
           </span>
         )}
+        {!maximized && exportError && (
+          <span className="small text-danger me-auto">{exportError}</span>
+        )}
+        {maximized && exportError && (
+          <span className="small text-danger">{exportError}</span>
+        )}
+        <button
+          type="button"
+          className="btn btn-sm btn-outline-success"
+          onClick={handleExportXlsx}
+          disabled={exporting}
+          title="Export coverage to Excel (.xlsx)"
+        >
+          {exporting ? (
+            <>
+              <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true" />
+              Exporting…
+            </>
+          ) : (
+            <>
+              <i className="fas fa-file-excel me-1" />
+              Export XLSX
+            </>
+          )}
+        </button>
         <button
           type="button"
           className="btn btn-sm btn-outline-secondary"
