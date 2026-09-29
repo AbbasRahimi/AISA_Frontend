@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { formatTimeAgo, getStatusColor } from '../../utils';
 import { toComparisonResultsEnvelope } from '../../utils/workflowStatus';
+import { isImportInsertStage } from './importExecutionUtils';
 import WorkflowActivityLog from '../dashboard/WorkflowActivityLog';
 import ImportVerificationCitations from './ImportVerificationCitations';
 import ImportComparisonResults from './ImportComparisonResults';
@@ -36,14 +37,14 @@ function StageProgressBar({ label, completed, total, currentItem, barClass = 'bg
 }
 
 /**
- * Live verification + GT comparison panel for an import that returned execution_id.
- * Prefers verification_progress.citations cards; shows comparison stage when current_stage
- * is "comparison" or comparison_progress appears. Activity log is an optional console.
+ * Live panel for an accept-and-queue import job (run_id).
+ * Stages: queued/inserting (no execution yet) → verification → comparison.
  */
 export default function VerifyingImportCard({
   fileName,
   createdAt,
-  executionId,
+  runId = null,
+  executionId = null,
   executionStatus,
   workflowProgress,
   connectionMode = null,
@@ -69,18 +70,27 @@ export default function VerifyingImportCard({
   });
   const summary = comparisonEnvelope?.summary || workflowProgress?.comparisonSummary;
   const isQueued = connectionMode === 'queued';
-  const waiting = !isQueued && !hasCitations && !hasLog && !showComparison;
+  const isInserting =
+    !isQueued &&
+    !executionId &&
+    !showVerification &&
+    !isComparisonStage &&
+    (isImportInsertStage(stage) || stage == null || stage === '');
+  const waiting =
+    !isQueued && !isInserting && !hasCitations && !hasLog && !showComparison;
 
-  const headerTitle = isQueued
-    ? 'Queued for verification'
-    : isComparisonStage
-      ? 'Comparing to ground truth'
-      : 'Verifying citations';
-  const headerIcon = isQueued
-    ? 'fa-clock'
-    : isComparisonStage
-      ? 'fa-balance-scale'
-      : 'fa-spinner fa-spin';
+  let headerTitle = 'Verifying citations';
+  let headerIcon = 'fa-spinner fa-spin';
+  if (isQueued) {
+    headerTitle = 'Queued for import';
+    headerIcon = 'fa-clock';
+  } else if (isInserting) {
+    headerTitle = 'Inserting into database';
+    headerIcon = 'fa-spinner fa-spin';
+  } else if (isComparisonStage) {
+    headerTitle = 'Comparing to ground truth';
+    headerIcon = 'fa-balance-scale';
+  }
 
   return (
     <div className="card mb-3 border-primary">
@@ -144,7 +154,7 @@ export default function VerifyingImportCard({
             <span>{message}</span>
             {waiting && (
               <div className="spinner-border spinner-border-sm text-primary ms-2" role="status">
-                <span className="visually-hidden">Waiting for verification activity…</span>
+                <span className="visually-hidden">Waiting for import activity…</span>
               </div>
             )}
           </div>
@@ -152,6 +162,13 @@ export default function VerifyingImportCard({
             <small className="text-muted">via {connectionMode}</small>
           ) : null}
         </div>
+
+        {isInserting && (
+          <div className="alert alert-light border py-2 small mb-3">
+            <i className="fas fa-database me-2 text-muted"></i>
+            Parsing and inserting publications. An execution is created only after insert succeeds.
+          </div>
+        )}
 
         {showVerification && (
           <StageProgressBar
@@ -229,9 +246,11 @@ export default function VerifyingImportCard({
           </>
         )}
 
-        {executionId && (
-          <small className="text-muted d-block mt-2">Execution ID: {executionId}</small>
-        )}
+        <small className="text-muted d-block mt-2">
+          {runId != null ? <>Import run #{runId}</> : null}
+          {runId != null && executionId ? ' · ' : null}
+          {executionId ? <>Execution ID: {executionId}</> : null}
+        </small>
       </div>
     </div>
   );

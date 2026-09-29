@@ -17,7 +17,7 @@ import {
   isNaExecutionFile,
   hasImportExecutionExtension,
   interpretImportExecutionResponse,
-  extractPendingImportExecutions,
+  extractAcceptedImportRuns,
 } from './importExecutionUtils';
 import FilenameMetadataCard from './FilenameMetadataCard';
 import AddSeedPaperCard from './AddSeedPaperCard';
@@ -29,6 +29,37 @@ import {
   INITIAL_WORKFLOW_PROGRESS,
   toComparisonResultsEnvelope,
 } from '../../utils/workflowStatus';
+
+function buildVerifyingHistoryEntry({
+  fileName,
+  createdAt,
+  runId,
+  data = null,
+  gtComparisonProfileId = null,
+}) {
+  return {
+    type: 'verifying',
+    fileName,
+    createdAt,
+    runId: String(runId),
+    executionId: null,
+    data,
+    report: null,
+    gtComparisonProfileId,
+    executionStatus: {
+      run_id: String(runId),
+      execution_id: '',
+      status: 'pending',
+      progress: 0,
+      message: 'Import queued…',
+      current_stage: 'queued',
+      error: null,
+      activity_log: [],
+    },
+    workflowProgress: { ...INITIAL_WORKFLOW_PROGRESS, stage: 'queued' },
+    connectionMode: 'queued',
+  };
+}
 
 export default function ImportExecution() {
   const [files, setFiles] = useState([]);
@@ -71,11 +102,11 @@ export default function ImportExecution() {
   const addPromptFileInputRef = useRef(null);
   const groundTruthInputRef = useRef(null);
 
-  const updateHistoryEntry = useCallback((executionId, updater, { allowCompleted = false } = {}) => {
-    const id = String(executionId);
+  const updateHistoryEntry = useCallback((runId, updater, { allowCompleted = false } = {}) => {
+    const id = String(runId);
     setImportHistory((prev) =>
       prev.map((entry) => {
-        if (String(entry.executionId) !== id) return entry;
+        if (String(entry.runId) !== id) return entry;
         if (entry.type === 'verifying') {
           return typeof updater === 'function' ? updater(entry) : { ...entry, ...updater };
         }
@@ -88,6 +119,7 @@ export default function ImportExecution() {
   }, []);
 
   const resolveComparisonResults = useCallback(async (executionId, status) => {
+    if (executionId == null || String(executionId).trim() === '') return null;
     const fromStatus = toComparisonResultsEnvelope(status?.comparison_progress);
     if (fromStatus?.detailed_results?.length) return fromStatus;
 
@@ -99,21 +131,42 @@ export default function ImportExecution() {
     }
   }, []);
 
-  const { startVerificationQueue, stopAllLiveStatus } = useImportExecutionLiveStatus({
-    onStatus: (executionId, status) => {
-      updateHistoryEntry(executionId, (entry) => ({
+  const { startImportJobQueue, stopAllLiveStatus } = useImportExecutionLiveStatus({
+    onStatus: (runId, status) => {
+      updateHistoryEntry(runId, (entry) => ({
         ...entry,
         executionStatus: status,
+        executionId:
+          status?.execution_id != null && String(status.execution_id).trim() !== ''
+            ? String(status.execution_id)
+            : entry.executionId,
+        report:
+          entry.report ||
+          (status?.insertion_report && typeof status.insertion_report === 'object'
+            ? status.insertion_report
+            : null),
       }));
     },
-    onProgress: (executionId, progressUpdater) => {
-      updateHistoryEntry(executionId, (entry) => ({
+    onProgress: (runId, progressUpdater) => {
+      updateHistoryEntry(runId, (entry) => ({
         ...entry,
         workflowProgress: progressUpdater(entry.workflowProgress || INITIAL_WORKFLOW_PROGRESS),
       }));
     },
-    onCompleted: (executionId, status) => {
-      updateHistoryEntry(executionId, (entry) => {
+    onExecutionId: (runId, executionId) => {
+      updateHistoryEntry(runId, (entry) => ({
+        ...entry,
+        executionId: String(executionId),
+      }));
+    },
+    onCompleted: (runId, status) => {
+      const resolvedExecutionId =
+        status?.execution_id != null && String(status.execution_id).trim() !== ''
+          ? String(status.execution_id)
+          : null;
+
+      updateHistoryEntry(runId, (entry) => {
+        const executionId = resolvedExecutionId || entry.executionId || null;
         const fromStatus = status?.verification_progress?.citations;
         const fromProgress = entry.workflowProgress?.verificationProgress?.citations;
         const verificationCitations =
@@ -137,11 +190,20 @@ export default function ImportExecution() {
             results: entry.workflowProgress?.comparisonResults,
             summary: entry.workflowProgress?.comparisonSummary,
           });
+        const report =
+          entry.report ||
+          (status?.insertion_report && typeof status.insertion_report === 'object'
+            ? status.insertion_report
+            : null) ||
+          (executionId
+            ? { execution: { id: executionId, action: 'imported' } }
+            : null);
         return {
           ...entry,
           type: 'success',
-          executionId: String(executionId),
-          report: entry.report,
+          runId: String(runId),
+          executionId,
+          report,
           data: entry.data,
           verificationCitations,
           verificationTotal,
@@ -151,17 +213,19 @@ export default function ImportExecution() {
         };
       });
 
-      // Prefer live blob; otherwise fetch ComparisonResultsEnvelope after complete.
       const live = toComparisonResultsEnvelope(status?.comparison_progress);
       if (live?.detailed_results?.length) return;
 
-      resolveComparisonResults(executionId, status).then((envelope) => {
+      const executionIdForFetch = resolvedExecutionId;
+      if (!executionIdForFetch) return;
+
+      resolveComparisonResults(executionIdForFetch, status).then((envelope) => {
         if (!envelope) return;
         const hasRows = Array.isArray(envelope.detailed_results) && envelope.detailed_results.length > 0;
         const hasSummary = envelope.summary && typeof envelope.summary === 'object';
         if (!hasRows && !hasSummary) return;
         updateHistoryEntry(
-          executionId,
+          runId,
           (entry) => ({
             ...entry,
             comparisonResults: envelope,
@@ -170,22 +234,36 @@ export default function ImportExecution() {
         );
       });
     },
-    onFailed: (executionId, errorMessage) => {
-      updateHistoryEntry(executionId, (entry) => ({
+    onFailed: (runId, errorMessage, status) => {
+      const executionId =
+        status?.execution_id != null && String(status.execution_id).trim() !== ''
+          ? String(status.execution_id)
+          : null;
+      updateHistoryEntry(runId, (entry) => {
+        const eid = executionId || entry.executionId || null;
+        // Insert failed (no execution): show error only.
+        // Insert OK but verify/GT failed: still an error, but keep executionId for reference.
+        const baseMsg = errorMessage || entry.executionStatus?.error || 'Import failed';
+        const message = eid
+          ? `${baseMsg} (execution ${eid} was created; verification/comparison failed.)`
+          : baseMsg;
+        return {
+          ...entry,
+          type: 'error',
+          executionId: eid,
+          message,
+        };
+      });
+    },
+    onPollError: (runId, error) => {
+      updateHistoryEntry(runId, (entry) => ({
         ...entry,
         type: 'error',
-        message: errorMessage || entry.executionStatus?.error || 'Verification failed',
+        message: error?.message || 'Lost connection while tracking import',
       }));
     },
-    onPollError: (executionId, error) => {
-      updateHistoryEntry(executionId, (entry) => ({
-        ...entry,
-        type: 'error',
-        message: error?.message || 'Lost connection while verifying import',
-      }));
-    },
-    onConnectionMode: (executionId, mode) => {
-      updateHistoryEntry(executionId, (entry) => ({
+    onConnectionMode: (runId, mode) => {
+      updateHistoryEntry(runId, (entry) => ({
         ...entry,
         connectionMode: mode,
       }));
@@ -599,82 +677,41 @@ export default function ImportExecution() {
 
       if (uploadable.length > 1 && interpreted.kind !== 'batch') {
         setError(
-          'Multiple files were sent but the server did not return a batch results list. Import files one at a time or update the API.'
+          'Multiple files were sent but the server did not return a batch runs list. Import files one at a time or update the API.'
         );
         return;
       }
 
       if (interpreted.kind === 'batch') {
         const newEntries = [...pushSkippedExtensionEntries()];
-        let successCount = 0;
+        let acceptedCount = 0;
         let failCount = 0;
-        let verifyingCount = 0;
         const pendingToStart = [];
 
         for (const item of interpreted.items) {
-          const inner =
-            item.raw?.result && typeof item.raw.result === 'object' ? item.raw.result : null;
-          const report =
-            item.report ||
-            item.raw?.insertion_report ||
-            (inner?.insertion_report && typeof inner.insertion_report === 'object'
-              ? inner.insertion_report
-              : null) ||
-            null;
-
-          if (item.pending && item.executionId) {
-            verifyingCount += 1;
+          if (item.accepted && item.runId) {
+            acceptedCount += 1;
             pendingToStart.push({
-              executionId: String(item.executionId),
+              runId: String(item.runId),
               fileName: item.fileName,
-              report,
-              data: inner ?? item.raw,
+              data: item.raw,
             });
-            newEntries.push({
-              type: 'verifying',
-              fileName: item.fileName,
-              createdAt,
-              executionId: String(item.executionId),
-              data: inner ?? item.raw,
-              report,
-              gtComparisonProfileId,
-              executionStatus: {
-                execution_id: String(item.executionId),
-                status: 'pending',
-                progress: 0,
-                message: 'Waiting for verification…',
-                current_stage: null,
-                error: null,
-                activity_log: [],
-              },
-              workflowProgress: { ...INITIAL_WORKFLOW_PROGRESS },
-              connectionMode: 'queued',
-            });
-          } else if (report) {
-            successCount += 1;
-            newEntries.push({
-              type: 'success',
-              fileName: item.fileName,
-              createdAt,
-              data: inner ?? item.raw,
-              report,
-            });
-          } else if (item.ok) {
-            successCount += 1;
-            newEntries.push({
-              type: 'success',
-              fileName: item.fileName,
-              createdAt,
-              data: inner ?? item.raw,
-              report: null,
-            });
+            newEntries.push(
+              buildVerifyingHistoryEntry({
+                fileName: item.fileName,
+                createdAt,
+                runId: item.runId,
+                data: item.raw,
+                gtComparisonProfileId,
+              })
+            );
           } else {
             failCount += 1;
             newEntries.push({
               type: 'error',
               fileName: item.fileName,
               createdAt,
-              message: item.message || 'Import failed for this file.',
+              message: item.message || 'Import was not accepted for this file.',
             });
           }
         }
@@ -685,16 +722,15 @@ export default function ImportExecution() {
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
         }
-        startVerificationQueue(pendingToStart);
+        startImportJobQueue(pendingToStart);
 
         const summaryParts = [];
-        if (verifyingCount) summaryParts.push(`${verifyingCount} verifying`);
-        if (successCount) summaryParts.push(`${successCount} imported`);
-        if (failCount) summaryParts.push(`${failCount} failed`);
+        if (acceptedCount) summaryParts.push(`${acceptedCount} queued`);
+        if (failCount) summaryParts.push(`${failCount} rejected`);
         if (skippedExt.length) summaryParts.push(`${skippedExt.length} skipped (bad extension)`);
         setError(
           failCount > 0 || skippedExt.length > 0
-            ? `Batch finished: ${summaryParts.join(', ')}. Details are in import attempts below.`
+            ? `Batch accepted: ${summaryParts.join(', ')}. Details are in import attempts below.`
             : null
         );
         return;
@@ -702,32 +738,19 @@ export default function ImportExecution() {
 
       const r = interpreted.raw;
       const fileName = uploadable[0].name;
-      const pendingList = extractPendingImportExecutions(interpreted, fileName);
+      const acceptedRuns = extractAcceptedImportRuns(interpreted, fileName);
 
-      if (pendingList.length > 0) {
-        const pending = pendingList[0];
+      if (acceptedRuns.length > 0) {
+        const pending = acceptedRuns[0];
         setImportHistory((prev) => [
           ...pushSkippedExtensionEntries(),
-          {
-            type: 'verifying',
-            fileName,
+          buildVerifyingHistoryEntry({
+            fileName: pending.fileName || fileName,
             createdAt,
-            executionId: pending.executionId,
+            runId: pending.runId,
             data: pending.data,
-            report: pending.report,
             gtComparisonProfileId,
-            executionStatus: {
-              execution_id: pending.executionId,
-              status: 'pending',
-              progress: 0,
-              message: 'Waiting for verification…',
-              current_stage: null,
-              error: null,
-              activity_log: [],
-            },
-            workflowProgress: { ...INITIAL_WORKFLOW_PROGRESS },
-            connectionMode: 'queued',
-          },
+          }),
           ...prev,
         ]);
         setFiles([]);
@@ -737,35 +760,18 @@ export default function ImportExecution() {
         }
         setError(
           skippedExt.length
-            ? `Import started; ${skippedExt.length} skipped (bad extension). See below.`
+            ? `Import queued; ${skippedExt.length} skipped (bad extension). See below.`
             : null
         );
-        startVerificationQueue(pendingList);
+        startImportJobQueue(acceptedRuns);
         return;
       }
 
-      if (r.status === 'success' || r.insertion_report) {
-        setImportHistory((prev) => [
-          ...pushSkippedExtensionEntries(),
-          {
-            type: 'success',
-            fileName,
-            createdAt,
-            data: r,
-            report: r.insertion_report,
-          },
-          ...prev,
-        ]);
-        setFiles([]);
-        clearMissingDataForm();
-        if (fileInputRef.current) {
-          fileInputRef.current.value = '';
-        }
-        setError(skippedExt.length ? `Imported 1 file; ${skippedExt.length} skipped (bad extension). See below.` : null);
-        return;
-      }
-
-      setError('Unexpected response from server.');
+      setError(
+        r?.message ||
+          r?.error ||
+          'Unexpected response from server (expected status accepted with run_id).'
+      );
     } catch (err) {
       const message = err?.message || 'Import failed';
       const primaryName = uploadable[0]?.name ?? files[0]?.name ?? 'unknown';
@@ -940,7 +946,9 @@ export default function ImportExecution() {
 
               {isMultiFile && files.length > 0 && (
                 <div className="alert alert-info small mb-3">
-                  <strong>Multi-file import:</strong> all supported files are sent in one request. Problematic files are skipped on the server; see <strong>Import attempts</strong> for each outcome. The seed paper / prompt panels below apply only when exactly one file is selected.
+                  <strong>Multi-file import:</strong> all supported files are queued in one request.
+                  Each file gets its own background job; progress appears under <strong>Import attempts</strong>.
+                  The seed paper / prompt panels below apply only when exactly one file is selected.
                 </div>
               )}
 
@@ -1029,7 +1037,7 @@ export default function ImportExecution() {
                 {loading ? (
                   <>
                     <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                    Importing…
+                    Queuing…
                   </>
                 ) : (
                   <>

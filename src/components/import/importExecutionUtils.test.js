@@ -2,11 +2,14 @@ import {
   parseExecutionFilename,
   deriveSystemKey,
   validateExecutionFilename,
-  normalizeImportBatchItem,
+  normalizeAcceptedImportRun,
   interpretImportExecutionResponse,
-  extractPendingImportExecutions,
+  extractAcceptedImportRuns,
   extractExecutionIdFromPayload,
-  isImportVerificationPendingStatus,
+  extractRunIdFromPayload,
+  isImportJobActiveStatus,
+  normalizeImportJobStatusPayload,
+  isImportInsertStage,
 } from './importExecutionUtils';
 
 describe('parseExecutionFilename', () => {
@@ -93,11 +96,20 @@ describe('validateExecutionFilename', () => {
   });
 });
 
-describe('isImportVerificationPendingStatus', () => {
-  it('accepts pending and running', () => {
-    expect(isImportVerificationPendingStatus('pending')).toBe(true);
-    expect(isImportVerificationPendingStatus('running')).toBe(true);
-    expect(isImportVerificationPendingStatus('completed')).toBe(false);
+describe('isImportJobActiveStatus', () => {
+  it('accepts pending, running, and accepted', () => {
+    expect(isImportJobActiveStatus('pending')).toBe(true);
+    expect(isImportJobActiveStatus('running')).toBe(true);
+    expect(isImportJobActiveStatus('accepted')).toBe(true);
+    expect(isImportJobActiveStatus('completed')).toBe(false);
+  });
+});
+
+describe('isImportInsertStage', () => {
+  it('recognizes queued and inserting', () => {
+    expect(isImportInsertStage('queued')).toBe(true);
+    expect(isImportInsertStage('inserting')).toBe(true);
+    expect(isImportInsertStage('verification')).toBe(false);
   });
 });
 
@@ -109,56 +121,104 @@ describe('extractExecutionIdFromPayload', () => {
   it('reads nested result.execution_id', () => {
     expect(extractExecutionIdFromPayload({ result: { execution_id: '99' } })).toBe('99');
   });
+
+  it('reads live.execution_id', () => {
+    expect(extractExecutionIdFromPayload({ live: { execution_id: 5 } })).toBe('5');
+  });
 });
 
-describe('normalizeImportBatchItem', () => {
-  it('treats pending result with execution_id as ok/pending', () => {
-    const item = normalizeImportBatchItem({
-      file_name: 'a.bib',
-      result: { status: 'pending', execution_id: '7' },
+describe('extractRunIdFromPayload', () => {
+  it('reads run_id', () => {
+    expect(extractRunIdFromPayload({ run_id: 123 })).toBe('123');
+  });
+});
+
+describe('normalizeAcceptedImportRun', () => {
+  it('treats accepted + run_id as ok/accepted', () => {
+    const item = normalizeAcceptedImportRun({
+      status: 'accepted',
+      run_id: 7,
+      filename: 'a.bib',
+      status_url: '/api/executions/import/jobs/7/status',
+      events_url: '/api/executions/import/jobs/7/events',
     });
     expect(item.ok).toBe(true);
-    expect(item.pending).toBe(true);
-    expect(item.executionId).toBe('7');
+    expect(item.accepted).toBe(true);
+    expect(item.runId).toBe('7');
+    expect(item.fileName).toBe('a.bib');
   });
 
   it('keeps hard failures as not ok', () => {
-    const item = normalizeImportBatchItem({
-      file_name: 'b.bib',
+    const item = normalizeAcceptedImportRun({
+      filename: 'b.bib',
       error: 'bad file',
     });
     expect(item.ok).toBe(false);
-    expect(item.pending).toBe(false);
+    expect(item.accepted).toBe(false);
   });
 });
 
-describe('extractPendingImportExecutions', () => {
-  it('extracts single pending execution_id', () => {
+describe('extractAcceptedImportRuns', () => {
+  it('extracts single accepted run_id', () => {
     const interpreted = interpretImportExecutionResponse(
-      { status: 'pending', execution_id: '15', insertion_report: { publications: [] } },
+      {
+        status: 'accepted',
+        run_id: 15,
+        filename: 'file.bib',
+        status_url: '/api/executions/import/jobs/15/status',
+        events_url: '/api/executions/import/jobs/15/events',
+      },
       1
     );
-    const pending = extractPendingImportExecutions(interpreted, 'file.bib');
-    expect(pending).toHaveLength(1);
-    expect(pending[0].executionId).toBe('15');
-    expect(pending[0].fileName).toBe('file.bib');
-    expect(pending[0].report).toEqual({ publications: [] });
+    const runs = extractAcceptedImportRuns(interpreted, 'file.bib');
+    expect(runs).toHaveLength(1);
+    expect(runs[0].runId).toBe('15');
+    expect(runs[0].fileName).toBe('file.bib');
   });
 
-  it('extracts batch results[].result.execution_id', () => {
+  it('extracts batch runs[].run_id', () => {
     const interpreted = interpretImportExecutionResponse(
       {
         total_files: 2,
-        results: [
-          { file_name: 'a.bib', result: { status: 'pending', execution_id: '1' } },
-          { file_name: 'b.bib', result: { status: 'failed', error: 'nope' } },
+        runs: [
+          { status: 'accepted', run_id: 1, filename: 'a.bib' },
+          { status: 'rejected', filename: 'b.bib', error: 'nope' },
         ],
       },
       2
     );
-    const pending = extractPendingImportExecutions(interpreted);
-    expect(pending).toHaveLength(1);
-    expect(pending[0].executionId).toBe('1');
-    expect(pending[0].fileName).toBe('a.bib');
+    const runs = extractAcceptedImportRuns(interpreted);
+    expect(runs).toHaveLength(1);
+    expect(runs[0].runId).toBe('1');
+    expect(runs[0].fileName).toBe('a.bib');
+  });
+});
+
+describe('normalizeImportJobStatusPayload', () => {
+  it('flattens live overlay and maps error_message', () => {
+    const status = normalizeImportJobStatusPayload({
+      status: 'running',
+      run_id: 9,
+      current_stage: 'verification',
+      progress: 40,
+      message: 'Verifying',
+      execution_id: 88,
+      live: {
+        verification_progress: { total: 2, completed: 1 },
+      },
+    });
+    expect(status.execution_id).toBe('88');
+    expect(status.verification_progress).toEqual({ total: 2, completed: 1 });
+    expect(status.current_stage).toBe('verification');
+  });
+
+  it('maps error_message on insert failure', () => {
+    const status = normalizeImportJobStatusPayload({
+      status: 'failed',
+      run_id: 3,
+      error_message: 'duplicate execution',
+    });
+    expect(status.error).toBe('duplicate execution');
+    expect(status.execution_id).toBeNull();
   });
 });

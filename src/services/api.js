@@ -442,12 +442,26 @@ class ApiService {
   /**
    * Import / post-import verification status (flat ExecutionStatusResponse).
    * OpenAPI: GET /api/executions/{execution_id}/status
+   * Use after an import job exposes execution_id (insert succeeded).
    */
   async getImportExecutionStatus(executionId) {
     const raw = await this.request(`/api/executions/${executionId}/status`, {
       timeout: STATUS_POLL_TIMEOUT_MS,
     });
     return normalizeExecutionStatusResponse(raw) ?? raw;
+  }
+
+  /**
+   * Poll async import job status (accept-and-queue import).
+   * OpenAPI: GET /api/executions/import/jobs/{run_id}/status
+   * status: pending | running | completed | failed
+   * execution_id present after insert succeeds; error_message on insert failure.
+   */
+  async getImportJobStatus(runId) {
+    if (runId == null) throw new Error('run_id is required.');
+    return this.request(`/api/executions/import/jobs/${encodeURIComponent(runId)}/status`, {
+      timeout: STATUS_POLL_TIMEOUT_MS,
+    });
   }
 
   async getExecutionResults(executionId) {
@@ -1010,12 +1024,12 @@ class ApiService {
    * Import execution from uploaded file (JSON, BibTeX, RIS, CSV, or .txt for _na no-result executions).
    * Filename must follow: name[.function]_modelversion_subscription_seedpaperID_promptID_promptversion_YYMMDD_HHMMSS[_comment].json|.bib|.ris|.csv|.txt
    * Example: chatgpt.consensus_gpt4_free_test1_prompt1_v3_250729_131049.json
-   * Options (when server returns missing_data): seed_paper_id, seed_paper_content (BibTeX), seed_paper_alias,
-   *   prompt_id, prompt_content so the server can create missing records and continue.
    * Options: execution_comment (for _na .txt imports – file body stored as execution comment).
    *   verification_profile_id, gt_comparison_profile_id (omit for server defaults).
-   * Returns { status: 'success'|'pending', execution_id?, insertion_report?, ... } or { status: 'missing_data', ... }.
-   * When status is pending/running with execution_id, open GET /api/executions/{id}/events for live activity_log.
+   * Accept-and-queue: HTTP 202. Does not return execution_id.
+   * Single file: { status: 'accepted', run_id, filename, status_url, events_url }.
+   * Track via GET /api/executions/import/jobs/{run_id}/status or /events until terminal;
+   * execution_id appears on the job only after insert succeeds.
    */
   async importExecutionFromFile(file, options = {}) {
     const formData = new FormData();
@@ -1029,8 +1043,9 @@ class ApiService {
   }
 
   /**
-   * Import one or more execution export files. Single file uses multipart field `file`; two or more use repeated `files` parts (OpenAPI).
-   * Batch responses include total_files, outcome_counts, and results[]; single-file responses stay a flat object.
+   * Import one or more execution export files. Single file uses multipart field `file`; two or more use repeated `files` parts.
+   * Accept-and-queue: HTTP 202. Single file → flat accepted payload; 2+ files → { total_files, runs: [...] }.
+   * Each run has run_id (not execution_id). Poll/SSE import job endpoints per run_id.
    */
   async importExecutionFromFiles(files, options = {}) {
     const list = Array.isArray(files) ? files : [];
@@ -1457,17 +1472,16 @@ class ApiService {
   }
 
   /**
-   * Fetch-stream SSE for import verification: GET /api/executions/{execution_id}/events
-   * Uses Authorization Bearer (native EventSource cannot set auth headers).
-   * @param {string|number} executionId
+   * Fetch-stream SSE with Authorization Bearer (native EventSource cannot set auth headers).
+   * @param {string} url
    * @param {(data: object) => void} onMessage
    * @param {(error: Error) => void} [onError]
    * @param {string|null} [token]
+   * @param {string} [label] - for console errors
    * @returns {{ close: () => void }}
    */
-  connectExecutionEvents(executionId, onMessage, onError, token = null) {
+  _connectFetchEventStream(url, onMessage, onError, token = null, label = 'SSE') {
     const controller = new AbortController();
-    const url = `${this.baseURL}/api/executions/${executionId}/events`;
     let closed = false;
 
     const close = () => {
@@ -1506,7 +1520,6 @@ class ApiService {
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
 
-          // SSE events are separated by blank lines; process complete chunks.
           const parts = buffer.split(/\r?\n\r?\n/);
           buffer = parts.pop() ?? '';
 
@@ -1524,20 +1537,48 @@ class ApiService {
               const data = JSON.parse(raw);
               onMessage(data);
             } catch (error) {
-              console.error('Failed to parse execution SSE message:', error);
+              console.error(`Failed to parse ${label} message:`, error);
               if (onError) onError(error instanceof Error ? error : new Error(String(error)));
             }
           }
         }
       } catch (error) {
         if (closed || error?.name === 'AbortError') return;
-        console.error('Execution SSE error:', error);
+        console.error(`${label} error:`, error);
         if (onError) onError(error instanceof Error ? error : new Error(String(error)));
       }
     };
 
     run();
     return { close };
+  }
+
+  /**
+   * Fetch-stream SSE after execution exists: GET /api/executions/{execution_id}/events
+   * @param {string|number} executionId
+   * @param {(data: object) => void} onMessage
+   * @param {(error: Error) => void} [onError]
+   * @param {string|null} [token]
+   * @returns {{ close: () => void }}
+   */
+  connectExecutionEvents(executionId, onMessage, onError, token = null) {
+    const url = `${this.baseURL}/api/executions/${executionId}/events`;
+    return this._connectFetchEventStream(url, onMessage, onError, token, 'Execution SSE');
+  }
+
+  /**
+   * Fetch-stream SSE for async import job: GET /api/executions/import/jobs/{run_id}/events
+   * Stream ends on terminal completed / failed. Payload may include execution_id once known.
+   * @param {string|number} runId
+   * @param {(data: object) => void} onMessage
+   * @param {(error: Error) => void} [onError]
+   * @param {string|null} [token]
+   * @returns {{ close: () => void }}
+   */
+  connectImportJobEvents(runId, onMessage, onError, token = null) {
+    if (runId == null) throw new Error('run_id is required.');
+    const url = `${this.baseURL}/api/executions/import/jobs/${encodeURIComponent(runId)}/events`;
+    return this._connectFetchEventStream(url, onMessage, onError, token, 'Import job SSE');
   }
 
   // WebSocket: WS /api/workflow/{execution_id}/stream
@@ -1610,12 +1651,18 @@ class ApiService {
 
   /**
    * Execution coverage matrix: LLM systems × seed papers × prompts.
-   * @param {{ status?: string, seedPaperIds?: number[], signal?: AbortSignal }} [opts]
+   * @param {{
+   *   status?: string,
+   *   seedPaperIds?: number[],
+   *   aggregateGroups?: string[],
+   *   signal?: AbortSignal,
+   * }} [opts]
    */
-  async getExecutionCoverage({ status = 'completed', seedPaperIds, signal } = {}) {
+  async getExecutionCoverage({ status = 'completed', seedPaperIds, aggregateGroups, signal } = {}) {
     const query = buildQueryParams({
       status,
       seed_paper_ids: seedPaperIds?.length ? seedPaperIds.join(',') : null,
+      aggregate_groups: aggregateGroups?.length ? aggregateGroups.join(',') : null,
     });
     return this.request(`/api/reports/execution-coverage${query}`, { signal });
   }

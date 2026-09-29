@@ -177,65 +177,101 @@ export function readFileAsText(file) {
 }
 
 /**
- * Normalize one entry from a batch import API `results` array.
- * @param {Record<string, unknown>} raw
- * @returns {{ fileName: string, ok: boolean, pending: boolean, report: object|null, message: string|null, executionId: string|null, raw: object }}
+ * @param {unknown} payload
+ * @returns {string|null}
  */
-export function normalizeImportBatchItem(raw) {
+export function extractRunIdFromPayload(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  const p = /** @type {Record<string, unknown>} */ (payload);
+  if (p.run_id != null && String(p.run_id).trim() !== '') {
+    return String(p.run_id);
+  }
+  if (p.runId != null && String(p.runId).trim() !== '') {
+    return String(p.runId);
+  }
+  return null;
+}
+
+/**
+ * Normalize one accepted run from POST /api/executions/import (single or batch `runs[]`).
+ * @param {Record<string, unknown>} raw
+ * @returns {{ fileName: string, ok: boolean, accepted: boolean, runId: string|null, message: string|null, statusUrl: string|null, eventsUrl: string|null, raw: object }}
+ */
+export function normalizeAcceptedImportRun(raw) {
   const r = raw && typeof raw === 'object' ? raw : {};
   const fileName =
-    (typeof r.file_name === 'string' && r.file_name) ||
     (typeof r.filename === 'string' && r.filename) ||
+    (typeof r.file_name === 'string' && r.file_name) ||
     (typeof r.original_filename === 'string' && r.original_filename) ||
     (typeof r.source_filename === 'string' && r.source_filename) ||
     (typeof r.name === 'string' && r.name) ||
-    (typeof r.file === 'string' && r.file) ||
     'unknown';
-  const inner = r.result && typeof r.result === 'object' ? r.result : null;
-  const report =
-    (r.insertion_report && typeof r.insertion_report === 'object' ? r.insertion_report : null) ||
-    (inner?.insertion_report && typeof inner.insertion_report === 'object' ? inner.insertion_report : null) ||
-    null;
-  const executionId = extractExecutionIdFromPayload(r) || extractExecutionIdFromPayload(inner);
-  const st = String(r.status || r.outcome || inner?.status || inner?.outcome || '').toLowerCase();
-  const pending = isImportVerificationPendingStatus(st) && executionId != null;
+  const runId = extractRunIdFromPayload(r);
+  const st = String(r.status || '').toLowerCase();
+  const accepted = st === 'accepted' && runId != null;
 
-  if (report) {
-    return { fileName, ok: true, pending, report, message: null, executionId, raw: r };
+  if (accepted) {
+    return {
+      fileName,
+      ok: true,
+      accepted: true,
+      runId,
+      message: null,
+      statusUrl: typeof r.status_url === 'string' ? r.status_url : null,
+      eventsUrl: typeof r.events_url === 'string' ? r.events_url : null,
+      raw: r,
+    };
   }
-  if (pending) {
-    return { fileName, ok: true, pending: true, report: null, message: null, executionId, raw: r };
-  }
-  if (st === 'success' || st === 'ok' || r.ok === true || inner?.ok === true) {
-    return { fileName, ok: true, pending: false, report: null, message: null, executionId, raw: r };
-  }
+
   let msg =
     (typeof r.error === 'string' && r.error) ||
+    (typeof r.error_message === 'string' && r.error_message) ||
     (typeof r.message === 'string' && r.message) ||
-    (typeof inner?.error === 'string' && inner.error) ||
-    (typeof inner?.message === 'string' && inner.message) ||
     (typeof r.detail === 'string' && r.detail) ||
     null;
   if (msg == null && r.detail != null && typeof r.detail !== 'string') {
     try {
       msg = JSON.stringify(r.detail);
     } catch {
-      msg = 'Import failed for this file.';
+      msg = 'Import was not accepted for this file.';
     }
   }
   if (msg == null) {
-    msg = 'Import failed for this file.';
+    msg = runId == null ? 'Import accepted response missing run_id.' : 'Import was not accepted for this file.';
   }
-  return { fileName, ok: false, pending: false, report: null, message: msg, executionId, raw: r };
+  return {
+    fileName,
+    ok: false,
+    accepted: false,
+    runId,
+    message: msg,
+    statusUrl: typeof r.status_url === 'string' ? r.status_url : null,
+    eventsUrl: typeof r.events_url === 'string' ? r.events_url : null,
+    raw: r,
+  };
 }
 
 /**
  * @param {unknown} status
  * @returns {boolean}
  */
-export function isImportVerificationPendingStatus(status) {
+export function isImportJobActiveStatus(status) {
   const st = String(status ?? '').toLowerCase();
-  return st === 'pending' || st === 'running';
+  return st === 'pending' || st === 'running' || st === 'accepted';
+}
+
+/**
+ * @param {unknown} status
+ * @returns {boolean}
+ */
+export function isImportJobTerminalStatus(status) {
+  const st = String(status ?? '').toLowerCase();
+  return st === 'completed' || st === 'failed';
+}
+
+/** @deprecated Use isImportJobActiveStatus */
+export function isImportVerificationPendingStatus(status) {
+  return isImportJobActiveStatus(status);
 }
 
 /**
@@ -252,6 +288,10 @@ export function extractExecutionIdFromPayload(payload) {
   if (nestedResult?.execution_id != null && String(nestedResult.execution_id).trim() !== '') {
     return String(nestedResult.execution_id);
   }
+  const live = p.live && typeof p.live === 'object' ? p.live : null;
+  if (live?.execution_id != null && String(live.execution_id).trim() !== '') {
+    return String(live.execution_id);
+  }
   const report =
     (p.insertion_report && typeof p.insertion_report === 'object' ? p.insertion_report : null) ||
     (nestedResult?.insertion_report && typeof nestedResult.insertion_report === 'object'
@@ -265,69 +305,139 @@ export function extractExecutionIdFromPayload(payload) {
 }
 
 /**
- * Collect executions that still need live verification after import.
+ * Collect accepted import runs that need live job tracking.
  * @param {ReturnType<typeof interpretImportExecutionResponse>} interpreted
  * @param {string} [fallbackFileName]
- * @returns {{ executionId: string, fileName: string, report: object|null, data: object|null }[]}
+ * @returns {{ runId: string, fileName: string, statusUrl: string|null, eventsUrl: string|null, data: object|null }[]}
  */
-export function extractPendingImportExecutions(interpreted, fallbackFileName = 'unknown') {
+export function extractAcceptedImportRuns(interpreted, fallbackFileName = 'unknown') {
   if (!interpreted || typeof interpreted !== 'object') return [];
 
   if (interpreted.kind === 'batch') {
     return (interpreted.items || [])
-      .filter((item) => item.pending && item.executionId)
-      .map((item) => {
-        const inner =
-          item.raw?.result && typeof item.raw.result === 'object' ? item.raw.result : null;
-        return {
-          executionId: String(item.executionId),
-          fileName: item.fileName || fallbackFileName,
-          report: item.report || null,
-          data: inner ?? item.raw ?? null,
-        };
-      });
+      .filter((item) => item.accepted && item.runId)
+      .map((item) => ({
+        runId: String(item.runId),
+        fileName: item.fileName || fallbackFileName,
+        statusUrl: item.statusUrl || null,
+        eventsUrl: item.eventsUrl || null,
+        data: item.raw ?? null,
+      }));
   }
 
   const raw = interpreted.raw;
   if (!raw || typeof raw !== 'object') return [];
-  const st = String(raw.status || '').toLowerCase();
-  const executionId = extractExecutionIdFromPayload(raw);
-  if (!executionId || !isImportVerificationPendingStatus(st)) {
-    return [];
-  }
+  const normalized = normalizeAcceptedImportRun(raw);
+  if (!normalized.accepted || !normalized.runId) return [];
   return [
     {
-      executionId,
-      fileName: fallbackFileName,
-      report: raw.insertion_report && typeof raw.insertion_report === 'object' ? raw.insertion_report : null,
+      runId: String(normalized.runId),
+      fileName:
+        (typeof raw.filename === 'string' && raw.filename) ||
+        (typeof raw.file_name === 'string' && raw.file_name) ||
+        fallbackFileName,
+      statusUrl: normalized.statusUrl,
+      eventsUrl: normalized.eventsUrl,
       data: raw,
     },
   ];
 }
 
+/** @deprecated Use extractAcceptedImportRuns */
+export function extractPendingImportExecutions(interpreted, fallbackFileName = 'unknown') {
+  return extractAcceptedImportRuns(interpreted, fallbackFileName).map((item) => ({
+    executionId: item.runId,
+    fileName: item.fileName,
+    report: null,
+    data: item.data,
+    runId: item.runId,
+  }));
+}
+
 /**
- * Detect batch import response (OpenAPI: total_files, outcome_counts, results when multiple files).
- * Only treats as batch when `uploadedCount > 1` and server returned a non-empty `results` array.
+ * Detect accept-and-queue import response.
+ * Batch: total_files + non-empty `runs` when uploadedCount > 1.
+ * Single: flat { status: 'accepted', run_id, ... }.
  * @param {Record<string, unknown>} response
  * @param {number} uploadedCount
- * @returns {{ kind: 'batch', items: ReturnType<typeof normalizeImportBatchItem>[], outcome_counts?: object, total_files?: number } | { kind: 'single', raw: object }}
+ * @returns {{ kind: 'batch', items: ReturnType<typeof normalizeAcceptedImportRun>[], total_files?: number } | { kind: 'single', raw: object }}
  */
 export function interpretImportExecutionResponse(response, uploadedCount = 1) {
   if (!response || typeof response !== 'object') {
     return { kind: 'single', raw: response };
   }
-  const results = response.results;
-  if (
-    uploadedCount > 1 &&
-    Array.isArray(results) &&
-    results.length > 0
-  ) {
+  const runs = response.runs;
+  if (uploadedCount > 1 && Array.isArray(runs) && runs.length > 0) {
     return {
       kind: 'batch',
-      items: results.map((row) => normalizeImportBatchItem(row)),
-      outcome_counts: response.outcome_counts,
+      items: runs.map((row) => normalizeAcceptedImportRun(row)),
       total_files: response.total_files,
     };
   }
   return { kind: 'single', raw: response };
+}
+
+/**
+ * Flatten import-job status / SSE payloads (optional `live` overlay) into ExecutionStatus-like shape.
+ * @param {unknown} raw
+ * @returns {object|null}
+ */
+export function normalizeImportJobStatusPayload(raw) {
+  if (raw == null) return null;
+  if (typeof raw === 'string') {
+    try {
+      return normalizeImportJobStatusPayload(JSON.parse(raw));
+    } catch {
+      return null;
+    }
+  }
+  if (typeof raw !== 'object') return null;
+
+  const payload =
+    /** @type {Record<string, unknown>} */ (
+      raw.type === 'status_update' && raw.data != null && typeof raw.data === 'object'
+        ? raw.data
+        : raw
+    );
+  const live =
+    payload.live && typeof payload.live === 'object'
+      ? /** @type {Record<string, unknown>} */ (payload.live)
+      : null;
+
+  const executionId =
+    extractExecutionIdFromPayload(payload) || extractExecutionIdFromPayload(live);
+
+  const error =
+    payload.error_message ??
+    payload.error ??
+    live?.error_message ??
+    live?.error ??
+    null;
+
+  return {
+    ...(live || {}),
+    ...payload,
+    run_id: payload.run_id ?? live?.run_id ?? null,
+    execution_id: executionId,
+    status: payload.status ?? live?.status ?? 'pending',
+    progress: payload.progress ?? live?.progress ?? 0,
+    message: payload.message ?? live?.message ?? '',
+    current_stage: payload.current_stage ?? live?.current_stage ?? null,
+    error: error != null ? String(error) : null,
+    error_message: error != null ? String(error) : null,
+    verification_progress: payload.verification_progress ?? live?.verification_progress ?? null,
+    comparison_progress: payload.comparison_progress ?? live?.comparison_progress ?? null,
+    activity_log: payload.activity_log ?? live?.activity_log ?? null,
+    insertion_report: payload.insertion_report ?? live?.insertion_report ?? null,
+  };
+}
+
+/**
+ * Stages shown during async import (before/after execution exists).
+ * @param {string|null|undefined} stage
+ * @returns {boolean}
+ */
+export function isImportInsertStage(stage) {
+  const s = String(stage ?? '').toLowerCase();
+  return s === 'queued' || s === 'inserting' || s === 'queue' || s === 'insert';
 }

@@ -30,9 +30,10 @@ export default function ImportHistoryList({
             if (entry.type === 'verifying') {
               return (
                 <VerifyingImportCard
-                  key={`verifying-${entry.executionId || keyBase}`}
+                  key={`verifying-${entry.runId || entry.executionId || keyBase}`}
                   fileName={entry.fileName}
                   createdAt={entry.createdAt}
+                  runId={entry.runId}
                   executionId={entry.executionId}
                   executionStatus={entry.executionStatus}
                   workflowProgress={entry.workflowProgress}
@@ -47,10 +48,12 @@ export default function ImportHistoryList({
             if (entry.type === 'success') {
               return (
                 <InsertionReport
-                  key={`success-${keyBase}`}
+                  key={`success-${entry.runId || keyBase}`}
                   report={entry.report}
                   fileName={entry.fileName}
                   createdAt={entry.createdAt}
+                  executionId={entry.executionId}
+                  runId={entry.runId}
                   verificationCitations={entry.verificationCitations}
                   verificationTotal={entry.verificationTotal}
                   verificationResults={entry.verificationResults}
@@ -63,10 +66,12 @@ export default function ImportHistoryList({
             }
             return (
               <ErrorReport
-                key={`err-${keyBase}`}
+                key={`err-${entry.runId || keyBase}`}
                 message={entry.message}
                 fileName={entry.fileName}
                 createdAt={entry.createdAt}
+                executionId={entry.executionId}
+                runId={entry.runId}
               />
             );
           })}

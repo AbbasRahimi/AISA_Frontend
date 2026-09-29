@@ -3,7 +3,7 @@ import apiService from '../services/api';
 import { ExecutionStatus } from '../models';
 import { POLL_INTERVAL_MS, WORKFLOW_MAX_WAIT_MS } from '../utils/constants';
 import {
-  enqueueVerificationIds,
+  enqueueImportJobIds,
   useImportExecutionLiveStatus,
 } from './useImportExecutionLiveStatus';
 
@@ -11,18 +11,22 @@ jest.mock('../services/api', () => ({
   __esModule: true,
   default: {
     getAccessToken: jest.fn(() => Promise.resolve('token')),
+    connectImportJobEvents: jest.fn(),
     connectExecutionEvents: jest.fn(),
-    getImportExecutionStatus: jest.fn(() => Promise.resolve({ status: 'pending', progress: 0 })),
+    getImportJobStatus: jest.fn(() => Promise.resolve({ status: 'pending', progress: 0 })),
+    getImportExecutionStatus: jest.fn(() =>
+      Promise.resolve({ status: 'pending', progress: 0, execution_id: '1' })
+    ),
   },
 }));
 
-describe('enqueueVerificationIds', () => {
+describe('enqueueImportJobIds', () => {
   it('appends new ids in order and dedupes against queue and active id', () => {
     const queue = ['2'];
-    const appended = enqueueVerificationIds(queue, '1', [
-      { executionId: '1' },
-      { executionId: '2' },
-      { executionId: '3' },
+    const appended = enqueueImportJobIds(queue, '1', [
+      { runId: '1' },
+      { runId: '2' },
+      { runId: '3' },
       '4',
     ]);
     expect(appended).toEqual(['3', '4']);
@@ -31,11 +35,11 @@ describe('enqueueVerificationIds', () => {
 
   it('ignores empty or invalid ids', () => {
     const queue = [];
-    const appended = enqueueVerificationIds(queue, null, [
-      { executionId: '' },
-      { executionId: '  ' },
+    const appended = enqueueImportJobIds(queue, null, [
+      { runId: '' },
+      { runId: '  ' },
       null,
-      { executionId: '7' },
+      { runId: '7' },
     ]);
     expect(appended).toEqual(['7']);
     expect(queue).toEqual(['7']);
@@ -43,18 +47,26 @@ describe('enqueueVerificationIds', () => {
 });
 
 describe('useImportExecutionLiveStatus queue', () => {
-  const sseById = new Map();
+  const jobSseById = new Map();
+  const execSseById = new Map();
 
   beforeEach(() => {
     jest.clearAllMocks();
-    sseById.clear();
+    jobSseById.clear();
+    execSseById.clear();
+    apiService.connectImportJobEvents.mockImplementation((id, onMessage) => {
+      const key = String(id);
+      const handle = { onMessage, close: jest.fn() };
+      jobSseById.set(key, handle);
+      return { close: handle.close };
+    });
     apiService.connectExecutionEvents.mockImplementation((id, onMessage) => {
       const key = String(id);
       const handle = { onMessage, close: jest.fn() };
-      sseById.set(key, handle);
+      execSseById.set(key, handle);
       return { close: handle.close };
     });
-    apiService.getImportExecutionStatus.mockResolvedValue({
+    apiService.getImportJobStatus.mockResolvedValue({
       status: ExecutionStatus.PENDING,
       progress: 0,
     });
@@ -65,6 +77,7 @@ describe('useImportExecutionLiveStatus queue', () => {
     const onFailed = jest.fn();
     const onPollError = jest.fn();
     const onConnectionMode = jest.fn();
+    const onExecutionId = jest.fn();
 
     const hook = renderHook(() =>
       useImportExecutionLiveStatus({
@@ -74,11 +87,12 @@ describe('useImportExecutionLiveStatus queue', () => {
         onFailed,
         onPollError,
         onConnectionMode,
+        onExecutionId,
         ...overrides,
       })
     );
 
-    return { ...hook, onCompleted, onFailed, onPollError, onConnectionMode };
+    return { ...hook, onCompleted, onFailed, onPollError, onConnectionMode, onExecutionId };
   }
 
   async function flushAsync() {
@@ -88,70 +102,109 @@ describe('useImportExecutionLiveStatus queue', () => {
     });
   }
 
-  it('starts only the first pending execution when three are enqueued', async () => {
+  it('starts only the first pending import job when three are enqueued', async () => {
     const { result } = renderLiveStatus();
 
     act(() => {
-      result.current.startVerificationQueue([
-        { executionId: '10' },
-        { executionId: '11' },
-        { executionId: '12' },
+      result.current.startImportJobQueue([
+        { runId: '10' },
+        { runId: '11' },
+        { runId: '12' },
       ]);
     });
 
     await flushAsync();
 
-    expect(apiService.connectExecutionEvents).toHaveBeenCalledTimes(1);
-    expect(apiService.connectExecutionEvents.mock.calls[0][0]).toBe('10');
-    expect(sseById.has('11')).toBe(false);
-    expect(sseById.has('12')).toBe(false);
+    expect(apiService.connectImportJobEvents).toHaveBeenCalledTimes(1);
+    expect(apiService.connectImportJobEvents.mock.calls[0][0]).toBe('10');
+    expect(jobSseById.has('11')).toBe(false);
+    expect(jobSseById.has('12')).toBe(false);
   });
 
-  it('advances to the next execution after completed', async () => {
+  it('advances to the next job after completed', async () => {
     const { result, onCompleted } = renderLiveStatus();
 
     act(() => {
-      result.current.startVerificationQueue([{ executionId: '10' }, { executionId: '11' }]);
+      result.current.startImportJobQueue([{ runId: '10' }, { runId: '11' }]);
     });
 
     await flushAsync();
 
     act(() => {
-      sseById.get('10').onMessage({ status: ExecutionStatus.COMPLETED, progress: 100 });
+      jobSseById.get('10').onMessage({
+        status: ExecutionStatus.COMPLETED,
+        progress: 100,
+        execution_id: 55,
+      });
     });
 
     await flushAsync();
 
-    expect(onCompleted).toHaveBeenCalledWith('10', expect.objectContaining({ status: 'completed' }));
-    expect(apiService.connectExecutionEvents).toHaveBeenCalledTimes(2);
-    expect(apiService.connectExecutionEvents.mock.calls[1][0]).toBe('11');
+    expect(onCompleted).toHaveBeenCalledWith(
+      '10',
+      expect.objectContaining({ status: 'completed' })
+    );
+    expect(apiService.connectImportJobEvents).toHaveBeenCalledTimes(2);
+    expect(apiService.connectImportJobEvents.mock.calls[1][0]).toBe('11');
   });
 
-  it('advances to the next execution after failed', async () => {
+  it('advances to the next job after failed without execution_id', async () => {
     const { result, onFailed } = renderLiveStatus();
 
     act(() => {
-      result.current.startVerificationQueue([{ executionId: '20' }, { executionId: '21' }]);
+      result.current.startImportJobQueue([{ runId: '20' }, { runId: '21' }]);
     });
 
     await flushAsync();
 
     act(() => {
-      sseById.get('20').onMessage({ status: ExecutionStatus.FAILED, error: 'boom' });
+      jobSseById.get('20').onMessage({
+        status: ExecutionStatus.FAILED,
+        error_message: 'parse error',
+      });
     });
 
     await flushAsync();
 
-    expect(onFailed).toHaveBeenCalledWith('20', 'boom');
-    expect(apiService.connectExecutionEvents).toHaveBeenCalledTimes(2);
-    expect(sseById.has('21')).toBe(true);
+    expect(onFailed).toHaveBeenCalledWith(
+      '20',
+      'parse error',
+      expect.objectContaining({ status: 'failed' })
+    );
+    expect(apiService.connectImportJobEvents).toHaveBeenCalledTimes(2);
+    expect(jobSseById.has('21')).toBe(true);
+  });
+
+  it('switches to execution events once execution_id appears', async () => {
+    const { result, onExecutionId } = renderLiveStatus();
+
+    act(() => {
+      result.current.startImportJobQueue([{ runId: '30' }]);
+    });
+
+    await flushAsync();
+
+    act(() => {
+      jobSseById.get('30').onMessage({
+        status: ExecutionStatus.RUNNING,
+        current_stage: 'verification',
+        progress: 20,
+        execution_id: 99,
+      });
+    });
+
+    await flushAsync();
+
+    expect(onExecutionId).toHaveBeenCalledWith('30', '99');
+    expect(apiService.connectExecutionEvents).toHaveBeenCalled();
+    expect(apiService.connectExecutionEvents.mock.calls[0][0]).toBe('99');
   });
 
   it('stopAllLiveStatus clears the queue and prevents further subscriptions', async () => {
     const { result } = renderLiveStatus();
 
     act(() => {
-      result.current.startVerificationQueue([{ executionId: '30' }, { executionId: '31' }]);
+      result.current.startImportJobQueue([{ runId: '30' }, { runId: '31' }]);
     });
 
     await flushAsync();
@@ -161,69 +214,68 @@ describe('useImportExecutionLiveStatus queue', () => {
     });
 
     act(() => {
-      result.current.startVerificationQueue([{ executionId: '32' }]);
+      result.current.startImportJobQueue([{ runId: '32' }]);
     });
 
     await flushAsync();
 
-    expect(apiService.connectExecutionEvents).toHaveBeenCalledTimes(2);
-    expect(apiService.connectExecutionEvents.mock.calls[0][0]).toBe('30');
-    expect(apiService.connectExecutionEvents.mock.calls[1][0]).toBe('32');
-    expect(sseById.has('31')).toBe(false);
+    expect(apiService.connectImportJobEvents).toHaveBeenCalledTimes(2);
+    expect(apiService.connectImportJobEvents.mock.calls[0][0]).toBe('30');
+    expect(apiService.connectImportJobEvents.mock.calls[1][0]).toBe('32');
+    expect(jobSseById.has('31')).toBe(false);
   });
 
   it('appends a second batch to the tail while the first is active', async () => {
     const { result } = renderLiveStatus();
 
     act(() => {
-      result.current.startVerificationQueue([{ executionId: '40' }]);
+      result.current.startImportJobQueue([{ runId: '40' }]);
     });
 
     await flushAsync();
 
     act(() => {
-      result.current.startVerificationQueue([{ executionId: '41' }, { executionId: '42' }]);
+      result.current.startImportJobQueue([{ runId: '41' }, { runId: '42' }]);
     });
 
     act(() => {
-      sseById.get('40').onMessage({ status: ExecutionStatus.COMPLETED, progress: 100 });
+      jobSseById.get('40').onMessage({ status: ExecutionStatus.COMPLETED, progress: 100 });
     });
 
     await flushAsync();
 
-    expect(apiService.connectExecutionEvents).toHaveBeenCalledTimes(2);
-    expect(apiService.connectExecutionEvents.mock.calls[1][0]).toBe('41');
+    expect(apiService.connectImportJobEvents).toHaveBeenCalledTimes(2);
+    expect(apiService.connectImportJobEvents.mock.calls[1][0]).toBe('41');
 
     act(() => {
-      sseById.get('41').onMessage({ status: ExecutionStatus.COMPLETED, progress: 100 });
+      jobSseById.get('41').onMessage({ status: ExecutionStatus.COMPLETED, progress: 100 });
     });
 
     await flushAsync();
 
-    expect(apiService.connectExecutionEvents).toHaveBeenCalledTimes(3);
-    expect(sseById.has('42')).toBe(true);
+    expect(apiService.connectImportJobEvents).toHaveBeenCalledTimes(3);
+    expect(jobSseById.has('42')).toBe(true);
   });
 });
 
 describe('useImportExecutionLiveStatus stall timeout', () => {
-  const sseById = new Map();
+  const jobSseById = new Map();
   let latestStatus;
   let hookResult;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    sseById.clear();
+    jobSseById.clear();
     hookResult = null;
     latestStatus = { status: ExecutionStatus.PENDING, progress: 0 };
-    apiService.connectExecutionEvents.mockImplementation((id, onMessage) => {
+    apiService.connectImportJobEvents.mockImplementation((id, onMessage) => {
       const key = String(id);
       const handle = { onMessage, close: jest.fn() };
-      sseById.set(key, handle);
+      jobSseById.set(key, handle);
       return { close: handle.close };
     });
-    apiService.getImportExecutionStatus.mockImplementation(() =>
-      Promise.resolve(latestStatus)
-    );
+    apiService.connectExecutionEvents.mockImplementation(() => ({ close: jest.fn() }));
+    apiService.getImportJobStatus.mockImplementation(() => Promise.resolve(latestStatus));
     jest.useFakeTimers('modern');
   });
 
@@ -260,7 +312,7 @@ describe('useImportExecutionLiveStatus stall timeout', () => {
     });
   }
 
-  function sendProgress(executionId, completed) {
+  function sendProgress(runId, completed) {
     latestStatus = {
       status: ExecutionStatus.RUNNING,
       progress: completed,
@@ -272,14 +324,14 @@ describe('useImportExecutionLiveStatus stall timeout', () => {
         current_verifying: `Paper ${completed}`,
       },
     };
-    sseById.get(String(executionId)).onMessage(latestStatus);
+    jobSseById.get(String(runId)).onMessage(latestStatus);
   }
 
   it('times out when status snapshots stay unchanged', async () => {
     const { result, onPollError } = renderLiveStatus();
 
     act(() => {
-      result.current.startVerificationQueue([{ executionId: '99' }]);
+      result.current.startImportJobQueue([{ runId: '99' }]);
     });
     await flushAsync();
 
@@ -309,7 +361,7 @@ describe('useImportExecutionLiveStatus stall timeout', () => {
     const { result, onPollError, onCompleted } = renderLiveStatus();
 
     act(() => {
-      result.current.startVerificationQueue([{ executionId: '10' }]);
+      result.current.startImportJobQueue([{ runId: '10' }]);
     });
     await flushAsync();
 

@@ -238,6 +238,40 @@ export function normalizeExecutionCoverage(response) {
 }
 
 /**
+ * (name, function) pairs with ≥2 variants — candidates for aggregate_groups.
+ * @param {Array<{ name?: string|null, function?: string|null }>} [llmSystems]
+ * @returns {Array<{ id: string, name: string, function: string, label: string, variantCount: number }>}
+ */
+export function findAggregatableLlmGroups(llmSystems) {
+  /** @type {Map<string, { name: string, function: string, count: number }>} */
+  const byKey = new Map();
+
+  for (const s of llmSystems ?? []) {
+    const name = s?.name != null ? String(s.name).trim() : '';
+    const fn = s?.function != null ? String(s.function).trim() : '';
+    if (!name || !fn) continue;
+    const id = `${name}:${fn}`;
+    const existing = byKey.get(id);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      byKey.set(id, { name, function: fn, count: 1 });
+    }
+  }
+
+  return Array.from(byKey.entries())
+    .filter(([, g]) => g.count >= 2)
+    .map(([id, g]) => ({
+      id,
+      name: g.name,
+      function: g.function,
+      variantCount: g.count,
+      label: `${g.name} ${g.function} (${g.count} variants)`,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+/**
  * @param {{ seed_papers?: Array }} coverage
  * @param {number} seedId
  * @param {number} promptId

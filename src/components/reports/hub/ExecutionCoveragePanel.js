@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import apiService from '../../../services/api';
 import {
   buildCoverageGapSet,
+  findAggregatableLlmGroups,
   normalizeExecutionCoverage,
 } from '../../../models/reports';
 import useSeedPapersAndPrompts, { seedPaperLabel } from '../../../hooks/useSeedPapersAndPrompts';
@@ -19,6 +20,8 @@ export default function ExecutionCoveragePanel({ disabled = false, onOpenExecuti
   const { seedPapers, loading: entitiesLoading, error: entitiesError } = useSeedPapersAndPrompts();
   const [selectedSeedPaperIds, setSelectedSeedPaperIds] = useState([]);
   const [status, setStatus] = useState('completed');
+  const [selectedAggregateGroupIds, setSelectedAggregateGroupIds] = useState([]);
+  const [aggregatableGroupItems, setAggregatableGroupItems] = useState([]);
   const [coverage, setCoverage] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -36,20 +39,30 @@ export default function ExecutionCoveragePanel({ disabled = false, onOpenExecuti
   const loadCoverage = useCallback(async () => {
     setLoading(true);
     setError(null);
+    const aggregateGroups = selectedAggregateGroupIds.filter(Boolean);
     try {
       const ids = selectedSeedPaperIds.map(Number).filter((n) => Number.isFinite(n) && n > 0);
       const response = await apiService.getExecutionCoverage({
         status: status || 'completed',
         seedPaperIds: ids.length ? ids : undefined,
+        aggregateGroups: aggregateGroups.length ? aggregateGroups : undefined,
       });
-      setCoverage(normalizeExecutionCoverage(response));
+      const normalized = normalizeExecutionCoverage(response);
+      setCoverage(normalized);
+
+      if (aggregateGroups.length === 0) {
+        const groups = findAggregatableLlmGroups(normalized.llm_systems);
+        setAggregatableGroupItems(groups);
+        const validIds = new Set(groups.map((g) => g.id));
+        setSelectedAggregateGroupIds((prev) => prev.filter((id) => validIds.has(id)));
+      }
     } catch (err) {
       setCoverage(null);
       setError(err?.message || 'Failed to load execution coverage');
     } finally {
       setLoading(false);
     }
-  }, [selectedSeedPaperIds, status]);
+  }, [selectedSeedPaperIds, status, selectedAggregateGroupIds]);
 
   return (
     <div>
@@ -62,6 +75,7 @@ export default function ExecutionCoveragePanel({ disabled = false, onOpenExecuti
           <p className="text-muted small mb-3">
             Rows are LLM systems; columns are seed papers grouped by prompt.
             Present cells link to the latest matching execution. Leave seed filter empty for all seeds with executions.
+            After loading, you can optionally aggregate multi-variant (name, function) pairs into one row each.
           </p>
 
           {disabled && (
@@ -122,6 +136,24 @@ export default function ExecutionCoveragePanel({ disabled = false, onOpenExecuti
               </button>
             </div>
           </div>
+
+          {aggregatableGroupItems.length > 0 && (
+            <div className="mt-3">
+              <MultiEntityFilter
+                title="Aggregate LLM variants (optional)"
+                items={aggregatableGroupItems}
+                selectedIds={selectedAggregateGroupIds}
+                onChange={setSelectedAggregateGroupIds}
+                getLabel={(item) => item.label}
+                emptyMessage="No multi-variant LLM groups in this result."
+                idPrefix="reports-coverage-aggregate"
+              />
+              <p className="text-muted small mb-0 mt-1">
+                Selected pairs collapse to one row labeled <code>{'{name} {function}'}</code>.
+                Click Load again to apply.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 

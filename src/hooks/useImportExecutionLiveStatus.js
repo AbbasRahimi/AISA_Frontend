@@ -12,15 +12,16 @@ import {
   buildWorkflowProgressFromStatus,
   getWorkflowProgressFingerprint,
 } from '../utils/workflowStatus';
+import { normalizeImportJobStatusPayload } from '../components/import/importExecutionUtils';
 
 /**
- * Normalize pending list items to execution id strings and append to queue (deduped).
+ * Normalize pending list items to run id strings and append to queue (deduped).
  * @param {string[]} queue
  * @param {string|null} activeId
- * @param {Array<{ executionId?: string|number }|string|number>} pendingList
+ * @param {Array<{ runId?: string|number, executionId?: string|number }|string|number>} pendingList
  * @returns {string[]} newly appended ids (in order)
  */
-export function enqueueVerificationIds(queue, activeId, pendingList) {
+export function enqueueImportJobIds(queue, activeId, pendingList) {
   const known = new Set([
     ...(activeId ? [String(activeId)] : []),
     ...queue.map(String),
@@ -28,7 +29,9 @@ export function enqueueVerificationIds(queue, activeId, pendingList) {
   const appended = [];
   for (const item of pendingList || []) {
     const raw =
-      item != null && typeof item === 'object' ? item.executionId : item;
+      item != null && typeof item === 'object'
+        ? item.runId ?? item.executionId
+        : item;
     const id = raw != null ? String(raw).trim() : '';
     if (!id || known.has(id)) continue;
     queue.push(id);
@@ -38,18 +41,51 @@ export function enqueueVerificationIds(queue, activeId, pendingList) {
   return appended;
 }
 
+/** @deprecated Use enqueueImportJobIds */
+export function enqueueVerificationIds(queue, activeId, pendingList) {
+  return enqueueImportJobIds(queue, activeId, pendingList);
+}
+
 /**
- * Subscribe to live import-verification status: fetch-SSE + REST poll fallback.
- * Does not fetch workflow /results on completion.
+ * Parse import-job or execution status payloads into ExecutionStatusResponse shape.
+ * @param {unknown} raw
+ * @returns {object|null}
+ */
+function parseImportLiveStatus(raw) {
+  const fromJob = normalizeImportJobStatusPayload(raw);
+  if (fromJob) {
+    const parsed = parseWorkflowStatusMessage(fromJob) || fromJob;
+    if (!parsed || typeof parsed !== 'object') return parsed;
+    return {
+      ...parsed,
+      run_id: fromJob.run_id ?? parsed.run_id ?? null,
+      execution_id:
+        fromJob.execution_id != null && String(fromJob.execution_id).trim() !== ''
+          ? String(fromJob.execution_id)
+          : parsed.execution_id || '',
+      error: fromJob.error ?? parsed.error ?? null,
+      error_message: fromJob.error_message ?? parsed.error ?? null,
+      insertion_report: fromJob.insertion_report ?? null,
+    };
+  }
+  return parseWorkflowStatusMessage(raw);
+}
+
+/**
+ * Subscribe to live import-job status: job SSE/poll, then optional switch to
+ * execution SSE/poll once execution_id exists (insert succeeded).
+ *
+ * Callback identity is always the import run_id.
  *
  * @param {Object} options
- * @param {Function} options.onStatus - (executionId, status) => void
- * @param {Function} options.onProgress - (executionId, prev => newProgress) => void
- * @param {Function} options.onCompleted - (executionId, status) => void
- * @param {Function} options.onFailed - (executionId, errorMessage) => void
- * @param {Function} options.onPollError - (executionId, error) => void
- * @param {Function} [options.onConnectionMode] - (executionId, mode) => void
- * @returns {{ startLiveStatus: Function, startVerificationQueue: Function, stopAllLiveStatus: Function }}
+ * @param {Function} options.onStatus - (runId, status) => void
+ * @param {Function} options.onProgress - (runId, prev => newProgress) => void
+ * @param {Function} options.onCompleted - (runId, status) => void
+ * @param {Function} options.onFailed - (runId, errorMessage, status?) => void
+ * @param {Function} options.onPollError - (runId, error) => void
+ * @param {Function} [options.onConnectionMode] - (runId, mode) => void
+ * @param {Function} [options.onExecutionId] - (runId, executionId) => void
+ * @returns {{ startLiveStatus: Function, startImportJobQueue: Function, startVerificationQueue: Function, stopAllLiveStatus: Function }}
  */
 export function useImportExecutionLiveStatus({
   onStatus,
@@ -58,6 +94,7 @@ export function useImportExecutionLiveStatus({
   onFailed,
   onPollError,
   onConnectionMode,
+  onExecutionId,
 }) {
   const callbacksRef = useRef({
     onStatus,
@@ -66,6 +103,7 @@ export function useImportExecutionLiveStatus({
     onFailed,
     onPollError,
     onConnectionMode,
+    onExecutionId,
   });
   callbacksRef.current = {
     onStatus,
@@ -74,6 +112,7 @@ export function useImportExecutionLiveStatus({
     onFailed,
     onPollError,
     onConnectionMode,
+    onExecutionId,
   };
 
   const cleanupsRef = useRef(new Map());
@@ -82,13 +121,13 @@ export function useImportExecutionLiveStatus({
   const currentCleanupRef = useRef(null);
   const advanceQueueRef = useRef(() => {});
 
-  const createLiveStatusSession = useCallback((execId, handlers) => {
-    const id = String(execId);
+  const createLiveStatusSession = useCallback((runId, handlers) => {
+    const id = String(runId);
     const prevCleanup = cleanupsRef.current.get(id);
     if (prevCleanup) {
       prevCleanup();
-      cleanupsRef.current.delete(id);
     }
+    cleanupsRef.current.delete(id);
 
     const startTime = Date.now();
     let lastProgressAt = startTime;
@@ -99,16 +138,21 @@ export function useImportExecutionLiveStatus({
     let pollActive = false;
     let sseReceived = false;
     let modes = { sse: false, poll: false };
+    /** @type {'job' | 'execution'} */
+    let trackingMode = 'job';
+    /** @type {string|null} */
+    let executionId = null;
+    let promoting = false;
 
     const publishMode = () => {
       const parts = [];
       if (modes.sse) parts.push('sse');
       if (modes.poll) parts.push('poll');
-      handlers.onConnectionMode?.(id, parts.length ? parts.join('+') : 'connecting');
+      const base = parts.length ? parts.join('+') : 'connecting';
+      handlers.onConnectionMode?.(id, trackingMode === 'execution' ? `${base}·exec` : base);
     };
 
-    const stopAll = () => {
-      stopped = true;
+    const stopStream = () => {
       if (streamHandle) {
         try {
           streamHandle.close();
@@ -117,6 +161,11 @@ export function useImportExecutionLiveStatus({
         }
         streamHandle = null;
       }
+    };
+
+    const stopAll = () => {
+      stopped = true;
+      stopStream();
       if (pollTimeoutId) {
         clearTimeout(pollTimeoutId);
         pollTimeoutId = null;
@@ -125,7 +174,7 @@ export function useImportExecutionLiveStatus({
     };
 
     const handleTerminal = (status) => {
-      const normalized = parseWorkflowStatusMessage(status) || status;
+      const normalized = parseImportLiveStatus(status) || status;
       const st = (normalized.status || '').toLowerCase();
 
       if (st === ExecutionStatus.COMPLETED) {
@@ -136,15 +185,45 @@ export function useImportExecutionLiveStatus({
       }
       if (st === ExecutionStatus.FAILED) {
         stopAll();
-        handlers.onFailed?.(id, normalized.error || 'Unknown error');
+        const errMsg =
+          normalized.error ||
+          normalized.error_message ||
+          'Unknown error';
+        handlers.onFailed?.(id, errMsg, normalized);
         return true;
       }
       return false;
     };
 
+    const maybePromoteToExecution = (status) => {
+      const st = String(status?.status || '').toLowerCase();
+      if (st === ExecutionStatus.COMPLETED || st === ExecutionStatus.FAILED) {
+        return false;
+      }
+      const eid =
+        status?.execution_id != null && String(status.execution_id).trim() !== ''
+          ? String(status.execution_id)
+          : null;
+      if (!eid || trackingMode === 'execution' || promoting || stopped) return false;
+
+      promoting = true;
+      executionId = eid;
+      handlers.onExecutionId?.(id, eid);
+      trackingMode = 'execution';
+      sseReceived = false;
+      stopStream();
+      modes.sse = false;
+      publishMode();
+      startSse();
+      promoting = false;
+      return true;
+    };
+
     const applyUpdate = (raw) => {
-      const status = parseWorkflowStatusMessage(raw);
+      const status = parseImportLiveStatus(raw);
       if (!status) return false;
+
+      maybePromoteToExecution(status);
 
       const fingerprint = getWorkflowProgressFingerprint(status);
       if (fingerprint !== lastFingerprint) {
@@ -162,6 +241,13 @@ export function useImportExecutionLiveStatus({
       pollTimeoutId = setTimeout(runPoll, delayMs);
     };
 
+    const fetchStatus = async () => {
+      if (trackingMode === 'execution' && executionId) {
+        return apiService.getImportExecutionStatus(executionId);
+      }
+      return apiService.getImportJobStatus(id);
+    };
+
     const runPoll = async () => {
       if (stopped) return;
 
@@ -172,7 +258,7 @@ export function useImportExecutionLiveStatus({
           handlers.onPollError?.(
             id,
             new Error(
-              `Import verification stalled (no progress for ${Math.round(WORKFLOW_MAX_WAIT_MS / 60000)} minutes)`
+              `Import stalled (no progress for ${Math.round(WORKFLOW_MAX_WAIT_MS / 60000)} minutes)`
             )
           );
           return;
@@ -181,7 +267,7 @@ export function useImportExecutionLiveStatus({
         modes.poll = true;
         publishMode();
 
-        const status = await apiService.getImportExecutionStatus(id);
+        const status = await fetchStatus();
         const done = applyUpdate(status);
         if (done) return;
 
@@ -189,9 +275,18 @@ export function useImportExecutionLiveStatus({
       } catch (error) {
         const msg = (error?.message ?? '').toLowerCase();
         const looksLike404 =
-          msg.includes('execution not found') || msg.includes('status: 404');
+          msg.includes('not found') || msg.includes('status: 404');
         const withinGrace = Date.now() - startTime < POLL_404_GRACE_PERIOD_MS;
         if (looksLike404 && withinGrace) {
+          schedulePoll(POLL_INTERVAL_MS);
+          return;
+        }
+        // After promoting to execution, a brief 404 is expected while the row is created.
+        if (
+          looksLike404 &&
+          trackingMode === 'execution' &&
+          Date.now() - startTime < WORKFLOW_MAX_WAIT_MS
+        ) {
           schedulePoll(POLL_INTERVAL_MS);
           return;
         }
@@ -212,32 +307,39 @@ export function useImportExecutionLiveStatus({
       if (stopped) return;
       const token = await apiService.getAccessToken();
 
-      streamHandle = apiService.connectExecutionEvents(
-        id,
-        (raw) => {
-          if (stopped) return;
-          sseReceived = true;
-          modes.sse = true;
-          publishMode();
-          const done = applyUpdate(raw);
-          if (done) stopAll();
-        },
-        () => {
-          if (stopped) return;
-          streamHandle = null;
-          if (!sseReceived || !pollActive) {
-            startPolling();
-          }
-        },
-        token
-      );
+      const onMessage = (raw) => {
+        if (stopped) return;
+        sseReceived = true;
+        modes.sse = true;
+        publishMode();
+        const done = applyUpdate(raw);
+        if (done) stopAll();
+      };
+      const onError = () => {
+        if (stopped) return;
+        streamHandle = null;
+        if (!sseReceived || !pollActive) {
+          startPolling();
+        }
+      };
+
+      if (trackingMode === 'execution' && executionId) {
+        streamHandle = apiService.connectExecutionEvents(
+          executionId,
+          onMessage,
+          onError,
+          token
+        );
+      } else {
+        streamHandle = apiService.connectImportJobEvents(id, onMessage, onError, token);
+      }
       modes.sse = true;
       publishMode();
     };
 
     handlers.onConnectionMode?.(id, 'connecting');
     startSse();
-    // Parallel poll so activity_log appears even if SSE is slow/blocked.
+    // Parallel poll so progress appears even if SSE is slow/blocked.
     startPolling();
 
     cleanupsRef.current.set(id, stopAll);
@@ -260,22 +362,23 @@ export function useImportExecutionLiveStatus({
 
     activeIdRef.current = nextId;
     const wrappedHandlers = {
-      onStatus: (id, status) => callbacksRef.current.onStatus?.(id, status),
-      onProgress: (id, fn) => callbacksRef.current.onProgress?.(id, fn),
-      onConnectionMode: (id, mode) => callbacksRef.current.onConnectionMode?.(id, mode),
-      onCompleted: (id, status) => {
+      onStatus: (rid, status) => callbacksRef.current.onStatus?.(rid, status),
+      onProgress: (rid, fn) => callbacksRef.current.onProgress?.(rid, fn),
+      onConnectionMode: (rid, mode) => callbacksRef.current.onConnectionMode?.(rid, mode),
+      onExecutionId: (rid, eid) => callbacksRef.current.onExecutionId?.(rid, eid),
+      onCompleted: (rid, status) => {
         currentCleanupRef.current = null;
-        callbacksRef.current.onCompleted?.(id, status);
+        callbacksRef.current.onCompleted?.(rid, status);
         advanceQueueRef.current();
       },
-      onFailed: (id, msg) => {
+      onFailed: (rid, msg, status) => {
         currentCleanupRef.current = null;
-        callbacksRef.current.onFailed?.(id, msg);
+        callbacksRef.current.onFailed?.(rid, msg, status);
         advanceQueueRef.current();
       },
-      onPollError: (id, err) => {
+      onPollError: (rid, err) => {
         currentCleanupRef.current = null;
-        callbacksRef.current.onPollError?.(id, err);
+        callbacksRef.current.onPollError?.(rid, err);
         advanceQueueRef.current();
       },
     };
@@ -285,27 +388,31 @@ export function useImportExecutionLiveStatus({
   advanceQueueRef.current = advanceQueue;
 
   const startLiveStatus = useCallback(
-    (execId) =>
-      createLiveStatusSession(execId, {
+    (runId) =>
+      createLiveStatusSession(runId, {
         onStatus: (id, status) => callbacksRef.current.onStatus?.(id, status),
         onProgress: (id, fn) => callbacksRef.current.onProgress?.(id, fn),
         onConnectionMode: (id, mode) => callbacksRef.current.onConnectionMode?.(id, mode),
+        onExecutionId: (id, eid) => callbacksRef.current.onExecutionId?.(id, eid),
         onCompleted: (id, status) => callbacksRef.current.onCompleted?.(id, status),
-        onFailed: (id, msg) => callbacksRef.current.onFailed?.(id, msg),
+        onFailed: (id, msg, status) => callbacksRef.current.onFailed?.(id, msg, status),
         onPollError: (id, err) => callbacksRef.current.onPollError?.(id, err),
       }),
     [createLiveStatusSession]
   );
 
-  const startVerificationQueue = useCallback(
+  const startImportJobQueue = useCallback(
     (pendingList) => {
-      enqueueVerificationIds(queueRef.current, activeIdRef.current, pendingList);
+      enqueueImportJobIds(queueRef.current, activeIdRef.current, pendingList);
       if (!activeIdRef.current) {
         advanceQueue();
       }
     },
     [advanceQueue]
   );
+
+  /** @deprecated Use startImportJobQueue */
+  const startVerificationQueue = startImportJobQueue;
 
   const stopAllLiveStatus = useCallback(() => {
     queueRef.current = [];
@@ -328,5 +435,10 @@ export function useImportExecutionLiveStatus({
     cleanupsRef.current.clear();
   }, []);
 
-  return { startLiveStatus, startVerificationQueue, stopAllLiveStatus };
+  return {
+    startLiveStatus,
+    startImportJobQueue,
+    startVerificationQueue,
+    stopAllLiveStatus,
+  };
 }

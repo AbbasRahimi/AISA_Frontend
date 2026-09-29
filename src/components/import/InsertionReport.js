@@ -137,6 +137,8 @@ export default function InsertionReport({
   report,
   fileName,
   createdAt,
+  executionId = null,
+  runId = null,
   verificationCitations = null,
   verificationTotal = 0,
   verificationResults = null,
@@ -152,6 +154,9 @@ export default function InsertionReport({
   const comparisonEnvelope = toComparisonResultsEnvelope(comparisonResults);
   const hasComparisonResults = (comparisonEnvelope?.detailed_results?.length ?? 0) > 0;
   const comparisonSummary = comparisonEnvelope?.summary;
+  const resolvedExecutionId =
+    executionId ??
+    (report?.execution?.id != null ? String(report.execution.id) : null);
 
   const citationsByIndex = useMemo(() => {
     const map = new Map();
@@ -170,7 +175,9 @@ export default function InsertionReport({
     return map;
   }, [results]);
 
-  if (!report && !hasVerificationResults && !hasComparisonResults) return null;
+  if (!report && !hasVerificationResults && !hasComparisonResults && !resolvedExecutionId) {
+    return null;
+  }
 
   const { llm_system, seed_paper, prompt, execution, publications } = report || {};
   const hasPublicationItems = (publications?.items?.length ?? 0) > 0;
@@ -189,6 +196,13 @@ export default function InsertionReport({
           {createdAt && (
             <small className="text-muted ms-2">{new Date(createdAt).toLocaleString()}</small>
           )}
+          {(runId != null || resolvedExecutionId) && (
+            <small className="text-muted ms-2">
+              {runId != null ? <>run #{runId}</> : null}
+              {runId != null && resolvedExecutionId ? ' · ' : null}
+              {resolvedExecutionId ? <>execution {resolvedExecutionId}</> : null}
+            </small>
+          )}
         </span>
         {canExpand && (
           <button
@@ -204,6 +218,11 @@ export default function InsertionReport({
         )}
       </div>
       <div className="card-body">
+        {!report && resolvedExecutionId && !hasVerificationResults && !hasComparisonResults && (
+          <p className="small text-muted mb-0">
+            Import completed. Execution ID: {resolvedExecutionId}.
+          </p>
+        )}
         {report && (
           <div className="row g-2 mb-2">
             {llm_system && (
