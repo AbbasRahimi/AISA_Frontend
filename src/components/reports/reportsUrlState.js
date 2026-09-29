@@ -19,6 +19,19 @@ function parseBoolParam(value) {
 }
 
 /**
+ * Comma-separated name:function tokens for aggregate_groups.
+ * @param {string|null} value
+ * @returns {string[]}
+ */
+function parseAggregateGroups(value) {
+  if (value == null || value === '') return [];
+  return String(value)
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
+/**
  * @param {URLSearchParams} searchParams
  */
 export function parseReportsParams(searchParams) {
@@ -48,6 +61,7 @@ export function parseReportsParams(searchParams) {
     sort,
     order,
     includePartial: parseBoolParam(searchParams.get('include_partial')) ?? true,
+    aggregateGroups: parseAggregateGroups(searchParams.get('aggregate_groups')),
   };
 }
 
@@ -101,6 +115,14 @@ export function writeReportsParams(current, patch) {
   if (patch.sort !== undefined) setOrDelete('sort', patch.sort);
   if (patch.order !== undefined) setOrDelete('order', patch.order);
   if (patch.includePartial != null) setOrDelete('include_partial', patch.includePartial);
+  if (patch.aggregateGroups !== undefined) {
+    setOrDelete(
+      'aggregate_groups',
+      Array.isArray(patch.aggregateGroups) && patch.aggregateGroups.length
+        ? patch.aggregateGroups.join(',')
+        : null,
+    );
+  }
 
   if (patch.clearDrillDown) {
     params.delete('seedPaperId');

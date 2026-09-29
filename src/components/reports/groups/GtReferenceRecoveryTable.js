@@ -5,18 +5,32 @@ import { normalizeGtByReferenceResponse } from '../../../models/reports';
 import ClassificationBadge from '../shared/ClassificationBadge';
 import { getPerExecPageNumbers } from '../../evaluation/seedPaperExecutionMetrics/perExecTableUtils';
 
-export default function GtReferenceRecoveryTable({ seedPaperId, onViewCitations, onFilterByReference }) {
+export default function GtReferenceRecoveryTable({
+  seedPaperId,
+  aggregateGroups = [],
+  onViewCitations,
+  onFilterByReference,
+}) {
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState(1);
   const pageSize = 50;
+  const groupsKey = (aggregateGroups ?? []).join(',') || '-';
 
-  const cacheKey = open ? `gt-by-ref:${seedPaperId}:${page}` : null;
+  const cacheKey = open ? `gt-by-ref:${seedPaperId}:${page}:${groupsKey}` : null;
 
   const fetchFn = useCallback(
-    (signal) => apiService
-      .getGtComparisonByReference(seedPaperId, { page, page_size: pageSize, signal })
-      .then(normalizeGtByReferenceResponse),
-    [seedPaperId, page, pageSize],
+    (signal) => {
+      const groups = (aggregateGroups ?? []).filter(Boolean);
+      return apiService
+        .getGtComparisonByReference(seedPaperId, {
+          page,
+          page_size: pageSize,
+          signal,
+          aggregateGroups: groups.length ? groups : undefined,
+        })
+        .then(normalizeGtByReferenceResponse);
+    },
+    [seedPaperId, page, pageSize, aggregateGroups],
   );
 
   const { data, loading, error } = useReportsQuery(fetchFn, cacheKey, { enabled: open });

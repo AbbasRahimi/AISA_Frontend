@@ -44,6 +44,11 @@ export default function ReportsTab() {
     patchParams({ clearDrillDown: true });
   }, [patchParams]);
 
+  const handleAggregateGroupsChange = useCallback(
+    (ids) => patchParams({ aggregateGroups: ids }),
+    [patchParams],
+  );
+
   if (params.seedPaperId) {
     return (
       <SeedPaperReportPage
@@ -60,6 +65,8 @@ export default function ReportsTab() {
       onHubTabChange={(tab) => patchParams({ reportHubTab: tab })}
       includePartial={params.includePartial}
       onIncludePartialChange={(v) => patchParams({ includePartial: v })}
+      aggregateGroups={params.aggregateGroups}
+      onAggregateGroupsChange={handleAggregateGroupsChange}
       onDrillIntoSeed={handleDrillIntoSeed}
       onOpenExecution={handleOpenExecution}
     />

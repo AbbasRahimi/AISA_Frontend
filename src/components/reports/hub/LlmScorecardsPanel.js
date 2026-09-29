@@ -5,7 +5,12 @@ import { normalizeCompareResponse } from '../../comparer/batchResultsUtils';
 import CompareMetricsResults from '../../comparer/CompareMetricsResults';
 import MultiEntityFilter from '../../comparer/MultiEntityFilter';
 
-export default function LlmScorecardsPanel({ includePartial, selectedSeedPaperIds, onSeedPaperIdsChange }) {
+export default function LlmScorecardsPanel({
+  includePartial,
+  aggregateGroups = [],
+  selectedSeedPaperIds,
+  onSeedPaperIdsChange,
+}) {
   const { seedPapers, loading: entitiesLoading, error: entitiesError } = useSeedPapersAndPrompts();
   const [compareData, setCompareData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -25,10 +30,12 @@ export default function LlmScorecardsPanel({ includePartial, selectedSeedPaperId
     setError(null);
     try {
       const ids = selectedSeedPaperIds.map(Number);
+      const groups = (aggregateGroups ?? []).filter(Boolean);
       const response = await apiService.getReportsLlmMetrics({
         seedPaperIds: ids.length > 1 ? ids : undefined,
         seedPaperId: ids.length === 1 ? ids[0] : undefined,
         includePartial,
+        aggregateGroups: groups.length ? groups : undefined,
       });
       setCompareData(normalizeCompareResponse(response));
     } catch (err) {
@@ -37,7 +44,7 @@ export default function LlmScorecardsPanel({ includePartial, selectedSeedPaperId
     } finally {
       setLoading(false);
     }
-  }, [selectedSeedPaperIds, includePartial]);
+  }, [selectedSeedPaperIds, includePartial, aggregateGroups]);
 
   return (
     <div>

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuthz } from '../../../auth/AuthzContext';
 import useSeedPapersAndPrompts, { seedPaperLabel } from '../../../hooks/useSeedPapersAndPrompts';
 import SearchableSeedPaperSelect from '../../evaluation/seedPaperCitations/SearchableSeedPaperSelect';
+import AggregateGroupsFilter from '../shared/AggregateGroupsFilter';
 import LlmScorecardsPanel from './LlmScorecardsPanel';
 import PromptScorecardsPanel from './PromptScorecardsPanel';
 import ExecutionCoveragePanel from './ExecutionCoveragePanel';
@@ -11,6 +12,8 @@ export default function ReportsHub({
   onHubTabChange,
   includePartial,
   onIncludePartialChange,
+  aggregateGroups = [],
+  onAggregateGroupsChange,
   onDrillIntoSeed,
   onOpenExecution,
 }) {
@@ -52,6 +55,12 @@ export default function ReportsHub({
         ))}
       </ul>
 
+      <AggregateGroupsFilter
+        selectedIds={aggregateGroups}
+        onChange={onAggregateGroupsChange}
+        idPrefix="reports-hub-aggregate"
+      />
+
       {showIncludePartial && (
         <div className="form-check form-switch mb-4">
           <input
@@ -70,6 +79,7 @@ export default function ReportsHub({
       {reportHubTab === 'llm' && (
         <LlmScorecardsPanel
           includePartial={includePartial}
+          aggregateGroups={aggregateGroups}
           selectedSeedPaperIds={llmSeedPaperIds}
           onSeedPaperIdsChange={setLlmSeedPaperIds}
         />
@@ -78,6 +88,7 @@ export default function ReportsHub({
       {reportHubTab === 'prompt' && (
         <PromptScorecardsPanel
           includePartial={includePartial}
+          aggregateGroups={aggregateGroups}
           selectedSeedPaperId={promptSeedPaperId}
           onSeedPaperIdChange={setPromptSeedPaperId}
         />
@@ -86,6 +97,7 @@ export default function ReportsHub({
       {reportHubTab === 'coverage' && (
         <ExecutionCoveragePanel
           disabled={!hasExecutions}
+          aggregateGroups={aggregateGroups}
           onOpenExecution={onOpenExecution}
         />
       )}

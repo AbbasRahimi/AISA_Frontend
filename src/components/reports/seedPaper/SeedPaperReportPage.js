@@ -7,6 +7,7 @@ import {
   normalizeExistenceSeedSummary,
   normalizeGtComparisonSeedSummary,
 } from '../../../models/reports';
+import AggregateGroupsFilter from '../shared/AggregateGroupsFilter';
 import ExistenceSummaryPanel from './ExistenceSummaryPanel';
 import GtComparisonSummaryPanel from './GtComparisonSummaryPanel';
 import GroupedBreakdownPanel from '../groups/GroupedBreakdownPanel';
@@ -35,27 +36,34 @@ export default function SeedPaperReportPage({ params, onPatchParams, onBack }) {
     found,
     sort,
     order,
+    aggregateGroups = [],
   } = params;
 
   const isExistence = reportTab === 'existence';
   const reportKind = isExistence ? 'existence' : 'gt_comparison';
+  const groupsKey = (aggregateGroups ?? []).join(',') || '-';
 
   const summaryCacheKey = seedPaperId
-    ? `summary:${reportTab}:${seedPaperId}`
+    ? `summary:${reportTab}:${seedPaperId}:${groupsKey}`
     : null;
 
   const fetchSummary = useCallback(
     (signal) => {
+      const groups = (aggregateGroups ?? []).filter(Boolean);
+      const filters = {
+        signal,
+        aggregateGroups: groups.length ? groups : undefined,
+      };
       if (isExistence) {
         return apiService
-          .getExistenceSeedSummary(seedPaperId, { signal })
+          .getExistenceSeedSummary(seedPaperId, filters)
           .then(normalizeExistenceSeedSummary);
       }
       return apiService
-        .getGtComparisonSeedSummary(seedPaperId, { signal })
+        .getGtComparisonSeedSummary(seedPaperId, filters)
         .then(normalizeGtComparisonSeedSummary);
     },
-    [seedPaperId, isExistence],
+    [seedPaperId, isExistence, aggregateGroups],
   );
 
   const { data: summary, loading: summaryLoading, error: summaryError } = useReportsQuery(
@@ -140,6 +148,12 @@ export default function SeedPaperReportPage({ params, onPatchParams, onBack }) {
         </ul>
       </div>
 
+      <AggregateGroupsFilter
+        selectedIds={aggregateGroups}
+        onChange={(ids) => onPatchParams({ aggregateGroups: ids })}
+        idPrefix="reports-seed-aggregate"
+      />
+
       {summaryError && <div className="alert alert-danger">{summaryError}</div>}
 
       {isExistence ? (
@@ -151,12 +165,14 @@ export default function SeedPaperReportPage({ params, onPatchParams, onBack }) {
       <GroupedBreakdownPanel
         seedPaperId={seedPaperId}
         reportKind={reportKind}
+        aggregateGroups={aggregateGroups}
         onViewCitations={handleViewCitations}
       />
 
       {!isExistence && (
         <GtReferenceRecoveryTable
           seedPaperId={seedPaperId}
+          aggregateGroups={aggregateGroups}
           onFilterByReference={handleFilterByReference}
         />
       )}

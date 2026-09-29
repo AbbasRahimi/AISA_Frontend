@@ -14,7 +14,12 @@ import {
 } from '../../comparer/compareMetricsExcelExport';
 import { downloadBlob } from '../../../utils';
 
-export default function PromptScorecardsPanel({ includePartial, selectedSeedPaperId, onSeedPaperIdChange }) {
+export default function PromptScorecardsPanel({
+  includePartial,
+  aggregateGroups = [],
+  selectedSeedPaperId,
+  onSeedPaperIdChange,
+}) {
   const { seedPapers, loading: entitiesLoading, error: entitiesError } = useSeedPapersAndPrompts();
   const [promptData, setPromptData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -30,9 +35,11 @@ export default function PromptScorecardsPanel({ includePartial, selectedSeedPape
     setLoading(true);
     setError(null);
     try {
+      const groups = (aggregateGroups ?? []).filter(Boolean);
       const response = await apiService.getReportsPromptMetrics({
         seedPaperId: selectedSeedPaperId,
         includePartial,
+        aggregateGroups: groups.length ? groups : undefined,
       });
       setPromptData(response ? normalizeCompareResponse(response) : null);
     } catch (err) {
@@ -41,7 +48,7 @@ export default function PromptScorecardsPanel({ includePartial, selectedSeedPape
     } finally {
       setLoading(false);
     }
-  }, [selectedSeedPaperId, includePartial]);
+  }, [selectedSeedPaperId, includePartial, aggregateGroups]);
 
   const statsByPrompt = useMemo(
     () => promptData?.stats_by_prompt_alias ?? [],

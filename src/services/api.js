@@ -1619,9 +1619,9 @@ class ApiService {
   // --- Reports API (/api/reports) ---
 
   /**
-   * @param {{ seedPaperId?: number, seedPaperIds?: number[], includePartial?: boolean }} opts
+   * @param {{ seedPaperId?: number, seedPaperIds?: number[], includePartial?: boolean, aggregateGroups?: string[] }} opts
    */
-  async getReportsLlmMetrics({ seedPaperId, seedPaperIds, includePartial = true } = {}) {
+  async getReportsLlmMetrics({ seedPaperId, seedPaperIds, includePartial = true, aggregateGroups } = {}) {
     const ids = seedPaperIds?.length
       ? seedPaperIds
       : seedPaperId != null
@@ -1634,17 +1634,19 @@ class ApiService {
       seed_paper_id: ids.length === 1 ? ids[0] : null,
       seed_paper_ids: ids.length > 1 ? ids.join(',') : null,
       include_partial: includePartial,
+      aggregate_groups: aggregateGroups?.length ? aggregateGroups.join(',') : null,
     });
     return this.request(`/api/reports/metrics/llm-systems${query}`);
   }
 
   /**
-   * @param {{ seedPaperId: number, includePartial?: boolean }} opts
+   * @param {{ seedPaperId: number, includePartial?: boolean, aggregateGroups?: string[] }} opts
    */
-  async getReportsPromptMetrics({ seedPaperId, includePartial = true }) {
+  async getReportsPromptMetrics({ seedPaperId, includePartial = true, aggregateGroups }) {
     const query = buildQueryParams({
       seed_paper_id: seedPaperId,
       include_partial: includePartial,
+      aggregate_groups: aggregateGroups?.length ? aggregateGroups.join(',') : null,
     });
     return this.request(`/api/reports/metrics/prompts${query}`);
   }
@@ -1676,6 +1678,7 @@ class ApiService {
    *   executionId?: number|null,
    *   latestOnly?: boolean,
    *   useCache?: boolean,
+   *   aggregateGroups?: string[],
    *   signal?: AbortSignal,
    * }} [filters]
    */
@@ -1687,6 +1690,7 @@ class ApiService {
       execution_id: filters.executionId,
       latest_only: filters.latestOnly ?? false,
       use_cache: filters.useCache ?? true,
+      aggregate_groups: filters.aggregateGroups?.length ? filters.aggregateGroups.join(',') : null,
     });
     return this.request(`/api/reports/existence/seed-papers/${seedPaperId}/summary${query}`, {
       signal: filters.signal,
@@ -1701,6 +1705,7 @@ class ApiService {
       execution_id: filters.executionId,
       latest_only: filters.latestOnly ?? false,
       use_cache: filters.useCache ?? true,
+      aggregate_groups: filters.aggregateGroups?.length ? filters.aggregateGroups.join(',') : null,
     });
     return this.request(`/api/reports/gt-comparison/seed-papers/${seedPaperId}/summary${query}`, {
       signal: filters.signal,
@@ -1716,6 +1721,7 @@ class ApiService {
       execution_id: rest.executionId,
       latest_only: rest.latestOnly ?? false,
       use_cache: rest.useCache ?? true,
+      aggregate_groups: rest.aggregateGroups?.length ? rest.aggregateGroups.join(',') : null,
     });
     return this.request(`/api/reports/existence/seed-papers/${seedPaperId}/groups${query}`, {
       signal: rest.signal,
@@ -1731,6 +1737,7 @@ class ApiService {
       execution_id: rest.executionId,
       latest_only: rest.latestOnly ?? false,
       use_cache: rest.useCache ?? true,
+      aggregate_groups: rest.aggregateGroups?.length ? rest.aggregateGroups.join(',') : null,
     });
     return this.request(`/api/reports/gt-comparison/seed-papers/${seedPaperId}/groups${query}`, {
       signal: rest.signal,
@@ -1744,6 +1751,7 @@ class ApiService {
       page_size: filters.page_size ?? filters.pageSize ?? 50,
       latest_only: filters.latestOnly ?? false,
       use_cache: filters.useCache ?? true,
+      aggregate_groups: filters.aggregateGroups?.length ? filters.aggregateGroups.join(',') : null,
     });
     return this.request(`/api/reports/gt-comparison/seed-papers/${seedPaperId}/by-gt-reference${query}`, {
       signal: filters.signal,

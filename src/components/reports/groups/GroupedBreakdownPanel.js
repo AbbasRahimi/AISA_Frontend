@@ -10,18 +10,32 @@ const GROUP_SECTIONS = [
   { groupBy: 'execution', title: 'By execution', icon: 'fas fa-play-circle' },
 ];
 
-function LazyGroupCard({ seedPaperId, reportKind, groupBy, title, iconClass, onViewCitations }) {
+function LazyGroupCard({
+  seedPaperId,
+  reportKind,
+  groupBy,
+  title,
+  iconClass,
+  aggregateGroups = [],
+  onViewCitations,
+}) {
   const [open, setOpen] = useState(false);
-  const cacheKey = open ? `groups:${reportKind}:${seedPaperId}:${groupBy}` : null;
+  const groupsKey = (aggregateGroups ?? []).join(',') || '-';
+  const cacheKey = open ? `groups:${reportKind}:${seedPaperId}:${groupBy}:${groupsKey}` : null;
 
   const fetchFn = useCallback(
     (signal) => {
       const api = reportKind === 'existence'
         ? apiService.getExistenceGroups.bind(apiService)
         : apiService.getGtComparisonGroups.bind(apiService);
-      return api(seedPaperId, { groupBy, signal }).then(normalizeReportsGroupsResponse);
+      const groups = (aggregateGroups ?? []).filter(Boolean);
+      return api(seedPaperId, {
+        groupBy,
+        signal,
+        aggregateGroups: groups.length ? groups : undefined,
+      }).then(normalizeReportsGroupsResponse);
     },
-    [seedPaperId, reportKind, groupBy],
+    [seedPaperId, reportKind, groupBy, aggregateGroups],
   );
 
   const { data, loading, error } = useReportsQuery(fetchFn, cacheKey, { enabled: open });
@@ -91,7 +105,12 @@ function LazyGroupCard({ seedPaperId, reportKind, groupBy, title, iconClass, onV
   );
 }
 
-export default function GroupedBreakdownPanel({ seedPaperId, reportKind, onViewCitations }) {
+export default function GroupedBreakdownPanel({
+  seedPaperId,
+  reportKind,
+  aggregateGroups = [],
+  onViewCitations,
+}) {
   return (
     <div className="mt-4">
       <h5 className="mb-3">
@@ -106,6 +125,7 @@ export default function GroupedBreakdownPanel({ seedPaperId, reportKind, onViewC
           groupBy={groupBy}
           title={title}
           iconClass={icon}
+          aggregateGroups={aggregateGroups}
           onViewCitations={onViewCitations}
         />
       ))}

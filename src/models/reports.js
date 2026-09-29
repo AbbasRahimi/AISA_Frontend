@@ -266,7 +266,7 @@ export function findAggregatableLlmGroups(llmSystems) {
       name: g.name,
       function: g.function,
       variantCount: g.count,
-      label: `${g.name} ${g.function} (${g.count} variants)`,
+      label: `Combine: ${g.name} · ${g.function}`,
     }))
     .sort((a, b) => a.label.localeCompare(b.label));
 }
