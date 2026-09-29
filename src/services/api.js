@@ -442,10 +442,17 @@ class ApiService {
   /**
    * Import / post-import verification status (flat ExecutionStatusResponse).
    * OpenAPI: GET /api/executions/{execution_id}/status
-   * Use after an import job exposes execution_id (insert succeeded).
+   * Use after an import job exposes a numeric execution_id (insert succeeded).
+   * Never pass live-store keys like `import-{run_id}` here.
    */
   async getImportExecutionStatus(executionId) {
-    const raw = await this.request(`/api/executions/${executionId}/status`, {
+    const id = executionId != null ? String(executionId).trim() : '';
+    if (!/^\d+$/.test(id)) {
+      throw new Error(
+        `Invalid execution_id for /api/executions/{id}/status (got "${executionId}"). Use import job status until a numeric execution_id exists.`
+      );
+    }
+    const raw = await this.request(`/api/executions/${id}/status`, {
       timeout: STATUS_POLL_TIMEOUT_MS,
     });
     return normalizeExecutionStatusResponse(raw) ?? raw;
@@ -454,14 +461,39 @@ class ApiService {
   /**
    * Poll async import job status (accept-and-queue import).
    * OpenAPI: GET /api/executions/import/jobs/{run_id}/status
+   * Prefer calling with the 202 `status_url` when available (via getByApiPath).
    * status: pending | running | completed | failed
    * execution_id present after insert succeeds; error_message on insert failure.
    */
   async getImportJobStatus(runId) {
     if (runId == null) throw new Error('run_id is required.');
-    return this.request(`/api/executions/import/jobs/${encodeURIComponent(runId)}/status`, {
+    const raw = String(runId).trim();
+    const storeKey = /^import-(\d+)$/i.exec(raw);
+    const id = storeKey ? storeKey[1] : raw;
+    if (!id) throw new Error('run_id is required.');
+    return this.request(`/api/executions/import/jobs/${encodeURIComponent(id)}/status`, {
       timeout: STATUS_POLL_TIMEOUT_MS,
     });
+  }
+
+  /**
+   * GET a relative API path from a 202 `status_url` (e.g. /api/executions/import/jobs/64/status).
+   * @param {string} apiPath
+   */
+  async getByApiPath(apiPath) {
+    const path = apiPath != null ? String(apiPath).trim() : '';
+    if (!path) throw new Error('api path is required.');
+    if (/^https?:\/\//i.test(path)) {
+      // Absolute URLs: strip origin so request() can prefix baseURL consistently when needed.
+      try {
+        const u = new URL(path);
+        return this.request(`${u.pathname}${u.search}`, { timeout: STATUS_POLL_TIMEOUT_MS });
+      } catch {
+        throw new Error(`Invalid api path: ${apiPath}`);
+      }
+    }
+    const endpoint = path.startsWith('/') ? path : `/${path}`;
+    return this.request(endpoint, { timeout: STATUS_POLL_TIMEOUT_MS });
   }
 
   async getExecutionResults(executionId) {
@@ -1562,12 +1594,19 @@ class ApiService {
    * @returns {{ close: () => void }}
    */
   connectExecutionEvents(executionId, onMessage, onError, token = null) {
-    const url = `${this.baseURL}/api/executions/${executionId}/events`;
+    const id = executionId != null ? String(executionId).trim() : '';
+    if (!/^\d+$/.test(id)) {
+      throw new Error(
+        `Invalid execution_id for /api/executions/{id}/events (got "${executionId}"). Use import job events until a numeric execution_id exists.`
+      );
+    }
+    const url = `${this.baseURL}/api/executions/${id}/events`;
     return this._connectFetchEventStream(url, onMessage, onError, token, 'Execution SSE');
   }
 
   /**
    * Fetch-stream SSE for async import job: GET /api/executions/import/jobs/{run_id}/events
+   * Prefer the 202 `events_url` when available (via connectEventsByApiPath).
    * Stream ends on terminal completed / failed. Payload may include execution_id once known.
    * @param {string|number} runId
    * @param {(data: object) => void} onMessage
@@ -1577,7 +1616,32 @@ class ApiService {
    */
   connectImportJobEvents(runId, onMessage, onError, token = null) {
     if (runId == null) throw new Error('run_id is required.');
-    const url = `${this.baseURL}/api/executions/import/jobs/${encodeURIComponent(runId)}/events`;
+    const raw = String(runId).trim();
+    const storeKey = /^import-(\d+)$/i.exec(raw);
+    const id = storeKey ? storeKey[1] : raw;
+    if (!id) throw new Error('run_id is required.');
+    const url = `${this.baseURL}/api/executions/import/jobs/${encodeURIComponent(id)}/events`;
+    return this._connectFetchEventStream(url, onMessage, onError, token, 'Import job SSE');
+  }
+
+  /**
+   * SSE against a relative API path from a 202 `events_url`.
+   * @param {string} apiPath
+   * @param {(data: object) => void} onMessage
+   * @param {(error: Error) => void} [onError]
+   * @param {string|null} [token]
+   * @returns {{ close: () => void }}
+   */
+  connectEventsByApiPath(apiPath, onMessage, onError, token = null) {
+    const path = apiPath != null ? String(apiPath).trim() : '';
+    if (!path) throw new Error('events_url is required.');
+    let url;
+    if (/^https?:\/\//i.test(path)) {
+      url = path;
+    } else {
+      const endpoint = path.startsWith('/') ? path : `/${path}`;
+      url = `${this.baseURL}${endpoint}`;
+    }
     return this._connectFetchEventStream(url, onMessage, onError, token, 'Import job SSE');
   }
 

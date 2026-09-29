@@ -137,8 +137,9 @@ export default function ImportExecution() {
         ...entry,
         executionStatus: status,
         executionId:
-          status?.execution_id != null && String(status.execution_id).trim() !== ''
-            ? String(status.execution_id)
+          status?.execution_id != null &&
+          /^\d+$/.test(String(status.execution_id).trim())
+            ? String(status.execution_id).trim()
             : entry.executionId,
         report:
           entry.report ||
@@ -154,15 +155,17 @@ export default function ImportExecution() {
       }));
     },
     onExecutionId: (runId, executionId) => {
+      if (!/^\d+$/.test(String(executionId ?? '').trim())) return;
       updateHistoryEntry(runId, (entry) => ({
         ...entry,
-        executionId: String(executionId),
+        executionId: String(executionId).trim(),
       }));
     },
     onCompleted: (runId, status) => {
       const resolvedExecutionId =
-        status?.execution_id != null && String(status.execution_id).trim() !== ''
-          ? String(status.execution_id)
+        status?.execution_id != null &&
+        /^\d+$/.test(String(status.execution_id).trim())
+          ? String(status.execution_id).trim()
           : null;
 
       updateHistoryEntry(runId, (entry) => {
@@ -236,8 +239,9 @@ export default function ImportExecution() {
     },
     onFailed: (runId, errorMessage, status) => {
       const executionId =
-        status?.execution_id != null && String(status.execution_id).trim() !== ''
-          ? String(status.execution_id)
+        status?.execution_id != null &&
+        /^\d+$/.test(String(status.execution_id).trim())
+          ? String(status.execution_id).trim()
           : null;
       updateHistoryEntry(runId, (entry) => {
         const eid = executionId || entry.executionId || null;
@@ -695,6 +699,8 @@ export default function ImportExecution() {
               runId: String(item.runId),
               fileName: item.fileName,
               data: item.raw,
+              statusUrl: item.statusUrl || null,
+              eventsUrl: item.eventsUrl || null,
             });
             newEntries.push(
               buildVerifyingHistoryEntry({

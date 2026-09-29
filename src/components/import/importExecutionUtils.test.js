@@ -10,6 +10,8 @@ import {
   isImportJobActiveStatus,
   normalizeImportJobStatusPayload,
   isImportInsertStage,
+  isNumericExecutionId,
+  normalizeImportJobRunId,
 } from './importExecutionUtils';
 
 describe('parseExecutionFilename', () => {
@@ -125,6 +127,28 @@ describe('extractExecutionIdFromPayload', () => {
   it('reads live.execution_id', () => {
     expect(extractExecutionIdFromPayload({ live: { execution_id: 5 } })).toBe('5');
   });
+
+  it('rejects live-store keys like import-{run_id}', () => {
+    expect(extractExecutionIdFromPayload({ execution_id: 'import-64' })).toBeNull();
+    expect(
+      extractExecutionIdFromPayload({ live: { execution_id: 'import-64' } })
+    ).toBeNull();
+  });
+});
+
+describe('isNumericExecutionId / normalizeImportJobRunId', () => {
+  it('accepts only digit execution ids', () => {
+    expect(isNumericExecutionId(64)).toBe(true);
+    expect(isNumericExecutionId('64')).toBe(true);
+    expect(isNumericExecutionId('import-64')).toBe(false);
+    expect(isNumericExecutionId('')).toBe(false);
+  });
+
+  it('strips import- store key prefix from run ids', () => {
+    expect(normalizeImportJobRunId('import-64')).toBe('64');
+    expect(normalizeImportJobRunId(64)).toBe('64');
+    expect(normalizeImportJobRunId('import-64')).not.toBe('import-64');
+  });
 });
 
 describe('extractRunIdFromPayload', () => {
@@ -219,6 +243,15 @@ describe('normalizeImportJobStatusPayload', () => {
       error_message: 'duplicate execution',
     });
     expect(status.error).toBe('duplicate execution');
+    expect(status.execution_id).toBeNull();
+  });
+
+  it('drops import- store keys from execution_id', () => {
+    const status = normalizeImportJobStatusPayload({
+      status: 'running',
+      run_id: 64,
+      execution_id: 'import-64',
+    });
     expect(status.execution_id).toBeNull();
   });
 });

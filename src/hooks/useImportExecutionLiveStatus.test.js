@@ -13,10 +13,12 @@ jest.mock('../services/api', () => ({
     getAccessToken: jest.fn(() => Promise.resolve('token')),
     connectImportJobEvents: jest.fn(),
     connectExecutionEvents: jest.fn(),
+    connectEventsByApiPath: jest.fn(),
     getImportJobStatus: jest.fn(() => Promise.resolve({ status: 'pending', progress: 0 })),
     getImportExecutionStatus: jest.fn(() =>
       Promise.resolve({ status: 'pending', progress: 0, execution_id: '1' })
     ),
+    getByApiPath: jest.fn(() => Promise.resolve({ status: 'pending', progress: 0 })),
   },
 }));
 
@@ -66,7 +68,15 @@ describe('useImportExecutionLiveStatus queue', () => {
       execSseById.set(key, handle);
       return { close: handle.close };
     });
+    apiService.connectEventsByApiPath.mockImplementation((_url, onMessage) => ({
+      onMessage,
+      close: jest.fn(),
+    }));
     apiService.getImportJobStatus.mockResolvedValue({
+      status: ExecutionStatus.PENDING,
+      progress: 0,
+    });
+    apiService.getByApiPath.mockResolvedValue({
       status: ExecutionStatus.PENDING,
       progress: 0,
     });
@@ -198,6 +208,80 @@ describe('useImportExecutionLiveStatus queue', () => {
     expect(onExecutionId).toHaveBeenCalledWith('30', '99');
     expect(apiService.connectExecutionEvents).toHaveBeenCalled();
     expect(apiService.connectExecutionEvents.mock.calls[0][0]).toBe('99');
+  });
+
+  it('does not promote when execution_id is a live-store key import-{n}', async () => {
+    const { result, onExecutionId } = renderLiveStatus();
+
+    act(() => {
+      result.current.startImportJobQueue([{ runId: '64' }]);
+    });
+
+    await flushAsync();
+
+    act(() => {
+      jobSseById.get('64').onMessage({
+        status: ExecutionStatus.RUNNING,
+        progress: 10,
+        execution_id: 'import-64',
+      });
+    });
+
+    await flushAsync();
+
+    expect(onExecutionId).not.toHaveBeenCalled();
+    expect(apiService.connectExecutionEvents).not.toHaveBeenCalled();
+    expect(apiService.getImportExecutionStatus).not.toHaveBeenCalled();
+  });
+
+  it('prefers status_url / events_url from the 202 accept payload', async () => {
+    jest.useFakeTimers('modern');
+    try {
+      const { result } = renderLiveStatus();
+
+      act(() => {
+        result.current.startImportJobQueue([
+          {
+            runId: '64',
+            statusUrl: '/api/executions/import/jobs/64/status',
+            eventsUrl: '/api/executions/import/jobs/64/events',
+          },
+        ]);
+      });
+
+      await flushAsync();
+
+      expect(apiService.connectEventsByApiPath.mock.calls[0][0]).toBe(
+        '/api/executions/import/jobs/64/events'
+      );
+      expect(apiService.connectImportJobEvents).not.toHaveBeenCalled();
+
+      await act(async () => {
+        jest.advanceTimersByTime(POLL_INTERVAL_MS + 50);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(apiService.getByApiPath).toHaveBeenCalledWith(
+        '/api/executions/import/jobs/64/status'
+      );
+      expect(apiService.getImportJobStatus).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('strips import- prefix if a store key is enqueued as runId', async () => {
+    const { result } = renderLiveStatus();
+
+    act(() => {
+      result.current.startImportJobQueue([{ runId: 'import-64' }]);
+    });
+
+    await flushAsync();
+
+    expect(apiService.connectImportJobEvents).toHaveBeenCalled();
+    expect(apiService.connectImportJobEvents.mock.calls[0][0]).toBe('64');
   });
 
   it('stopAllLiveStatus clears the queue and prevents further subscriptions', async () => {

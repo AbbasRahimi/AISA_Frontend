@@ -177,6 +177,32 @@ export function readFileAsText(file) {
 }
 
 /**
+ * True only for a positive integer execution id (never live-store keys like `import-64`).
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+export function isNumericExecutionId(value) {
+  if (value == null || value === '') return false;
+  return /^\d+$/.test(String(value).trim());
+}
+
+/**
+ * Normalize an import job run id for /api/executions/import/jobs/{run_id}/...
+ * Strips a mistaken live-store key prefix (`import-64` → `64`).
+ * @param {unknown} value
+ * @returns {string|null}
+ */
+export function normalizeImportJobRunId(value) {
+  if (value == null) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const storeKey = /^import-(\d+)$/i.exec(raw);
+  if (storeKey) return storeKey[1];
+  if (/^\d+$/.test(raw)) return raw;
+  return raw;
+}
+
+/**
  * @param {unknown} payload
  * @returns {string|null}
  */
@@ -184,10 +210,10 @@ export function extractRunIdFromPayload(payload) {
   if (!payload || typeof payload !== 'object') return null;
   const p = /** @type {Record<string, unknown>} */ (payload);
   if (p.run_id != null && String(p.run_id).trim() !== '') {
-    return String(p.run_id);
+    return normalizeImportJobRunId(p.run_id);
   }
   if (p.runId != null && String(p.runId).trim() !== '') {
-    return String(p.runId);
+    return normalizeImportJobRunId(p.runId);
   }
   return null;
 }
@@ -275,33 +301,37 @@ export function isImportVerificationPendingStatus(status) {
 }
 
 /**
+ * @param {unknown} value
+ * @returns {string|null}
+ */
+function coerceNumericExecutionId(value) {
+  if (!isNumericExecutionId(value)) return null;
+  return String(value).trim();
+}
+
+/**
+ * Numeric DB execution id only — never live-store keys like `import-{run_id}`.
  * @param {unknown} payload
  * @returns {string|null}
  */
 export function extractExecutionIdFromPayload(payload) {
   if (!payload || typeof payload !== 'object') return null;
   const p = /** @type {Record<string, unknown>} */ (payload);
-  if (p.execution_id != null && String(p.execution_id).trim() !== '') {
-    return String(p.execution_id);
-  }
+  const fromTop = coerceNumericExecutionId(p.execution_id);
+  if (fromTop) return fromTop;
   const nestedResult = p.result && typeof p.result === 'object' ? p.result : null;
-  if (nestedResult?.execution_id != null && String(nestedResult.execution_id).trim() !== '') {
-    return String(nestedResult.execution_id);
-  }
+  const fromNested = coerceNumericExecutionId(nestedResult?.execution_id);
+  if (fromNested) return fromNested;
   const live = p.live && typeof p.live === 'object' ? p.live : null;
-  if (live?.execution_id != null && String(live.execution_id).trim() !== '') {
-    return String(live.execution_id);
-  }
+  const fromLive = coerceNumericExecutionId(live?.execution_id);
+  if (fromLive) return fromLive;
   const report =
     (p.insertion_report && typeof p.insertion_report === 'object' ? p.insertion_report : null) ||
     (nestedResult?.insertion_report && typeof nestedResult.insertion_report === 'object'
       ? nestedResult.insertion_report
       : null);
   const exec = report?.execution && typeof report.execution === 'object' ? report.execution : null;
-  if (exec?.id != null && String(exec.id).trim() !== '') {
-    return String(exec.id);
-  }
-  return null;
+  return coerceNumericExecutionId(exec?.id);
 }
 
 /**

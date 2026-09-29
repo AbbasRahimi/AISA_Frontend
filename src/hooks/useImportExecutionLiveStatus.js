@@ -12,16 +12,21 @@ import {
   buildWorkflowProgressFromStatus,
   getWorkflowProgressFingerprint,
 } from '../utils/workflowStatus';
-import { normalizeImportJobStatusPayload } from '../components/import/importExecutionUtils';
+import {
+  isNumericExecutionId,
+  normalizeImportJobRunId,
+  normalizeImportJobStatusPayload,
+} from '../components/import/importExecutionUtils';
 
 /**
  * Normalize pending list items to run id strings and append to queue (deduped).
  * @param {string[]} queue
  * @param {string|null} activeId
- * @param {Array<{ runId?: string|number, executionId?: string|number }|string|number>} pendingList
+ * @param {Array<{ runId?: string|number, executionId?: string|number, statusUrl?: string|null, eventsUrl?: string|null, status_url?: string|null, events_url?: string|null }|string|number>} pendingList
+ * @param {Map<string, { statusUrl: string|null, eventsUrl: string|null }>} [metaByRunId]
  * @returns {string[]} newly appended ids (in order)
  */
-export function enqueueImportJobIds(queue, activeId, pendingList) {
+export function enqueueImportJobIds(queue, activeId, pendingList, metaByRunId = null) {
   const known = new Set([
     ...(activeId ? [String(activeId)] : []),
     ...queue.map(String),
@@ -32,8 +37,26 @@ export function enqueueImportJobIds(queue, activeId, pendingList) {
       item != null && typeof item === 'object'
         ? item.runId ?? item.executionId
         : item;
-    const id = raw != null ? String(raw).trim() : '';
+    const id = normalizeImportJobRunId(raw);
     if (!id || known.has(id)) continue;
+
+    if (metaByRunId && item != null && typeof item === 'object') {
+      const statusUrl =
+        (typeof item.statusUrl === 'string' && item.statusUrl) ||
+        (typeof item.status_url === 'string' && item.status_url) ||
+        null;
+      const eventsUrl =
+        (typeof item.eventsUrl === 'string' && item.eventsUrl) ||
+        (typeof item.events_url === 'string' && item.events_url) ||
+        null;
+      if (statusUrl || eventsUrl) {
+        metaByRunId.set(id, {
+          statusUrl: statusUrl || metaByRunId.get(id)?.statusUrl || null,
+          eventsUrl: eventsUrl || metaByRunId.get(id)?.eventsUrl || null,
+        });
+      }
+    }
+
     queue.push(id);
     known.add(id);
     appended.push(id);
@@ -56,13 +79,15 @@ function parseImportLiveStatus(raw) {
   if (fromJob) {
     const parsed = parseWorkflowStatusMessage(fromJob) || fromJob;
     if (!parsed || typeof parsed !== 'object') return parsed;
+    const executionId = isNumericExecutionId(fromJob.execution_id)
+      ? String(fromJob.execution_id).trim()
+      : isNumericExecutionId(parsed.execution_id)
+        ? String(parsed.execution_id).trim()
+        : null;
     return {
       ...parsed,
       run_id: fromJob.run_id ?? parsed.run_id ?? null,
-      execution_id:
-        fromJob.execution_id != null && String(fromJob.execution_id).trim() !== ''
-          ? String(fromJob.execution_id)
-          : parsed.execution_id || '',
+      execution_id: executionId || '',
       error: fromJob.error ?? parsed.error ?? null,
       error_message: fromJob.error_message ?? parsed.error ?? null,
       insertion_report: fromJob.insertion_report ?? null,
@@ -73,9 +98,9 @@ function parseImportLiveStatus(raw) {
 
 /**
  * Subscribe to live import-job status: job SSE/poll, then optional switch to
- * execution SSE/poll once execution_id exists (insert succeeded).
+ * execution SSE/poll once a numeric execution_id exists (insert succeeded).
  *
- * Callback identity is always the import run_id.
+ * Callback identity is always the import run_id (never `import-{run_id}` store keys).
  *
  * @param {Object} options
  * @param {Function} options.onStatus - (runId, status) => void
@@ -120,9 +145,12 @@ export function useImportExecutionLiveStatus({
   const activeIdRef = useRef(null);
   const currentCleanupRef = useRef(null);
   const advanceQueueRef = useRef(() => {});
+  /** @type {React.MutableRefObject<Map<string, { statusUrl: string|null, eventsUrl: string|null }>>} */
+  const jobMetaRef = useRef(new Map());
 
   const createLiveStatusSession = useCallback((runId, handlers) => {
-    const id = String(runId);
+    const id = normalizeImportJobRunId(runId) || String(runId);
+    const jobMeta = jobMetaRef.current.get(id) || { statusUrl: null, eventsUrl: null };
     const prevCleanup = cleanupsRef.current.get(id);
     if (prevCleanup) {
       prevCleanup();
@@ -200,10 +228,11 @@ export function useImportExecutionLiveStatus({
       if (st === ExecutionStatus.COMPLETED || st === ExecutionStatus.FAILED) {
         return false;
       }
-      const eid =
-        status?.execution_id != null && String(status.execution_id).trim() !== ''
-          ? String(status.execution_id)
-          : null;
+      // Only switch to /api/executions/{execution_id}/... for a real numeric id.
+      // Live-store keys like `import-64` must never enter those paths.
+      const eid = isNumericExecutionId(status?.execution_id)
+        ? String(status.execution_id).trim()
+        : null;
       if (!eid || trackingMode === 'execution' || promoting || stopped) return false;
 
       promoting = true;
@@ -244,6 +273,9 @@ export function useImportExecutionLiveStatus({
     const fetchStatus = async () => {
       if (trackingMode === 'execution' && executionId) {
         return apiService.getImportExecutionStatus(executionId);
+      }
+      if (jobMeta.statusUrl) {
+        return apiService.getByApiPath(jobMeta.statusUrl);
       }
       return apiService.getImportJobStatus(id);
     };
@@ -330,6 +362,13 @@ export function useImportExecutionLiveStatus({
           onError,
           token
         );
+      } else if (jobMeta.eventsUrl) {
+        streamHandle = apiService.connectEventsByApiPath(
+          jobMeta.eventsUrl,
+          onMessage,
+          onError,
+          token
+        );
       } else {
         streamHandle = apiService.connectImportJobEvents(id, onMessage, onError, token);
       }
@@ -388,22 +427,30 @@ export function useImportExecutionLiveStatus({
   advanceQueueRef.current = advanceQueue;
 
   const startLiveStatus = useCallback(
-    (runId) =>
-      createLiveStatusSession(runId, {
-        onStatus: (id, status) => callbacksRef.current.onStatus?.(id, status),
-        onProgress: (id, fn) => callbacksRef.current.onProgress?.(id, fn),
-        onConnectionMode: (id, mode) => callbacksRef.current.onConnectionMode?.(id, mode),
-        onExecutionId: (id, eid) => callbacksRef.current.onExecutionId?.(id, eid),
-        onCompleted: (id, status) => callbacksRef.current.onCompleted?.(id, status),
-        onFailed: (id, msg, status) => callbacksRef.current.onFailed?.(id, msg, status),
-        onPollError: (id, err) => callbacksRef.current.onPollError?.(id, err),
-      }),
+    (runId, urls = null) => {
+      const id = normalizeImportJobRunId(runId) || String(runId);
+      if (urls && typeof urls === 'object') {
+        jobMetaRef.current.set(id, {
+          statusUrl: urls.statusUrl || urls.status_url || null,
+          eventsUrl: urls.eventsUrl || urls.events_url || null,
+        });
+      }
+      return createLiveStatusSession(id, {
+        onStatus: (sid, status) => callbacksRef.current.onStatus?.(sid, status),
+        onProgress: (sid, fn) => callbacksRef.current.onProgress?.(sid, fn),
+        onConnectionMode: (sid, mode) => callbacksRef.current.onConnectionMode?.(sid, mode),
+        onExecutionId: (sid, eid) => callbacksRef.current.onExecutionId?.(sid, eid),
+        onCompleted: (sid, status) => callbacksRef.current.onCompleted?.(sid, status),
+        onFailed: (sid, msg, status) => callbacksRef.current.onFailed?.(sid, msg, status),
+        onPollError: (sid, err) => callbacksRef.current.onPollError?.(sid, err),
+      });
+    },
     [createLiveStatusSession]
   );
 
   const startImportJobQueue = useCallback(
     (pendingList) => {
-      enqueueImportJobIds(queueRef.current, activeIdRef.current, pendingList);
+      enqueueImportJobIds(queueRef.current, activeIdRef.current, pendingList, jobMetaRef.current);
       if (!activeIdRef.current) {
         advanceQueue();
       }
@@ -416,6 +463,7 @@ export function useImportExecutionLiveStatus({
 
   const stopAllLiveStatus = useCallback(() => {
     queueRef.current = [];
+    jobMetaRef.current.clear();
     if (currentCleanupRef.current) {
       try {
         currentCleanupRef.current();
