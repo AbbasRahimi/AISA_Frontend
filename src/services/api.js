@@ -4,6 +4,12 @@ import {
   SUBTRACT_MATCHES_JOB_CREATE_TIMEOUT_MS,
   SUBTRACT_MATCHES_JOB_RESULTS_TIMEOUT_MS,
 } from '../utils/constants';
+import {
+  appendCitationParserFields,
+  normalizeOcrText,
+  normalizeUnmatchedGroups,
+  parseUnmatchedCount,
+} from '../components/citationParser/citationParserUtils';
 
 export { parseWorkflowStatusMessage, normalizeExecutionStatusResponse };
 
@@ -180,20 +186,31 @@ class ApiService {
           // If JSON parsing fails, use status text
           errorMessage = `HTTP error! status: ${response.status}`;
         }
-        throw new Error(errorMessage);
+        const err = new Error(errorMessage);
+        err.status = response.status;
+        throw err;
       }
 
       if (options.responseType === 'blob') {
-        return await response.blob();
+        const blob = await response.blob();
+        if (options.includeResponseHeaders) {
+          return { data: blob, headers: response.headers };
+        }
+        return blob;
       }
 
       // Handle empty responses
       const contentType = response.headers.get('content-type');
+      let data;
       if (contentType && contentType.includes('application/json')) {
-        return await response.json();
+        data = await response.json();
+      } else {
+        data = await response.text();
       }
-      
-      return await response.text();
+      if (options.includeResponseHeaders) {
+        return { data, headers: response.headers };
+      }
+      return data;
     } catch (error) {
       clearTimeout(timeoutId);
       
@@ -371,6 +388,101 @@ class ApiService {
   async deleteExcludedStudyReference(referenceId) {
     return this.request(`/api/excluded-studies/${referenceId}`, {
       method: 'DELETE',
+    });
+  }
+
+  /**
+   * OCR a reference-section screenshot into an editable draft. Does not write the database.
+   * POST /api/seed-papers/{id}/bibliography/preview — multipart field `files`.
+   * Optional: parser=example + examples (JSON string). The list can be longer than two
+   * when examples use different field orders. Omit parser for built-in (default).
+   * Response stays JSON. citations is unchanged and may include unmatched_groups.
+   * The example parser still sends X-Citation-Unmatched, returned here as unmatchedCount.
+   * Requires seed_papers and citation_ocr.
+   * @param {number|string} seedPaperId
+   * @param {File[]} files
+   * @param {{ parserMode?: string, examples?: Array, extraExamples?: Array }} [parserOptions]
+   */
+  async previewSeedBibliography(seedPaperId, files, parserOptions = {}) {
+    const list = Array.isArray(files) ? files : [];
+    const formData = new FormData();
+    for (const file of list) {
+      formData.append('files', file);
+    }
+    appendCitationParserFields(formData, parserOptions);
+    const { data, headers } = await this.request(
+      `/api/seed-papers/${seedPaperId}/bibliography/preview`,
+      {
+        method: 'POST',
+        headers: {},
+        body: formData,
+        includeResponseHeaders: true,
+      },
+    );
+    const unmatchedCount = parseUnmatchedCount(headers?.get?.('X-Citation-Unmatched'));
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      return { ...data, unmatchedCount };
+    }
+    return data;
+  }
+
+  /**
+   * Replace the stored bibliography with an approved citation list.
+   * POST /api/seed-papers/{id}/bibliography — JSON `{ citations }`. An empty array clears it.
+   * @param {number|string} seedPaperId
+   * @param {object[]} citations
+   */
+  async storeSeedBibliography(seedPaperId, citations) {
+    const list = Array.isArray(citations) ? citations : [];
+    return this.request(`/api/seed-papers/${seedPaperId}/bibliography`, {
+      method: 'POST',
+      body: JSON.stringify({ citations: list }),
+    });
+  }
+
+  /**
+   * Replace the stored bibliography from a BibTeX, JSON, RIS, or CSV file.
+   * POST /api/seed-papers/{id}/bibliography — multipart field `file`.
+   * @param {number|string} seedPaperId
+   * @param {File} file
+   */
+  async storeSeedBibliographyFile(seedPaperId, file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.request(`/api/seed-papers/${seedPaperId}/bibliography`, {
+      method: 'POST',
+      headers: {},
+      body: formData,
+    });
+  }
+
+  /** GET /api/seed-papers/{id}/bibliography — bare array of stored references. */
+  async getSeedBibliography(seedPaperId) {
+    return this.request(`/api/seed-papers/${seedPaperId}/bibliography`);
+  }
+
+  /**
+   * DELETE /api/bibliography/{referenceId}.
+   * referenceId is the bibliography link id (references[].id), not a literature id.
+   */
+  async deleteBibliographyReference(referenceId) {
+    return this.request(`/api/bibliography/${referenceId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  /** GET /api/seed-papers/{id}/bibliography-comparison — stored disclosure result. */
+  async getSeedBibliographyComparison(seedPaperId) {
+    return this.request(`/api/seed-papers/${seedPaperId}/bibliography-comparison`);
+  }
+
+  /**
+   * POST /api/seed-papers/{id}/bibliography-comparison — recompute disclosure. No body.
+   * Call after ground truth is added or changed.
+   */
+  async recomputeSeedBibliographyComparison(seedPaperId) {
+    return this.request(`/api/seed-papers/${seedPaperId}/bibliography-comparison`, {
+      method: 'POST',
     });
   }
 
@@ -1883,6 +1995,41 @@ class ApiService {
     return this.request(`/api/reports/exports/${runId}/download`, {
       responseType: 'blob',
     });
+  }
+
+  /**
+   * Extract BibTeX citations from bibliography screenshot images via OCR.
+   * POST /api/citation-ocr/extract — multipart field `files` (repeat for multiple; order preserved).
+   * Optional: parser=example + examples (JSON string). Omit parser for built-in.
+   * Always JSON: { bibtex, ocr_text }. ocr_text is one raw Tesseract string per image,
+   * in reading order. parser=example also includes unmatched and unmatched_groups.
+   * Requires citation_ocr access key.
+   * @param {File[]} files
+   * @param {{ parserMode?: string, examples?: Array, extraExamples?: Array }} [parserOptions]
+   * @returns {Promise<{ bibtex: string, ocrTexts: string[], unmatchedCount: number|null, unmatchedGroups: Array<{ count: number, sample: string }> }>}
+   */
+  async extractCitationOcr(files, parserOptions = {}) {
+    const list = Array.isArray(files) ? files : [];
+    if (list.length === 0) {
+      throw new Error('No files selected');
+    }
+    const formData = new FormData();
+    for (const file of list) {
+      formData.append('files', file);
+    }
+    appendCitationParserFields(formData, parserOptions);
+    const data = await this.request('/api/citation-ocr/extract', {
+      method: 'POST',
+      headers: {}, // Let browser set Content-Type for FormData (multipart/form-data)
+      body: formData,
+    });
+    const body = data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+    return {
+      bibtex: typeof body.bibtex === 'string' ? body.bibtex : '',
+      ocrTexts: normalizeOcrText(body.ocr_text),
+      unmatchedCount: parseUnmatchedCount(body.unmatched),
+      unmatchedGroups: normalizeUnmatchedGroups(body.unmatched_groups),
+    };
   }
 }
 

@@ -5,6 +5,7 @@ import ConfigurationPanel from './components/dashboard/ConfigurationPanel';
 import ProgressPanel from './components/dashboard/ProgressPanel';
 import ResultsPanel from './components/dashboard/ResultsPanel';
 import FileUploadModal from './components/dashboard/FileUploadModal';
+import SeedBibliographySection from './components/dashboard/SeedBibliographySection';
 import PublicationVerifier from './components/verification/PublicationVerifier';
 import ReferenceComparer from './components/comparer/ReferenceComparer';
 import EvaluationMetricsGuide from './components/evaluation/EvaluationMetrics';
@@ -12,6 +13,7 @@ import ReportsSeedPaperRedirect from './components/reports/ReportsSeedPaperRedir
 import ImportExecution from './components/import/ImportExecution';
 import DatabaseView from './components/database/DatabaseView';
 import ComparisonProfilesPage from './components/comparisonProfiles/ComparisonProfilesPage';
+import CitationOcrPage from './components/citationOcr/CitationOcrPage';
 import Footer from './components/layout/Footer';
 import apiService, { buildApiUrl } from './services/api';
 import { AuthoritativeVerificationMode, createWorkflowRequest, LLMProvider } from './models';
@@ -212,6 +214,15 @@ function Navigation() {
                 <i className="fas fa-database"></i> Database
               </Link>
             )}
+            {canSee('citation_ocr') && (
+              <Link
+                className={`nav-link ${location.pathname === '/citation-ocr' ? 'active' : ''}`}
+                to="/citation-ocr"
+                onClick={handleNavClick}
+              >
+                <i className="fas fa-file-image"></i> Citation OCR
+              </Link>
+            )}
             <a
               className="nav-link"
               href={buildApiUrl('/api/docs')}
@@ -274,6 +285,9 @@ function MainDashboard() {
   const [prompts, setPrompts] = useState([]);
   const [llmModels, setLlmModels] = useState({ chatgpt_models: [], gemini_models: [] });
   const [groundTruthReferences, setGroundTruthReferences] = useState([]);
+  const [groundTruthLoadedFor, setGroundTruthLoadedFor] = useState(null);
+  const [groundTruthRevision, setGroundTruthRevision] = useState(0);
+  const groundTruthRequestRef = useRef(0);
   const [excludedStudyReferences, setExcludedStudyReferences] = useState([]);
   const [selectedSeedPaper, setSelectedSeedPaper] = useState(null);
   const [selectedPrompt, setSelectedPrompt] = useState(null);
@@ -331,12 +345,15 @@ function MainDashboard() {
   // Load ground truth / excluded studies and reset prompt selection when seed paper changes
   useEffect(() => {
     if (selectedSeedPaper) {
+      setGroundTruthLoadedFor(null);
       loadGroundTruthReferences(selectedSeedPaper.id);
       loadExcludedStudyReferences(selectedSeedPaper.id);
       // Reset selected prompt when seed paper changes
       setSelectedPrompt(null);
     } else {
+      groundTruthRequestRef.current += 1;
       setGroundTruthReferences([]);
+      setGroundTruthLoadedFor(null);
       setExcludedStudyReferences([]);
       setSelectedPrompt(null);
     }
@@ -386,11 +403,17 @@ function MainDashboard() {
   };
 
   const loadGroundTruthReferences = async (seedPaperId) => {
+    const requestId = ++groundTruthRequestRef.current;
     try {
       const references = await apiService.getGroundTruthReferences(seedPaperId);
-      setGroundTruthReferences(references);
+      if (requestId !== groundTruthRequestRef.current) return;
+      setGroundTruthReferences(Array.isArray(references) ? references : []);
     } catch (error) {
+      if (requestId !== groundTruthRequestRef.current) return;
       setGroundTruthReferences([]);
+    }
+    if (requestId === groundTruthRequestRef.current) {
+      setGroundTruthLoadedFor(seedPaperId);
     }
   };
 
@@ -411,6 +434,7 @@ function MainDashboard() {
       setLoading(true);
       setError(null);
       await apiService.deleteGroundTruthReference(referenceId);
+      setGroundTruthRevision((revision) => revision + 1);
       await loadGroundTruthReferences(selectedSeedPaper.id);
     } catch (err) {
       setError('Failed to delete ground truth reference: ' + (err?.message || String(err)));
@@ -449,6 +473,7 @@ function MainDashboard() {
             throw new Error('Please select a seed paper first');
           }
           await apiService.addGroundTruthReferences(selectedSeedPaper.id, file);
+          setGroundTruthRevision((revision) => revision + 1);
           await loadGroundTruthReferences(selectedSeedPaper.id);
           break;
         case 'excluded-studies':
@@ -672,6 +697,16 @@ function MainDashboard() {
         </div>
       </div>
 
+      {selectedSeedPaper && (
+        <SeedBibliographySection
+          seedPaperId={selectedSeedPaper.id}
+          seedPaperTitle={selectedSeedPaper.title}
+          groundTruthRevision={groundTruthRevision}
+          groundTruthCount={groundTruthReferences.length}
+          groundTruthReady={groundTruthLoadedFor === selectedSeedPaper.id}
+        />
+      )}
+
       <FileUploadModal
         show={showModal.isOpen}
         type={showModal.type}
@@ -777,6 +812,16 @@ function App() {
               <RequireAuth>
                 <RequirePermission permission="literature">
                   <DatabaseView />
+                </RequirePermission>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/citation-ocr"
+            element={
+              <RequireAuth>
+                <RequirePermission permission="citation_ocr">
+                  <CitationOcrPage />
                 </RequirePermission>
               </RequireAuth>
             }
