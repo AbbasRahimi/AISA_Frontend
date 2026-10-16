@@ -134,7 +134,7 @@ class ApiService {
     const isFormData = options.body instanceof FormData;
     // Pull headers out so spreading ...restOptions does not overwrite merged headers
     // (FormData calls use headers: {} only to avoid setting Content-Type; that must not drop Bearer auth).
-    const { headers: optionHeaders = {}, json, ...restOptions } = options;
+    const { headers: optionHeaders = {}, json, timeout: timeoutOption, ...restOptions } = options;
     let token = null;
     if (this.accessTokenGetter) {
       try {
@@ -153,10 +153,12 @@ class ApiService {
       },
     };
 
-    // Add custom timeout for long-running operations
-    const timeout = options.timeout || 300000; // Default 5 minutes
+    // Default 5 minutes. timeout 0 or null means wait until the server responds.
+    const timeout = timeoutOption === undefined ? 300000 : timeoutOption;
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    const timeoutId = timeout
+      ? setTimeout(() => controller.abort(), timeout)
+      : null;
     const externalSignal = options.signal;
     if (externalSignal) {
       if (externalSignal.aborted) controller.abort();
@@ -216,6 +218,9 @@ class ApiService {
       
       // Handle abort/timeout
       if (error.name === 'AbortError') {
+        if (!timeout) {
+          throw error;
+        }
         console.error('API request timed out:', endpoint);
         throw new Error(`Request timed out after ${timeout / 1000} seconds`);
       }
@@ -417,6 +422,7 @@ class ApiService {
         headers: {},
         body: formData,
         includeResponseHeaders: true,
+        timeout: 0,
       },
     );
     const unmatchedCount = parseUnmatchedCount(headers?.get?.('X-Citation-Unmatched'));
@@ -2022,6 +2028,7 @@ class ApiService {
       method: 'POST',
       headers: {}, // Let browser set Content-Type for FormData (multipart/form-data)
       body: formData,
+      timeout: 0,
     });
     const body = data && typeof data === 'object' && !Array.isArray(data) ? data : {};
     return {
